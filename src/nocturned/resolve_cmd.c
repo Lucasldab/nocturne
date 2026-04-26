@@ -163,6 +163,15 @@ int resolve_cmd_main(struct cli_args *args)
         m.cold_start ? "yes" : "no",
         args->dry_run ? " (dry-run)" : "");
 
+    /* Nudge (NOT auto-invoke) — the rotate engine is a separate write
+     * subcommand the user runs explicitly after resolve. UI-priority
+     * pin: keyboard / min-keystrokes; the nudge tells the user the
+     * next step without forcing it. */
+    if (!args->dry_run) {
+        fprintf(stderr,
+            "note: run `nocturned rotate` to apply the manifest to disk\n");
+    }
+
     int ret = m.cold_start ? 1 : 0;
     manifest_free(&m); config_free(&cfg);
     db_close(db); lock_release(lock);

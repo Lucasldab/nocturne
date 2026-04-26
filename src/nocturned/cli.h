@@ -22,7 +22,8 @@ enum nocturned_subcommand {
     CMD_PUBLISH,
     CMD_INGEST,
     CMD_DOCTOR,
-    CMD_MIGRATE
+    CMD_MIGRATE,
+    CMD_ROTATE
 };
 
 /* Parsed argv for the daemon. Strings are pointers into argv (no ownership). */

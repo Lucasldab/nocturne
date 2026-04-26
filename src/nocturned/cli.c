@@ -29,6 +29,7 @@ void cli_print_usage(FILE *f)
         "  resolve           Compute the manifest from current DB + config buckets\n"
         "  publish           Atomically write catalog.json + manifest.json\n"
         "  migrate <lib>     Move flat library into archive/<rel> (dry-run by default)\n"
+        "  rotate            Apply manifest_current diff via hardlink+unlink\n"
         "  ingest            (Phase 7) Replay phone JSONL into DB\n"
         "  doctor            Print library + DB health report\n"
         "\n"
@@ -63,6 +64,7 @@ static enum nocturned_subcommand subcommand_from_string(const char *s)
     if (!strcmp(s, "ingest"))  return CMD_INGEST;
     if (!strcmp(s, "doctor"))  return CMD_DOCTOR;
     if (!strcmp(s, "migrate")) return CMD_MIGRATE;
+    if (!strcmp(s, "rotate"))  return CMD_ROTATE;
     if (!strcmp(s, "help"))    return CMD_HELP;
     if (!strcmp(s, "version")) return CMD_VERSION;
     return CMD_NONE;

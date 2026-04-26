@@ -128,9 +128,11 @@ int main(int argc, char **argv)
         struct nocturne_db *db = db_open(dbp, NULL, NULL);
         insert_track(db, "multi", "/tmp/multi.mp3", 1024, "2026-04-26T00:00:00Z");
         /* Make it loved + pinned + give it phone plays so top_played also picks it. */
+        /* Schema 0004: likes is (unit, id, liked, ts) keyed on (unit,id);
+         * resolver SQL_LOVED reads only unit='track'. ts is unix-ms. */
         exec_sql(db,
-            "INSERT INTO likes (sha256, liked, updated_at) VALUES "
-            "('multi', 1, '2026-04-26T00:00:00Z')");
+            "INSERT INTO likes (unit, id, liked, ts) VALUES "
+            "('track', 'multi', 1, 1745678910000)");
         exec_sql(db,
             "INSERT INTO pins (unit, id, pinned, updated_at) VALUES "
             "('track', 'multi', 1, '2026-04-26T00:00:00Z')");
@@ -279,10 +281,11 @@ int main(int argc, char **argv)
         struct nocturne_db *db = db_open(dbp, NULL, NULL);
         insert_track(db, "lov001", "/tmp/lov1.mp3", 1024, "2026-04-26T00:00:00Z");
         insert_track(db, "lov002", "/tmp/lov2.mp3", 1024, "2026-04-26T00:00:00Z");
+        /* Schema 0004 likes shape: (unit, id, liked, ts) PK(unit,id). */
         exec_sql(db,
-            "INSERT INTO likes (sha256, liked, updated_at) VALUES "
-            "('lov001', 1, '2026-04-26T00:00:00Z'), "
-            "('lov002', 0, '2026-04-26T00:00:00Z')");
+            "INSERT INTO likes (unit, id, liked, ts) VALUES "
+            "('track', 'lov001', 1, 1745678910000), "
+            "('track', 'lov002', 0, 1745678910000)");
         /* Force at least 10 phone plays so we're NOT in cold-start. */
         for (int i = 0; i < 12; i++) {
             char sql[256];

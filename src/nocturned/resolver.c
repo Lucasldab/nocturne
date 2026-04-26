@@ -201,11 +201,17 @@ static const char *SQL_RECENT_PLAYS =
     "      GROUP BY sha256) p ON p.sha256 = t.sha256 "
     "ORDER BY p.last_played DESC, t.sha256 ASC LIMIT ?2";
 
+/* Schema 0004 reshaped likes from (sha256 PK, liked, updated_at) to
+ * (unit, id, liked, ts) so album-level likes are addressable. The resolver
+ * only consumes track-level likes — album-level likes are stored by the
+ * ingester but ignored here (forward-compat for a future loved-album
+ * bucket). LWW key is `ts` (unix-ms) instead of the old ISO-8601
+ * `updated_at`. */
 static const char *SQL_LOVED =
     "SELECT t.sha256, t.size_bytes FROM tracks t "
-    "JOIN likes l ON l.sha256 = t.sha256 "
+    "JOIN likes l ON l.unit='track' AND l.id = t.sha256 "
     "WHERE l.liked = 1 "
-    "ORDER BY l.updated_at DESC, t.sha256 ASC LIMIT ?";
+    "ORDER BY l.ts DESC, t.sha256 ASC LIMIT ?";
 
 static const char *SQL_PINS_TRACKS =
     "SELECT t.sha256, t.size_bytes FROM tracks t "

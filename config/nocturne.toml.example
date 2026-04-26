@@ -1,0 +1,74 @@
+# nocturne config — copy to ~/.config/nocturne/config.toml
+#
+# Format is a TOML/INI subset: top-level [sections], [buckets.<name>]
+# subsections, key = value with int / float / "string". Lines starting
+# with `#` are comments.
+#
+# Every field shown below is OPTIONAL — defaults are documented inline.
+# A missing config file produces an out-of-the-box-sane resolver.
+
+[library]
+# Path to your music library root. Optional; the daemon also accepts
+# the library path positionally on the command line for scan/watch.
+# path = "/home/you/music/library"
+
+[sync_meta]
+# Where the daemon writes catalog.json + manifest.json (Phase 3).
+# Default: ~/sync/music-meta
+# path = "/home/you/sync/music-meta"
+
+[cap]
+# Total cap on resident bytes. Default: 12 GiB.
+# bytes = 12884901888
+# Effective resident ratio inside the cap (RESOLVE-03). Default: 0.70
+# (the resolver will not exceed cap.bytes * effective_ratio).
+# effective_ratio = 0.70
+
+[resolver]
+# Hysteresis at the cap edge (RESOLVE-05). Default: 0.10
+# hysteresis = 0.10
+# Below this many phone plays, fall back to recent_adds + exploration
+# (RESOLVE-06). Default: 10
+# cold_start_play_threshold = 10
+# RNG seed for the exploration bucket. 0 = derive from ISO-week.
+# seed = 0
+
+# Each bucket below is independent. count is a hard cap on tracks taken
+# from that bucket; weight is a tiebreaker (0..1); window_days narrows
+# the time window (0 = all-time).
+
+[buckets.recent_adds]
+count = 80
+source = "recent_adds_by_mtime"
+weight = 1.0
+window_days = 14
+
+[buckets.top_played]
+count = 80
+source = "top_played_phone"
+weight = 0.9
+window_days = 90
+
+[buckets.recent_plays]
+count = 60
+source = "recent_plays_phone"
+weight = 0.85
+window_days = 30
+
+[buckets.loved]
+count = 100
+source = "loved"
+weight = 1.0
+window_days = 0
+
+[buckets.exploration]
+count = 40
+source = "exploration_random"
+weight = 0.5
+window_days = 0
+
+[buckets.manual_pins]
+count = 200
+source = "manual_pins"
+weight = 1.0
+window_days = 0

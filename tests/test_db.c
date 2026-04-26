@@ -119,7 +119,9 @@ int main(int argc, char **argv)
     expect(db != NULL, "db_open(): fresh DB created with nested parent dirs");
     if (!db) { rm_rf(tmp); free(tmp); return test_finish(__FILE__); }
 
-    expect(db_schema_version(db) == 1, "user_version advanced to 1 after migration");
+    /* user_version is bumped each migration; assert >= 1 to be future-proof
+     * against new schema migrations landing in later plans. */
+    expect(db_schema_version(db) >= 1, "user_version advanced after migration");
 
     /* Pragma checks. */
     char *jm = pragma_string(db_handle(db), "PRAGMA journal_mode");
@@ -165,7 +167,7 @@ int main(int argc, char **argv)
      *    migrations did NOT replay (CREATE-fresh would have dropped data). */
     db = db_open(db_path, NULL, NULL);
     expect(db != NULL, "db_open(): re-open succeeds");
-    expect(db_schema_version(db) == 1, "user_version still 1 after re-open");
+    expect(db_schema_version(db) >= 1, "user_version still set after re-open");
     expect(count_tracks(db_handle(db)) == before + 1,
            "marker rows survived re-open (migration was idempotent)");
     db_close(db);

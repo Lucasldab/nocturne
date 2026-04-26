@@ -266,9 +266,8 @@ static void emit_text_footer(struct report_summary *s,
     if (s->files_taglib_open_failed > 0) {
         fprintf(o, "  taglib open failed: %zu\n", s->files_taglib_open_failed);
     }
-    int exit_predict = (s->files_failed > 0) ? 1 : 0;
-    fprintf(o, "Exit: %d %s\n", exit_predict,
-            exit_predict == 1 ? "(failed tracks present)" : "(clean)");
+    /* main() owns the exit-code resolution (it knows about --quarantine and
+     * moved_count). The reporter only summarises check results. */
 }
 
 static void emit_json(struct report_summary *s, const struct walk_stats *ws)

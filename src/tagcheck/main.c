@@ -7,8 +7,16 @@
  *   2 (TAGCHECK_EXIT_QUARANTINED)    — some tracks quarantined (or would be in --dry-run)
  *   3 (TAGCHECK_EXIT_ERROR)          — library inaccessible / TagLib error / usage error
  *
- * See .planning/phases/01-tag-baseline/CONTEXT.md for the locked decisions
- * behind this exit-code matrix.
+ * Exit-code matrix (locked CONTEXT decision):
+ *   --quarantine?   failed_count   moved_count   |  exit
+ *   no              0              —             |  0
+ *   no              >0             —             |  1
+ *   yes (real)      0              0             |  0
+ *   yes (real)      >0             >0            |  2
+ *   yes (dry-run)   0              0             |  0
+ *   yes (dry-run)   >0             >0            |  2  (preview signal: action would happen)
+ *
+ * See .planning/phases/01-tag-baseline/CONTEXT.md.
  */
 
 #define _GNU_SOURCE
@@ -22,6 +30,7 @@
 
 #include "check.h"
 #include "cli.h"
+#include "quarantine.h"
 #include "report.h"
 #include "tags.h"
 #include "walker.h"
@@ -40,12 +49,11 @@ static void print_usage_to(FILE *out, const char *progname)
         "Options:\n"
         "  --json                Emit structured JSON report (default: text)\n"
         "  --quarantine          Move tracks failing the canonical schema into\n"
-        "                        the quarantine directory; logs to quarantine.log\n"
-        "                        (not yet implemented in Phase 1 Plan 04)\n"
-        "  --dry-run             With --quarantine, preview moves without writes\n"
-        "                        (not yet implemented in Phase 1 Plan 04)\n"
-        "  --init-quarantine     Create the quarantine directory (mode 0700) and exit\n"
-        "                        (not yet implemented in Phase 1 Plan 04)\n"
+        "                        <quarantine-path>; logs moves to quarantine.log\n"
+        "  --dry-run             With --quarantine, preview moves without touching filesystem\n"
+        "  --init-quarantine     Create the quarantine directory (mode 0700) at\n"
+        "                        <quarantine-path> and exit (or continue if --quarantine\n"
+        "                        also given)\n"
         "  --quarantine-path PATH\n"
         "                        Override default quarantine directory (default: %s)\n"
         "  -h, --help            Show this help and exit\n"
@@ -125,6 +133,7 @@ int cli_parse(int argc, char **argv, struct cli_opts *opts)
 
 struct main_ctx {
     struct report_summary *summary;
+    struct quarantine_ctx *qctx;     /* NULL when --quarantine not active */
 };
 
 static enum walk_result on_file_check(const struct tag_record *rec, void *userdata)
@@ -133,6 +142,10 @@ static enum walk_result on_file_check(const struct tag_record *rec, void *userda
     struct check_result cr = {0};
     check_canonical(rec, &cr);
     report_add(ctx->summary, &cr);
+    if (ctx->qctx && quarantine_should_move(&cr)) {
+        /* quarantine_move handles its own error logging; we still continue. */
+        quarantine_move(ctx->qctx, &cr);
+    }
     check_result_free(&cr);
     return WALK_CONTINUE;
 }
@@ -156,42 +169,79 @@ int main(int argc, char **argv)
         return TAGCHECK_EXIT_OK;
     }
 
-    /* Plan 04 territory — bail with a clear "not yet" message. */
-    if (opts.init_quarantine || opts.quarantine || opts.dry_run) {
+    /* --init-quarantine: handle BEFORE the walk. If the user combined
+     * --init-quarantine with --quarantine we create the dir then continue
+     * to a normal quarantine run. Otherwise create + exit 0. */
+    if (opts.init_quarantine) {
+        if (quarantine_create_dir(opts.quarantine_path) != 0) {
+            return TAGCHECK_EXIT_ERROR;
+        }
+        if (!opts.quarantine) {
+            printf("created quarantine directory: %s\n",
+                   opts.quarantine_path);
+            return TAGCHECK_EXIT_OK;
+        }
+        /* fall through to combined --init+--quarantine run */
+    }
+
+    /* --dry-run alone has no meaning — there's nothing to preview if
+     * we're not also going to act. */
+    if (opts.dry_run && !opts.quarantine) {
         fprintf(stderr,
-                "%s: --quarantine/--init-quarantine/--dry-run not yet "
-                "implemented (Phase 1 Plan 04)\n",
-                progname);
+                "%s: --dry-run requires --quarantine\n", progname);
         return TAGCHECK_EXIT_ERROR;
     }
 
-    /* Force TagLib to return UTF-8 even from legacy v2.3 ID3 files. */
+    /* TagLib unicode: force UTF-8 returns even on legacy v2.3 tags. */
     taglib_set_strings_unicode((BOOL)1);
 
+    /* Reporter setup. */
     struct report_summary summary;
     report_summary_init(&summary,
                         opts.emit_json ? REPORT_FORMAT_JSON : REPORT_FORMAT_TEXT,
                         stdout);
 
-    struct main_ctx ctx = { .summary = &summary };
+    /* Quarantine setup (only if --quarantine). */
+    struct quarantine_ctx qctx;
+    bool qctx_active = false;
+    int exit_code = TAGCHECK_EXIT_OK;
+
+    if (opts.quarantine) {
+        if (quarantine_init(&qctx, opts.library_path, opts.quarantine_path,
+                            opts.dry_run) != 0) {
+            report_summary_free(&summary);
+            return TAGCHECK_EXIT_ERROR;
+        }
+        qctx_active = true;
+    }
+
+    struct main_ctx ctx = {
+        .summary = &summary,
+        .qctx = qctx_active ? &qctx : NULL,
+    };
+
     struct walk_stats walk_stats;
     int wr = walker_walk(opts.library_path, on_file_check, &ctx, &walk_stats);
     if (wr != 0) {
-        report_summary_free(&summary);
-        return TAGCHECK_EXIT_ERROR;
+        exit_code = TAGCHECK_EXIT_ERROR;
+        goto cleanup;
     }
 
     report_emit(&summary, &walk_stats);
 
-    /* Exit-code resolution per locked CONTEXT decisions:
-     *   files_failed > 0           → 1
-     *   else                       → 0
-     * files_flagged_only > 0 alone does NOT push to 1 — multi-value FLAGs
-     * are advisory only (TAG-03 locked rule). Plan 04 lifts to 2 when
-     * --quarantine moves files. */
-    int exit_code = (summary.files_failed > 0) ? TAGCHECK_EXIT_FAILED_TRACKS
-                                               : TAGCHECK_EXIT_OK;
+    /* Exit-code resolution per the matrix at the top of this file. */
+    if (qctx_active && qctx.moved_count > 0) {
+        exit_code = TAGCHECK_EXIT_QUARANTINED;
+    } else if (summary.files_failed > 0) {
+        exit_code = TAGCHECK_EXIT_FAILED_TRACKS;
+    } else {
+        exit_code = TAGCHECK_EXIT_OK;
+    }
 
+cleanup:
+    if (qctx_active) {
+        quarantine_close(&qctx);
+    }
     report_summary_free(&summary);
     return exit_code;
 }

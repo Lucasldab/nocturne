@@ -6,47 +6,101 @@
  * (resolve), 02-06 (publish). `ingest` stays a permanent stub until
  * Phase 7. The PID lockfile is wired here for write subcommands so
  * DAEMON-04 lands with this plan.
+ *
+ * Lock policy (revisitable in later plans):
+ *   - scan / watch / resolve / publish: take exclusive lock, write subcommands.
+ *   - doctor: read-only, skip lock so it works while a long watch is running.
+ *   - ingest: permanent stub here, lock decision deferred to Phase 7.
  */
 
 #define _GNU_SOURCE
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "cli.h"
+#include "lock.h"
+#include "paths.h"
+
+/* Acquire the daemon-wide single-writer lock. Prints a clear diagnostic and
+ * returns the requested exit code (NOCT_EXIT_LOCK_BUSY on contention,
+ * NOCT_EXIT_FAILURE on other errors) when acquisition fails; returns 0 with
+ * *out_lock set on success. */
+static int acquire_lock_or_die(struct nocturne_lock **out_lock)
+{
+    const char *pidfile = paths_pidfile();
+    if (!pidfile) {
+        fprintf(stderr, "nocturned: cannot resolve pidfile path (HOME unset?)\n");
+        return NOCT_EXIT_FAILURE;
+    }
+    int busy_pid = 0;
+    struct nocturne_lock *l = lock_acquire(pidfile, &busy_pid);
+    if (l) {
+        *out_lock = l;
+        return 0;
+    }
+    if (errno == EWOULDBLOCK) {
+        fprintf(stderr,
+                "nocturned: another instance is running (pid=%d); "
+                "single-writer lock at %s\n",
+                busy_pid, pidfile);
+        return NOCT_EXIT_LOCK_BUSY;
+    }
+    fprintf(stderr, "nocturned: lock_acquire(%s) failed: %s\n",
+            pidfile, strerror(errno));
+    return NOCT_EXIT_FAILURE;
+}
 
 static int cmd_scan_stub(const struct cli_args *a)
 {
     (void) a;
+    struct nocturne_lock *lock = NULL;
+    int rc = acquire_lock_or_die(&lock);
+    if (rc != 0) return rc;
     fprintf(stdout, "stub: scan handler lands in plan 02-02\n");
+    lock_release(lock);
     return NOCT_EXIT_OK;
 }
 
 static int cmd_watch_stub(const struct cli_args *a)
 {
     (void) a;
+    struct nocturne_lock *lock = NULL;
+    int rc = acquire_lock_or_die(&lock);
+    if (rc != 0) return rc;
     fprintf(stdout, "stub: watch handler lands in plan 02-03\n");
+    lock_release(lock);
     return NOCT_EXIT_OK;
 }
 
 static int cmd_resolve_stub(const struct cli_args *a)
 {
     (void) a;
+    struct nocturne_lock *lock = NULL;
+    int rc = acquire_lock_or_die(&lock);
+    if (rc != 0) return rc;
     fprintf(stdout, "stub: resolve handler lands in plan 02-05\n");
+    lock_release(lock);
     return NOCT_EXIT_OK;
 }
 
 static int cmd_publish_stub(const struct cli_args *a)
 {
     (void) a;
+    struct nocturne_lock *lock = NULL;
+    int rc = acquire_lock_or_die(&lock);
+    if (rc != 0) return rc;
     fprintf(stdout, "stub: publish handler lands in plan 02-06\n");
+    lock_release(lock);
     return NOCT_EXIT_OK;
 }
 
 static int cmd_doctor_stub(const struct cli_args *a)
 {
     (void) a;
+    /* Read-only: skip the exclusive lock so doctor works alongside watch. */
     fprintf(stdout, "stub: doctor handler lands in plan 02-04\n");
     return NOCT_EXIT_OK;
 }

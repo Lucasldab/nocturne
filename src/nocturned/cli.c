@@ -13,6 +13,7 @@
 
 #include <getopt.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 void cli_print_usage(FILE *f)
@@ -37,6 +38,10 @@ void cli_print_usage(FILE *f)
         "      --out <dir>         (publish) Output directory for catalog/manifest\n"
         "      --dry-run           (resolve) Don't write; report what would change\n"
         "      --explain           (resolve) Per-track inclusion reason output\n"
+        "      --debounce-ms N     (watch) Coalesce events for N ms (default 1000)\n"
+        "      --periodic-rescan-sec N\n"
+        "                          (watch) Periodic rescan interval when in ENOSPC\n"
+        "                          fallback mode (default 300)\n"
         "\n");
 }
 
@@ -62,22 +67,26 @@ static enum nocturned_subcommand subcommand_from_string(const char *s)
 enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
 {
     static const struct option long_opts[] = {
-        { "help",     no_argument,       NULL, 'h' },
-        { "version",  no_argument,       NULL, 'V' },
-        { "config",   required_argument, NULL, 'c' },
-        { "out",      required_argument, NULL, 'o' },
-        { "dry-run",  no_argument,       NULL, 1000 },
-        { "explain",  no_argument,       NULL, 1001 },
+        { "help",                no_argument,       NULL, 'h' },
+        { "version",             no_argument,       NULL, 'V' },
+        { "config",              required_argument, NULL, 'c' },
+        { "out",                 required_argument, NULL, 'o' },
+        { "dry-run",             no_argument,       NULL, 1000 },
+        { "explain",             no_argument,       NULL, 1001 },
+        { "debounce-ms",         required_argument, NULL, 1002 },
+        { "periodic-rescan-sec", required_argument, NULL, 1003 },
         { 0, 0, 0, 0 }
     };
 
     if (out) {
-        out->cmd          = CMD_NONE;
-        out->library_path = NULL;
-        out->out_dir      = NULL;
-        out->config_path  = NULL;
-        out->dry_run      = 0;
-        out->explain      = 0;
+        out->cmd                  = CMD_NONE;
+        out->library_path         = NULL;
+        out->out_dir              = NULL;
+        out->config_path          = NULL;
+        out->dry_run              = 0;
+        out->explain              = 0;
+        out->debounce_ms          = 0;
+        out->periodic_rescan_sec  = 0;
     }
     if (!out || argc < 1) return CMD_NONE;
 
@@ -98,6 +107,8 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         case 'o': out->out_dir = optarg; break;
         case 1000: out->dry_run = 1; break;
         case 1001: out->explain = 1; break;
+        case 1002: out->debounce_ms = atoi(optarg); break;
+        case 1003: out->periodic_rescan_sec = atoi(optarg); break;
         case '?':
         default:
             out->cmd = CMD_NONE;

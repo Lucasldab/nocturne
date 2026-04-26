@@ -32,6 +32,8 @@ struct cli_args {
     const char *config_path;      /* --config for any subcommand */
     int dry_run;                  /* --dry-run (resolve) */
     int explain;                  /* --explain   (resolve) */
+    int debounce_ms;              /* --debounce-ms (watch); 0 = default */
+    int periodic_rescan_sec;      /* --periodic-rescan-sec (watch); 0 = default */
 };
 
 /* Parse argv. Returns the chosen subcommand (CMD_HELP / CMD_VERSION / CMD_NONE

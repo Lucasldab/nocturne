@@ -15,9 +15,11 @@
 #include "lock.h"
 #include "paths.h"
 #include "rotate.h"
+#include "syncthing_api.h"
 
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static void err_to_stderr(const char *msg, void *ud)
@@ -63,6 +65,20 @@ int rotate_cmd_main(struct cli_args *args)
         config_free(&cfg);
         db_close(db); lock_release(lock);
         return 3;
+    }
+
+    /* Initialise libcurl + load Syncthing config once. Failure is
+     * non-fatal; rotate proceeds without the rescan POST and logs a
+     * warning. NOCTURNE_SYNCTHING_CONFIG overrides the default
+     * ~/.config/syncthing dir. */
+    syncthing_api_init();
+    const char *st_config_dir = getenv("NOCTURNE_SYNCTHING_CONFIG");
+    int cfg_rc = syncthing_get_config(st_config_dir);
+    if (cfg_rc != 0) {
+        fprintf(stderr,
+            "warn: syncthing config.xml not loaded (set "
+            "NOCTURNE_SYNCTHING_CONFIG to override default "
+            "~/.config/syncthing); rotate will skip the rescan POST\n");
     }
 
     struct rotate_stats stats = {0};

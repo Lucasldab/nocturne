@@ -35,6 +35,7 @@
 #include "rotate.h"
 #include "db.h"
 #include "paths.h"
+#include "syncthing_api.h"
 #include "track_repo.h"
 
 #include <errno.h>
@@ -439,6 +440,27 @@ int rotate_run(struct nocturne_db *db, const char *library_root,
             sqlite3_step(stmt);
             sqlite3_finalize(stmt);
         }
+    }
+
+    /* Best-effort Syncthing rescan POST. Failure is non-fatal —
+     * Syncthing's own watcher will pick up the directory changes
+     * within its scan interval. Per CONTEXT.md locked decision:
+     * "Failure to reach Syncthing logs warning but does not fail the
+     * rotate." Folder id comes from env (NOCTURNE_SYNCFILES_FOLDER_ID)
+     * with a default of "sync-files" — plan 03-04 will move this to
+     * the TOML config. */
+    {
+        const char *folder_id = getenv("NOCTURNE_SYNCFILES_FOLDER_ID");
+        if (!folder_id || !*folder_id) folder_id = "sync-files";
+        int rc = syncthing_rescan(folder_id);
+        if (rc == -1) {
+            fprintf(stderr,
+                "warn: syncthing rescan POST failed; rotate succeeded "
+                "but Syncthing will pick up changes via its own scan "
+                "interval\n");
+        }
+        /* rc == 1 (config not loaded) is silent here — rotate_cmd.c
+         * already printed the warning at start. */
     }
 
     set_free(&manifest);

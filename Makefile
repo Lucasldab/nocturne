@@ -89,23 +89,43 @@ NOCTURNED_TEST_BINS := $(NOCTURNED_TEST_SRC_NAMES:%.c=$(BUILDDIR)/tests/%)
 
 ALL_TEST_BINS := $(TAGCHECK_TEST_BINS) $(NOCTURNED_TEST_BINS)
 
-.PHONY: all tagcheck nocturned test clean help fixtures
+.PHONY: all tagcheck nocturned test test-c test-integration test-e2e-watch test-no-network clean help fixtures
 
 all: tagcheck nocturned
 
 tagcheck: $(BIN)
 nocturned: $(BIN_NOCTURNED)
 
-# Test target: build fixtures, build per-suite binaries, run each.
-test: $(FIXTURES_DIR)/.fixtures.stamp $(ALL_TEST_BINS)
-	@echo "==> Running test suite"
+# Top-level test target: C suites, then integration shell tests, then the
+# CROSS-03 no-network audit. Stop on any failure so we don't paper over a
+# regression in earlier layers.
+test: test-c test-integration test-e2e-watch test-no-network
+	@echo "==> All test suites PASSED"
+
+# C-suite tests: build fixtures, build per-suite binaries, run each.
+test-c: $(FIXTURES_DIR)/.fixtures.stamp $(ALL_TEST_BINS)
+	@echo "==> Running C test suite"
 	@failed=0; \
 	for t in $(ALL_TEST_BINS); do \
 	    echo "--- $$t"; \
 	    if ! "$$t" $(FIXTURES_DIR); then failed=1; fi; \
 	done; \
-	if [ $$failed -ne 0 ]; then echo "==> Test suite FAILED"; exit 1; fi; \
-	echo "==> Test suite PASSED"
+	if [ $$failed -ne 0 ]; then echo "==> C test suite FAILED"; exit 1; fi; \
+	echo "==> C test suite PASSED"
+
+# Integration shell tests (require nocturned binary).
+test-integration: $(BIN_NOCTURNED) $(FIXTURES_DIR)/.fixtures.stamp
+	@echo "==> Running tests/test_integration.sh"
+	@bash tests/test_integration.sh
+
+test-e2e-watch: $(BIN_NOCTURNED) $(FIXTURES_DIR)/.fixtures.stamp
+	@echo "==> Running tests/test_e2e_watch.sh"
+	@bash tests/test_e2e_watch.sh
+
+# CROSS-03 audit: ldd / nm / source grep / runtime strace / strings.
+test-no-network: $(BIN_NOCTURNED)
+	@echo "==> Running tests/test_no_network.sh"
+	@bash tests/test_no_network.sh $(BIN_NOCTURNED)
 
 # Fixture generation gate: regenerate only if the script is newer than the
 # stamp file (or the stamp is missing).

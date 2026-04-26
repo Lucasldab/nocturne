@@ -26,6 +26,11 @@ SRC_NOCTURNED := $(wildcard src/nocturned/*.c)
 # Object directory name avoids colliding with the BIN_NOCTURNED file path.
 OBJ_NOCTURNED := $(SRC_NOCTURNED:src/nocturned/%.c=$(BUILDDIR)/nocturned-obj/%.o)
 
+# Vendored SHA-256 (public domain, kept under vendor/sha256/) — links into
+# the daemon and into nocturned-suite tests so we don't need OpenSSL.
+SRC_VENDOR_SHA256 := vendor/sha256/sha256.c
+OBJ_VENDOR_SHA256 := $(BUILDDIR)/vendor/sha256/sha256.o
+
 # TagLib via pkg-config — Arch package: extra/taglib (provides taglib_c.pc)
 TAGLIB_CFLAGS := $(shell pkg-config --cflags taglib_c 2>/dev/null)
 TAGLIB_LIBS   := $(shell pkg-config --libs taglib_c 2>/dev/null)
@@ -69,7 +74,7 @@ LIB_OBJ_NOCTURNED := $(filter-out $(BUILDDIR)/nocturned-obj/main.o, $(OBJ_NOCTUR
 # Membership is computed from existing test sources so a half-built tree
 # (e.g. plan 02-01 before db/lock land) still has a valid `make test`.
 TAGCHECK_TEST_SRC_NAMES  := $(notdir $(wildcard tests/test_walker.c tests/test_check.c tests/test_quarantine.c))
-NOCTURNED_TEST_SRC_NAMES := $(notdir $(wildcard tests/test_db.c tests/test_lock.c))
+NOCTURNED_TEST_SRC_NAMES := $(notdir $(wildcard tests/test_db.c tests/test_lock.c tests/test_hash.c tests/test_scan.c))
 
 TAGCHECK_TEST_BINS  := $(TAGCHECK_TEST_SRC_NAMES:%.c=$(BUILDDIR)/tests/%)
 NOCTURNED_TEST_BINS := $(NOCTURNED_TEST_SRC_NAMES:%.c=$(BUILDDIR)/tests/%)
@@ -148,8 +153,15 @@ $(BUILDDIR)/nocturned-obj/migrations.o: $(SCHEMA_HDRS)
 $(BUILDDIR)/nocturned-obj/%.o: src/nocturned/%.c | $(BUILDDIR)/nocturned-obj
 	$(Q)$(CC) $(CFLAGS) $(SQLITE_CFLAGS) -Isrc -c $< -o $@
 
-$(BIN_NOCTURNED): $(OBJ_NOCTURNED) | $(BUILDDIR)
-	$(Q)$(CC) $(LDFLAGS) $(OBJ_NOCTURNED) $(SQLITE_LIBS) -o $@
+$(BIN_NOCTURNED): $(OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) | $(BUILDDIR)
+	$(Q)$(CC) $(LDFLAGS) $(OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) $(SQLITE_LIBS) $(TAGLIB_LIBS) -o $@
+
+# Vendored sha256 build rule.
+$(BUILDDIR)/vendor/sha256/sha256.o: $(SRC_VENDOR_SHA256) | $(BUILDDIR)/vendor/sha256
+	$(Q)$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILDDIR)/vendor/sha256:
+	$(Q)mkdir -p $@
 
 $(BUILDDIR)/tagcheck $(BUILDDIR)/nocturned-obj $(BUILDDIR):
 	$(Q)mkdir -p $@
@@ -163,10 +175,12 @@ $(TAGCHECK_TEST_BINS): $(BUILDDIR)/tests/%: tests/%.c $(TEST_RUNNER_O) $(LIB_OBJ
 	$(Q)$(CC) $(CFLAGS) -Itests -Isrc/tagcheck $(TAGLIB_CFLAGS) $(LDFLAGS) \
 	    $< $(TEST_RUNNER_O) $(LIB_OBJ) $(TAGLIB_LIBS) -o $@
 
-# Nocturned tests: link nocturned library objects + sqlite3.
-$(NOCTURNED_TEST_BINS): $(BUILDDIR)/tests/%: tests/%.c $(TEST_RUNNER_O) $(LIB_OBJ_NOCTURNED) | $(BUILDDIR)/tests
-	$(Q)$(CC) $(CFLAGS) -Itests -Isrc/nocturned -Isrc $(SQLITE_CFLAGS) $(LDFLAGS) \
-	    $< $(TEST_RUNNER_O) $(LIB_OBJ_NOCTURNED) $(SQLITE_LIBS) -o $@
+# Nocturned tests: link nocturned library objects + vendored sha256 + sqlite3.
+# Tagcheck library objects are also linked because scan_*.c and the canonical-
+# tag helpers borrow Phase 1's tags.o / walker.o / check.o symbols directly.
+$(NOCTURNED_TEST_BINS): $(BUILDDIR)/tests/%: tests/%.c $(TEST_RUNNER_O) $(LIB_OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) | $(BUILDDIR)/tests
+	$(Q)$(CC) $(CFLAGS) -Itests -Isrc/nocturned -Isrc -Isrc/tagcheck $(SQLITE_CFLAGS) $(TAGLIB_CFLAGS) $(LDFLAGS) \
+	    $< $(TEST_RUNNER_O) $(LIB_OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) $(SQLITE_LIBS) $(TAGLIB_LIBS) -o $@
 
 $(BUILDDIR)/tests:
 	$(Q)mkdir -p $@

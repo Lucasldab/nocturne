@@ -191,4 +191,29 @@ gen_broken_audio() {
 }
 gen_or_cache "$OUTDIR/broken_audio.mp3" gen_broken_audio
 
+# --- j) Two MP3s with identical audio payload but different artist tags.
+#       Used by test_hash to verify ID3v2 header skip is identity-stable.
+#       We encode the audio with -metadata artist=… in one ffmpeg pass per
+#       file; LAME's encoder output is deterministic for identical input,
+#       so the audio frames are byte-identical and only the ID3 header
+#       changes. ---
+gen_same_audio_v1() {
+    ffmpeg -y -loglevel error -i "$SRC" \
+        -codec:a libmp3lame -id3v2_version 4 -write_id3v1 0 \
+        -metadata artist="Same Audio Artist A" \
+        -metadata title="Same Audio" \
+        -metadata album="Album" \
+        "$OUTDIR/same_audio_v1.mp3"
+}
+gen_same_audio_v2() {
+    ffmpeg -y -loglevel error -i "$SRC" \
+        -codec:a libmp3lame -id3v2_version 4 -write_id3v1 0 \
+        -metadata artist="Same Audio Artist B (longer to widen header)" \
+        -metadata title="Same Audio" \
+        -metadata album="Album" \
+        "$OUTDIR/same_audio_v2.mp3"
+}
+gen_or_cache "$OUTDIR/same_audio_v1.mp3" gen_same_audio_v1
+gen_or_cache "$OUTDIR/same_audio_v2.mp3" gen_same_audio_v2
+
 echo "Fixture generation complete in $OUTDIR"

@@ -1,10 +1,12 @@
 CompileFlags:
   Add:
+    - -xc
     - -std=c11
     - -Wall
     - -Wextra
     - -Wpedantic
     - -Isrc/tagcheck
+    - -Isrc/nocturned
     - -Itests
   Compiler: gcc
 

@@ -100,7 +100,7 @@ NOCTURNED_TEST_BINS := $(NOCTURNED_TEST_SRC_NAMES:%.c=$(BUILDDIR)/tests/%)
 
 ALL_TEST_BINS := $(TAGCHECK_TEST_BINS) $(NOCTURNED_TEST_BINS)
 
-.PHONY: all tagcheck nocturned test test-c test-integration test-integration-rotate test-stignore-perf test-e2e-watch test-no-network test-jsonl-goldens clean help fixtures compile-commands
+.PHONY: all tagcheck nocturned test test-c test-integration test-integration-rotate test-integration-ingest test-stignore-perf test-e2e-watch test-no-network test-jsonl-goldens clean help fixtures compile-commands
 
 all: tagcheck nocturned
 
@@ -110,7 +110,7 @@ nocturned: $(BIN_NOCTURNED)
 # Top-level test target: C suites, then integration shell tests, then the
 # CROSS-03 no-network audit. Stop on any failure so we don't paper over a
 # regression in earlier layers.
-test: test-c test-integration test-integration-rotate test-e2e-watch test-jsonl-goldens test-no-network
+test: test-c test-integration test-integration-rotate test-integration-ingest test-e2e-watch test-jsonl-goldens test-no-network
 	@echo "==> All test suites PASSED"
 
 # Regenerate compile_commands.json for clangd. Requires bear (Arch: pacman -S bear).
@@ -161,6 +161,14 @@ test-stignore-perf:
 test-jsonl-goldens: $(BIN_NOCTURNED)
 	@echo "==> Running tests/test_jsonl_goldens.sh"
 	@bash tests/test_jsonl_goldens.sh
+
+# Phase 7 INGEST-04 close: scan a tiny library, write synthetic phone
+# JSONL, ingest, resolve, publish — assert the manifest reflects the
+# new stats. The full rotation feedback loop end-to-end on synthetic
+# fixtures.
+test-integration-ingest: $(BIN_NOCTURNED) $(FIXTURES_DIR)/.fixtures.stamp
+	@echo "==> Running tests/test_integration_ingest.sh"
+	@bash tests/test_integration_ingest.sh
 
 # CROSS-03 audit: ldd / nm / source grep / runtime strace / strings.
 test-no-network: $(BIN_NOCTURNED)

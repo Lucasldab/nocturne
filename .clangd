@@ -1,0 +1,12 @@
+CompileFlags:
+  Add:
+    - -std=c11
+    - -Wall
+    - -Wextra
+    - -Wpedantic
+    - -Isrc/tagcheck
+    - -Itests
+  Compiler: gcc
+
+Diagnostics:
+  UnusedIncludes: None

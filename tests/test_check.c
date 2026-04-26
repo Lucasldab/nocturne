@@ -112,10 +112,11 @@ static void check_no_id3(const char *fname, const struct check_result *cr)
 {
     (void)fname;
     expect(cr->any_fail, "no-tag mp3 fails canonical schema");
+    /* ffmpeg writes an empty ID3v2.4 header even with -map_metadata -1, so
+     * we don't assert id3_not_v24 here — the observable invariant is that
+     * every canonical field is missing. */
     expect(count_missing_fields(cr) >= 4,
            "no-tag mp3 has at least 4 missing_field issues");
-    expect(issue_present(cr, "id3_not_v24", -1),
-           "no-tag mp3 also carries id3_not_v24 (no ID3v2 header)");
 }
 
 static void check_missing_album_artist(const char *fname,

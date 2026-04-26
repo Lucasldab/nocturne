@@ -30,6 +30,7 @@ tests/fixtures/*.m4a
 tests/fixtures/*.wav
 tests/fixtures/.fixtures.stamp
 tests/fixtures/.silence.wav
+tests/fixtures/.skip-multi-value-canonical
 tests/output/
 
 # Quarantine artifacts created during local testing

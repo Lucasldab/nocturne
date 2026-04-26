@@ -20,6 +20,14 @@ struct nocturne_config {
     int cold_start_play_threshold;
     unsigned long random_seed;
 
+    /* Syncthing identity (Phase 3 — sync-config XML emission). */
+    char *syncthing_desktop_name;       /* [syncthing].desktop_name */
+    char *syncthing_phone_name;         /* [syncthing].phone_name */
+    char *syncthing_phone_sync_files;   /* [syncthing.phone].sync_files_path */
+    char *syncthing_phone_sync_meta;    /* [syncthing.phone].sync_meta_path */
+    char *syncthing_desktop_device_id;  /* [syncthing].desktop_device_id */
+    char *syncthing_phone_device_id;    /* [syncthing].phone_device_id */
+
     struct bucket_config *buckets;
     size_t buckets_n;
 };

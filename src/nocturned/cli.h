@@ -23,7 +23,8 @@ enum nocturned_subcommand {
     CMD_INGEST,
     CMD_DOCTOR,
     CMD_MIGRATE,
-    CMD_ROTATE
+    CMD_ROTATE,
+    CMD_SYNC_CONFIG
 };
 
 /* Parsed argv for the daemon. Strings are pointers into argv (no ownership). */
@@ -37,7 +38,9 @@ struct cli_args {
     int debounce_ms;              /* --debounce-ms (watch); 0 = default */
     int periodic_rescan_sec;      /* --periodic-rescan-sec (watch); 0 = default */
     int json;                     /* --json (doctor) */
-    int apply;                    /* --apply (migrate; later sync-config) */
+    int apply;                    /* --apply (migrate, sync-config) */
+    const char *sync_config_side; /* --side desktop|phone (sync-config) */
+    int sync_config_print;        /* --print (sync-config; default if neither) */
 };
 
 /* Parse argv. Returns the chosen subcommand (CMD_HELP / CMD_VERSION / CMD_NONE

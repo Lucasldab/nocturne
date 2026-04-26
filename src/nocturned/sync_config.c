@@ -1,0 +1,218 @@
+/*
+ * sync_config.c — Syncthing folder/options XML emitter for both sides
+ * of the nocturne wiring (sync-meta + sync-files folder pair).
+ *
+ * Hand-rolled XML (fprintf) — output shape is fixed and tested for
+ * byte-equality across runs. No xmllib dep.
+ *
+ * Threat anchors:
+ *   T-03-04-01: pure function, deterministic output, byte-stable.
+ *   T-03-04-02: hostname-leak prevention via opaque defaults.
+ *   T-03-04-03: globalAnnounceEnabled=false / relaysEnabled=false
+ *               hardcoded.
+ *   T-03-04-04: <versioning type="none"/> hardcoded on sync-files.
+ *   T-03-04-05: --apply only PUTs the two managed folder IDs.
+ */
+
+#define _GNU_SOURCE
+
+#include "sync_config.h"
+#include "config.h"
+#include "syncthing_api.h"
+
+#include <jansson.h>
+
+#include <stdio.h>
+#include <string.h>
+
+static const char *cfg_str_or(const char *v, const char *fallback)
+{
+    return (v && *v) ? v : fallback;
+}
+
+/* Privacy invariants block — same on both sides.
+ *   globalAnnounceEnabled=false  (Pitfall 20 / SYNC-05)
+ *   localAnnounceEnabled=true    (LAN-only discovery is fine)
+ *   relaysEnabled=false          (Pitfall 20 / SYNC-05)
+ *   natEnabled=false             (defense-in-depth on global discovery) */
+static int emit_options(FILE *out)
+{
+    return fprintf(out,
+        "  <options>\n"
+        "    <globalAnnounceEnabled>false</globalAnnounceEnabled>\n"
+        "    <localAnnounceEnabled>true</localAnnounceEnabled>\n"
+        "    <relaysEnabled>false</relaysEnabled>\n"
+        "    <natEnabled>false</natEnabled>\n"
+        "  </options>\n") < 0 ? -1 : 0;
+}
+
+static int emit_folder(FILE *out, const char *id, const char *label,
+                       const char *path, const char *type,
+                       const char *desktop_id, const char *phone_id)
+{
+    int n = fprintf(out,
+        "  <folder id=\"%s\" label=\"%s\" path=\"%s\" "
+        "type=\"%s\" rescanIntervalS=\"3600\">\n"
+        "    <filesystemType>basic</filesystemType>\n"
+        "    <device id=\"%s\" introducedBy=\"\"></device>\n"
+        "    <device id=\"%s\" introducedBy=\"\"></device>\n"
+        "    <minDiskFree unit=\"%%\">1</minDiskFree>\n"
+        "    <versioning type=\"none\"></versioning>\n"
+        "    <markerName>.stfolder</markerName>\n"
+        "  </folder>\n",
+        id, label, path, type,
+        cfg_str_or(desktop_id, "DESKTOP-DEVICE-ID-PASTE-FROM-SYNCTHING-GUI"),
+        cfg_str_or(phone_id,   "PHONE-DEVICE-ID-PASTE-FROM-PHONE-GUI"));
+    return n < 0 ? -1 : 0;
+}
+
+static int emit_device(FILE *out, const char *id, const char *name)
+{
+    int n = fprintf(out,
+        "  <device id=\"%s\" name=\"%s\" compression=\"metadata\">\n"
+        "    <address>dynamic</address>\n"
+        "  </device>\n",
+        cfg_str_or(id, "DEVICE-ID-PLACEHOLDER"),
+        name);
+    return n < 0 ? -1 : 0;
+}
+
+int sync_config_emit(enum sync_config_side side,
+                     const struct nocturne_config *cfg,
+                     FILE *out)
+{
+    if (!cfg || !out) return -1;
+
+    /* Compute paths + names — defaults applied here so the test
+     * fixture and the production output share the same source of
+     * truth. */
+    const char *desktop_name = cfg_str_or(cfg->syncthing_desktop_name,
+                                          NOCTURNE_DEFAULT_DESKTOP_NAME);
+    const char *phone_name   = cfg_str_or(cfg->syncthing_phone_name,
+                                          NOCTURNE_DEFAULT_PHONE_NAME);
+    const char *desktop_id   = cfg->syncthing_desktop_device_id;
+    const char *phone_id     = cfg->syncthing_phone_device_id;
+
+    /* Library root → desktop sync-files path. */
+    char desktop_files_path[1024];
+    snprintf(desktop_files_path, sizeof(desktop_files_path),
+             "%s/resident", cfg_str_or(cfg->library_root,
+                                        "/home/CHANGE/music/library"));
+
+    const char *desktop_meta_path = cfg_str_or(cfg->sync_meta_root,
+                                               "/home/CHANGE/sync/nocturne/meta");
+    const char *phone_meta_path   = cfg_str_or(cfg->syncthing_phone_sync_meta,
+                                               NOCTURNE_DEFAULT_PHONE_SYNC_META);
+    const char *phone_files_path  = cfg_str_or(cfg->syncthing_phone_sync_files,
+                                               NOCTURNE_DEFAULT_PHONE_SYNC_FILES);
+
+    const char *files_path = (side == SIDE_DESKTOP) ?
+                             desktop_files_path : phone_files_path;
+    const char *meta_path  = (side == SIDE_DESKTOP) ?
+                             desktop_meta_path : phone_meta_path;
+
+    const char *files_type = (side == SIDE_DESKTOP) ? "sendonly" : "receiveonly";
+    /* sync-meta is sendreceive on BOTH sides — bidirectional flow for
+     * catalog/manifest/stats. */
+    const char *meta_type  = "sendreceive";
+
+    /* Header marker — lets the user spot daemon-managed folders. */
+    if (fprintf(out,
+        "<!-- nocturne-managed - do not edit; generated by "
+        "`nocturned sync-config` -->\n"
+        "<configuration version=\"2\">\n") < 0) return -1;
+
+    if (emit_options(out) != 0) return -1;
+
+    if (emit_folder(out, "sync-meta",  "nocturne meta",  meta_path,
+                    meta_type,  desktop_id, phone_id) != 0) return -1;
+    if (emit_folder(out, "sync-files", "nocturne files", files_path,
+                    files_type, desktop_id, phone_id) != 0) return -1;
+
+    if (emit_device(out, desktop_id, desktop_name) != 0) return -1;
+    if (emit_device(out, phone_id,   phone_name)   != 0) return -1;
+
+    if (fprintf(out, "</configuration>\n") < 0) return -1;
+    return 0;
+}
+
+/* Build a JSON folder-config body for /rest/config/folders/<id>.
+ * Caller frees the returned string. NULL on OOM. */
+static char *build_folder_json(const char *id, const char *label,
+                               const char *path, const char *type,
+                               const char *desktop_id, const char *phone_id)
+{
+    json_t *root = json_object();
+    json_t *devices = json_array();
+
+    json_t *d1 = json_object();
+    json_object_set_new(d1, "deviceID",
+        json_string(cfg_str_or(desktop_id, "DESKTOP")));
+    json_array_append_new(devices, d1);
+
+    json_t *d2 = json_object();
+    json_object_set_new(d2, "deviceID",
+        json_string(cfg_str_or(phone_id, "PHONE")));
+    json_array_append_new(devices, d2);
+
+    json_object_set_new(root, "id",            json_string(id));
+    json_object_set_new(root, "label",         json_string(label));
+    json_object_set_new(root, "path",          json_string(path));
+    json_object_set_new(root, "type",          json_string(type));
+    json_object_set_new(root, "rescanIntervalS", json_integer(3600));
+    json_object_set_new(root, "fsWatcherEnabled", json_true());
+
+    json_t *versioning = json_object();
+    json_object_set_new(versioning, "type", json_string("none"));
+    json_object_set_new(root, "versioning", versioning);
+
+    json_object_set_new(root, "devices", devices);
+
+    char *out = json_dumps(root, JSON_COMPACT);
+    json_decref(root);
+    return out;
+}
+
+int sync_config_apply(const struct nocturne_config *cfg)
+{
+    if (!cfg) return -1;
+    const char *desktop_id = cfg->syncthing_desktop_device_id;
+    const char *phone_id   = cfg->syncthing_phone_device_id;
+
+    char files_path[1024];
+    snprintf(files_path, sizeof(files_path), "%s/resident",
+             cfg_str_or(cfg->library_root, "/home/CHANGE/music/library"));
+    const char *meta_path = cfg_str_or(cfg->sync_meta_root,
+                                       "/home/CHANGE/sync/nocturne/meta");
+
+    char *meta_json = build_folder_json("sync-meta", "nocturne meta",
+                                        meta_path, "sendreceive",
+                                        desktop_id, phone_id);
+    if (!meta_json) return -1;
+    char *files_json = build_folder_json("sync-files", "nocturne files",
+                                         files_path, "sendonly",
+                                         desktop_id, phone_id);
+    if (!files_json) { free(meta_json); return -1; }
+
+    int rc1 = syncthing_put_folder_config("sync-meta", meta_json);
+    int rc2 = syncthing_put_folder_config("sync-files", files_json);
+    free(meta_json); free(files_json);
+
+    if (rc1 == 1 || rc2 == 1) {
+        fprintf(stderr,
+            "sync-config --apply: syncthing config not loaded; "
+            "use --print and edit ~/.config/syncthing/config.xml manually\n");
+        return -1;
+    }
+    if (rc1 != 0) {
+        fprintf(stderr,
+            "sync-config --apply: PUT sync-meta failed\n");
+        return -1;
+    }
+    if (rc2 != 0) {
+        fprintf(stderr,
+            "sync-config --apply: PUT sync-files failed\n");
+        return -1;
+    }
+    return 0;
+}

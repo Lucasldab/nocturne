@@ -80,6 +80,12 @@ void config_free(struct nocturne_config *c)
     if (!c) return;
     free(c->library_root);
     free(c->sync_meta_root);
+    free(c->syncthing_desktop_name);
+    free(c->syncthing_phone_name);
+    free(c->syncthing_phone_sync_files);
+    free(c->syncthing_phone_sync_meta);
+    free(c->syncthing_desktop_device_id);
+    free(c->syncthing_phone_device_id);
     for (size_t i = 0; i < c->buckets_n; i++) {
         free(c->buckets[i].name);
         free(c->buckets[i].source);
@@ -223,6 +229,44 @@ static int apply_kv(struct nocturne_config *c,
         if (!strcmp(key, "path")) {
             free(c->sync_meta_root);
             c->sync_meta_root = as_str ? as_str : NULL;
+            if (!as_str) goto fail;
+            return 0;
+        }
+    } else if (!strcmp(section, "syncthing")) {
+        if (!strcmp(key, "desktop_name")) {
+            free(c->syncthing_desktop_name);
+            c->syncthing_desktop_name = as_str ? as_str : NULL;
+            if (!as_str) goto fail;
+            return 0;
+        }
+        if (!strcmp(key, "phone_name")) {
+            free(c->syncthing_phone_name);
+            c->syncthing_phone_name = as_str ? as_str : NULL;
+            if (!as_str) goto fail;
+            return 0;
+        }
+        if (!strcmp(key, "desktop_device_id")) {
+            free(c->syncthing_desktop_device_id);
+            c->syncthing_desktop_device_id = as_str ? as_str : NULL;
+            if (!as_str) goto fail;
+            return 0;
+        }
+        if (!strcmp(key, "phone_device_id")) {
+            free(c->syncthing_phone_device_id);
+            c->syncthing_phone_device_id = as_str ? as_str : NULL;
+            if (!as_str) goto fail;
+            return 0;
+        }
+    } else if (!strcmp(section, "syncthing.phone")) {
+        if (!strcmp(key, "sync_files_path")) {
+            free(c->syncthing_phone_sync_files);
+            c->syncthing_phone_sync_files = as_str ? as_str : NULL;
+            if (!as_str) goto fail;
+            return 0;
+        }
+        if (!strcmp(key, "sync_meta_path")) {
+            free(c->syncthing_phone_sync_meta);
+            c->syncthing_phone_sync_meta = as_str ? as_str : NULL;
             if (!as_str) goto fail;
             return 0;
         }

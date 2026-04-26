@@ -30,6 +30,7 @@ void cli_print_usage(FILE *f)
         "  publish           Atomically write catalog.json + manifest.json\n"
         "  migrate <lib>     Move flat library into archive/<rel> (dry-run by default)\n"
         "  rotate            Apply manifest_current diff via hardlink+unlink\n"
+        "  sync-config       Emit (or apply) Syncthing folder XML\n"
         "  ingest            (Phase 7) Replay phone JSONL into DB\n"
         "  doctor            Print library + DB health report\n"
         "\n"
@@ -45,7 +46,13 @@ void cli_print_usage(FILE *f)
         "                          (watch) Periodic rescan interval when in ENOSPC\n"
         "                          fallback mode (default 300)\n"
         "      --json              (doctor) Emit JSON instead of text\n"
-        "      --apply             (migrate) Execute moves (default: dry-run)\n"
+        "      --apply             (migrate, sync-config) Execute (default: dry-run/print)\n"
+        "      --print             (sync-config) Print XML to stdout (default)\n"
+        "      --side desktop|phone\n"
+        "                          (sync-config) Which endpoint to emit (default: desktop)\n"
+        "\n"
+        "WiFi-only sync is a Syncthing-Fork app-level setting on the phone — not in this XML.\n"
+        "Trashcan/file versioning is disabled (type=\"none\") on sync-files for both sides.\n"
         "\n");
 }
 
@@ -65,6 +72,7 @@ static enum nocturned_subcommand subcommand_from_string(const char *s)
     if (!strcmp(s, "doctor"))  return CMD_DOCTOR;
     if (!strcmp(s, "migrate")) return CMD_MIGRATE;
     if (!strcmp(s, "rotate"))  return CMD_ROTATE;
+    if (!strcmp(s, "sync-config")) return CMD_SYNC_CONFIG;
     if (!strcmp(s, "help"))    return CMD_HELP;
     if (!strcmp(s, "version")) return CMD_VERSION;
     return CMD_NONE;
@@ -83,6 +91,8 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         { "periodic-rescan-sec", required_argument, NULL, 1003 },
         { "json",                no_argument,       NULL, 1004 },
         { "apply",               no_argument,       NULL, 1005 },
+        { "print",               no_argument,       NULL, 1006 },
+        { "side",                required_argument, NULL, 1007 },
         { 0, 0, 0, 0 }
     };
 
@@ -97,6 +107,8 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         out->periodic_rescan_sec  = 0;
         out->json                 = 0;
         out->apply                = 0;
+        out->sync_config_side     = NULL;
+        out->sync_config_print    = 0;
     }
     if (!out || argc < 1) return CMD_NONE;
 
@@ -121,6 +133,8 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         case 1003: out->periodic_rescan_sec = atoi(optarg); break;
         case 1004: out->json = 1; break;
         case 1005: out->apply = 1; break;
+        case 1006: out->sync_config_print = 1; break;
+        case 1007: out->sync_config_side = optarg; break;
         case '?':
         default:
             out->cmd = CMD_NONE;

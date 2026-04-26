@@ -27,6 +27,7 @@
 /* Forward decls for subcommand handlers extracted into their own .c files. */
 int scan_cmd_main(struct cli_args *args);
 int watch_cmd_main(struct cli_args *args);
+int doctor_cmd_main(struct cli_args *args);
 
 /* Acquire the daemon-wide single-writer lock. Prints a clear diagnostic and
  * returns the requested exit code (NOCT_EXIT_LOCK_BUSY on contention,
@@ -83,13 +84,7 @@ static int cmd_publish_stub(const struct cli_args *a)
     return NOCT_EXIT_OK;
 }
 
-static int cmd_doctor_stub(const struct cli_args *a)
-{
-    (void) a;
-    /* Read-only: skip the exclusive lock so doctor works alongside watch. */
-    fprintf(stdout, "stub: doctor handler lands in plan 02-04\n");
-    return NOCT_EXIT_OK;
-}
+/* doctor handler now lives in doctor_cmd.c; main.c just dispatches. */
 
 static int cmd_ingest_stub(const struct cli_args *a)
 {
@@ -117,7 +112,7 @@ int main(int argc, char **argv)
     case CMD_RESOLVE: return cmd_resolve_stub(&args);
     case CMD_PUBLISH: return cmd_publish_stub(&args);
     case CMD_INGEST:  return cmd_ingest_stub(&args);
-    case CMD_DOCTOR:  return cmd_doctor_stub(&args);
+    case CMD_DOCTOR:  return doctor_cmd_main(&args);
     case CMD_NONE:
     default:
         cli_print_usage(stderr);

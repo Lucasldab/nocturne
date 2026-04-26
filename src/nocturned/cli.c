@@ -42,6 +42,7 @@ void cli_print_usage(FILE *f)
         "      --periodic-rescan-sec N\n"
         "                          (watch) Periodic rescan interval when in ENOSPC\n"
         "                          fallback mode (default 300)\n"
+        "      --json              (doctor) Emit JSON instead of text\n"
         "\n");
 }
 
@@ -75,6 +76,7 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         { "explain",             no_argument,       NULL, 1001 },
         { "debounce-ms",         required_argument, NULL, 1002 },
         { "periodic-rescan-sec", required_argument, NULL, 1003 },
+        { "json",                no_argument,       NULL, 1004 },
         { 0, 0, 0, 0 }
     };
 
@@ -87,6 +89,7 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         out->explain              = 0;
         out->debounce_ms          = 0;
         out->periodic_rescan_sec  = 0;
+        out->json                 = 0;
     }
     if (!out || argc < 1) return CMD_NONE;
 
@@ -109,6 +112,7 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         case 1001: out->explain = 1; break;
         case 1002: out->debounce_ms = atoi(optarg); break;
         case 1003: out->periodic_rescan_sec = atoi(optarg); break;
+        case 1004: out->json = 1; break;
         case '?':
         default:
             out->cmd = CMD_NONE;

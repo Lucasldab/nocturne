@@ -34,6 +34,7 @@ struct cli_args {
     int explain;                  /* --explain   (resolve) */
     int debounce_ms;              /* --debounce-ms (watch); 0 = default */
     int periodic_rescan_sec;      /* --periodic-rescan-sec (watch); 0 = default */
+    int json;                     /* --json (doctor) */
 };
 
 /* Parse argv. Returns the chosen subcommand (CMD_HELP / CMD_VERSION / CMD_NONE

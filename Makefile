@@ -186,10 +186,17 @@ fixtures: $(FIXTURES_DIR)/.fixtures.stamp
 $(FIXTURES_DIR):
 	$(Q)mkdir -p $@
 
-# Preserve .gitkeep files at the leaves of build/ and tests/fixtures/.
+# Preserve:
+#   - .gitkeep markers in build/ and tests/fixtures/
+#   - tests/fixtures/jsonl-goldens/ (Phase 7 byte-frozen reference
+#     fixtures, committed to git — NOT regeneratable like the audio
+#     fixtures, which gen-fixtures.sh rebuilds on demand)
 clean:
 	$(Q)find $(BUILDDIR) -mindepth 1 ! -name .gitkeep -delete 2>/dev/null || true
-	$(Q)find $(FIXTURES_DIR) -mindepth 1 ! -name .gitkeep -delete 2>/dev/null || true
+	$(Q)find $(FIXTURES_DIR) -mindepth 1 ! -name .gitkeep \
+	    -not -path "$(FIXTURES_DIR)/jsonl-goldens" \
+	    -not -path "$(FIXTURES_DIR)/jsonl-goldens/*" \
+	    -delete 2>/dev/null || true
 	$(Q)rm -f src/nocturned/_schema_*.h
 
 help:

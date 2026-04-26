@@ -118,19 +118,52 @@ if ! grep -q '127\.0\.0\.1' src/nocturned/syncthing_api.c; then
     fail=1
 fi
 
-if [ $fail -eq 0 ]; then echo "    ok (curl_ confined; loopback literal present)"; fi
+# (d) Phase 7 modules (jsonl.c / ingest.c / ingest_cmd.c) MUST exist
+#     and MUST NOT touch network primitives. They were introduced to
+#     read local FS only.
+for p7file in src/nocturned/jsonl.c src/nocturned/ingest.c src/nocturned/ingest_cmd.c; do
+    if [ ! -f "$p7file" ]; then
+        echo "FAIL: $p7file missing — Phase 7 module gone?" >&2
+        fail=1
+    fi
+done
+p7_violations=$(grep -nE '\b(socket\(|connect\(|sendto\(|recvfrom\(|inet_pton|getaddrinfo\(|gethostby|curl_)' \
+    src/nocturned/jsonl.c src/nocturned/ingest.c src/nocturned/ingest_cmd.c 2>/dev/null \
+    | grep -v '^[^:]*:[[:space:]]*\(/\*\|//\|\*\)' \
+    || true)
+if [ -n "$p7_violations" ]; then
+    echo "FAIL: Phase 7 module touches a network primitive:" >&2
+    echo "$p7_violations" >&2
+    fail=1
+fi
 
-echo "==> [4/5] runtime strace: connect/sendto to 127.0.0.1/::1 only during scan→resolve→rotate"
+# (e) Phase 7 invariant: jsonl.c opens source files with O_RDONLY only.
+#     Append-only invariant for phone JSONL streams.
+if grep -nE '\bopen\([^)]*O_(WRONLY|RDWR)' src/nocturned/jsonl.c >/dev/null 2>&1; then
+    echo "FAIL: jsonl.c opens source files with O_WRONLY or O_RDWR — append-only invariant violated" >&2
+    fail=1
+fi
+
+if [ $fail -eq 0 ]; then echo "    ok (curl_ confined; loopback literal present; Phase 7 modules FS-only with O_RDONLY)"; fi
+
+echo "==> [4/5] runtime strace: connect/sendto to 127.0.0.1/::1 only during scan→resolve→rotate→ingest"
 
 if ! command -v strace >/dev/null 2>&1; then
     echo "    SKIP: strace not installed (still — see STATE.md deferred follow-up)"
 else
     TMPHOME=$(mktemp -d -t cross03-XXXXXX)
     trap "rm -rf '$TMPHOME'" EXIT
-    mkdir -p "$TMPHOME/sync-meta" "$TMPHOME/lib"
+    mkdir -p "$TMPHOME/sync-meta" "$TMPHOME/lib" "$TMPHOME/meta/stats"
 
     # Pre-stage a tiny library so scan/resolve/rotate have something to do.
     cp -r tests/fixtures "$TMPHOME/lib/" 2>/dev/null || true
+
+    # Stage one synthetic JSONL line so `ingest` actually opens a file
+    # via jsonl_open and dispatches a parse — exercising the Phase 7
+    # ingester's syscall surface, not just its no-op exit path.
+    SHA_PLACE="0000000000000000000000000000000000000000000000000000000000000000"
+    printf '{"v":1,"ts":1745678910100,"unit":"track","id":"%s","liked":true}\n' \
+        "$SHA_PLACE" > "$TMPHOME/meta/likes-phone-CR03.jsonl"
 
     run_traced() {
         local label=$1; shift
@@ -144,6 +177,7 @@ else
     run_traced scan    scan "$TMPHOME/lib"
     run_traced resolve resolve
     run_traced rotate  rotate
+    run_traced ingest  ingest --meta-dir "$TMPHOME/meta"
 
     # Filter strace output. Allow:
     #   - AF_UNIX          (nss-systemd over session bus)

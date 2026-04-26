@@ -162,8 +162,12 @@ static char *build_folder_json(const char *id, const char *label,
     json_object_set_new(root, "rescanIntervalS", json_integer(3600));
     json_object_set_new(root, "fsWatcherEnabled", json_true());
 
+    /* Syncthing 2.0 expects empty-string ("") to mean "no versioning";
+     * the value "none" returns 500. The XML form (<versioning type="none">)
+     * IS accepted by config.xml parsing — the discrepancy is REST-API
+     * specific. Discovered during plan 03-06 integration test. */
     json_t *versioning = json_object();
-    json_object_set_new(versioning, "type", json_string("none"));
+    json_object_set_new(versioning, "type", json_string(""));
     json_object_set_new(root, "versioning", versioning);
 
     json_object_set_new(root, "devices", devices);

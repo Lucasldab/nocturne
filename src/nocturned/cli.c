@@ -28,6 +28,7 @@ void cli_print_usage(FILE *f)
         "  watch <library>   Run a long-lived inotify watcher; rescan on changes\n"
         "  resolve           Compute the manifest from current DB + config buckets\n"
         "  publish           Atomically write catalog.json + manifest.json\n"
+        "  migrate <lib>     Move flat library into archive/<rel> (dry-run by default)\n"
         "  ingest            (Phase 7) Replay phone JSONL into DB\n"
         "  doctor            Print library + DB health report\n"
         "\n"
@@ -43,6 +44,7 @@ void cli_print_usage(FILE *f)
         "                          (watch) Periodic rescan interval when in ENOSPC\n"
         "                          fallback mode (default 300)\n"
         "      --json              (doctor) Emit JSON instead of text\n"
+        "      --apply             (migrate) Execute moves (default: dry-run)\n"
         "\n");
 }
 
@@ -60,6 +62,7 @@ static enum nocturned_subcommand subcommand_from_string(const char *s)
     if (!strcmp(s, "publish")) return CMD_PUBLISH;
     if (!strcmp(s, "ingest"))  return CMD_INGEST;
     if (!strcmp(s, "doctor"))  return CMD_DOCTOR;
+    if (!strcmp(s, "migrate")) return CMD_MIGRATE;
     if (!strcmp(s, "help"))    return CMD_HELP;
     if (!strcmp(s, "version")) return CMD_VERSION;
     return CMD_NONE;
@@ -77,6 +80,7 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         { "debounce-ms",         required_argument, NULL, 1002 },
         { "periodic-rescan-sec", required_argument, NULL, 1003 },
         { "json",                no_argument,       NULL, 1004 },
+        { "apply",               no_argument,       NULL, 1005 },
         { 0, 0, 0, 0 }
     };
 
@@ -90,6 +94,7 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         out->debounce_ms          = 0;
         out->periodic_rescan_sec  = 0;
         out->json                 = 0;
+        out->apply                = 0;
     }
     if (!out || argc < 1) return CMD_NONE;
 
@@ -113,6 +118,7 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         case 1002: out->debounce_ms = atoi(optarg); break;
         case 1003: out->periodic_rescan_sec = atoi(optarg); break;
         case 1004: out->json = 1; break;
+        case 1005: out->apply = 1; break;
         case '?':
         default:
             out->cmd = CMD_NONE;
@@ -135,8 +141,8 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
     optind++;
     out->cmd = sub;
 
-    /* First trailing positional is the library path for scan/watch. */
-    if ((sub == CMD_SCAN || sub == CMD_WATCH) && optind < argc) {
+    /* First trailing positional is the library path for scan/watch/migrate. */
+    if ((sub == CMD_SCAN || sub == CMD_WATCH || sub == CMD_MIGRATE) && optind < argc) {
         out->library_path = argv[optind++];
     }
 

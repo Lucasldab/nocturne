@@ -1,0 +1,42 @@
+# Build artifacts
+build/
+*.o
+*.a
+*.so
+*.d
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+*~
+
+# clangd / compile_commands
+compile_commands.json
+.cache/
+
+# Sanitizer / coverage output
+*.gcda
+*.gcno
+*.profraw
+*.profdata
+
+# Test artifacts
+tests/fixtures/*.mp3
+tests/fixtures/*.flac
+tests/fixtures/*.opus
+tests/fixtures/*.ogg
+tests/fixtures/*.m4a
+tests/fixtures/*.wav
+tests/fixtures/.fixtures.stamp
+tests/fixtures/.silence.wav
+tests/output/
+
+# Quarantine artifacts created during local testing
+/quarantine/
+
+# Track .gitkeep files even when their parent dir contents are ignored
+!build/.gitkeep
+!tests/.gitkeep
+!src/tagcheck/.gitkeep
+!tests/fixtures/.gitkeep

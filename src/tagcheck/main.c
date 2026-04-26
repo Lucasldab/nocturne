@@ -20,7 +20,9 @@
 
 #include <taglib/tag_c.h>
 
+#include "check.h"
 #include "cli.h"
+#include "report.h"
 #include "tags.h"
 #include "walker.h"
 
@@ -37,7 +39,6 @@ static void print_usage_to(FILE *out, const char *progname)
         "\n"
         "Options:\n"
         "  --json                Emit structured JSON report (default: text)\n"
-        "                        (not yet implemented in Phase 1 Plan 03)\n"
         "  --quarantine          Move tracks failing the canonical schema into\n"
         "                        the quarantine directory; logs to quarantine.log\n"
         "                        (not yet implemented in Phase 1 Plan 04)\n"
@@ -122,48 +123,17 @@ int cli_parse(int argc, char **argv, struct cli_opts *opts)
     return 0;
 }
 
-/* String form of audio_format for the per-file summary line. */
-static const char *fmt_name(enum audio_format f)
+struct main_ctx {
+    struct report_summary *summary;
+};
+
+static enum walk_result on_file_check(const struct tag_record *rec, void *userdata)
 {
-    switch (f) {
-    case AUDIO_FORMAT_MP3:        return "mp3";
-    case AUDIO_FORMAT_FLAC:       return "flac";
-    case AUDIO_FORMAT_OPUS:       return "opus";
-    case AUDIO_FORMAT_OGG_VORBIS: return "ogg";
-    case AUDIO_FORMAT_MP4:        return "mp4";
-    default:                      return "unknown";
-    }
-}
-
-/* One-line summary per audio file. Plan 03 replaces with the check pipeline. */
-static enum walk_result on_file_print_summary(const struct tag_record *rec, void *userdata)
-{
-    (void)userdata;
-    if (!rec) return WALK_CONTINUE;
-
-    const char *artist = (rec->artist.value)       ? rec->artist.value       : "";
-    const char *album  = (rec->album.value)        ? rec->album.value        : "";
-    const char *title  = (rec->title.value)        ? rec->title.value        : "";
-
-    if (rec->tag_read_failed) {
-        printf("%s\t%s\tREAD-FAILED\n", rec->path ? rec->path : "(null)",
-               fmt_name(rec->format));
-        return WALK_CONTINUE;
-    }
-
-    /* Multi-value-canonical artist/genre indicator: prepend "[mv:N]" so it's
-     * visible in the per-file output even before the Plan 03 reporter lands. */
-    char artist_buf[64];
-    if (rec->artist.is_multi_value_canonical) {
-        snprintf(artist_buf, sizeof(artist_buf), "[mv:%zu]%s",
-                 rec->artist.multi_value_count, artist);
-        artist = artist_buf;
-    }
-
-    printf("%s\t%s\tartist=%s\talbum=%s\ttitle=%s\n",
-           rec->path ? rec->path : "(null)",
-           fmt_name(rec->format),
-           artist, album, title);
+    struct main_ctx *ctx = userdata;
+    struct check_result cr = {0};
+    check_canonical(rec, &cr);
+    report_add(ctx->summary, &cr);
+    check_result_free(&cr);
     return WALK_CONTINUE;
 }
 
@@ -195,34 +165,33 @@ int main(int argc, char **argv)
         return TAGCHECK_EXIT_ERROR;
     }
 
-    if (opts.emit_json) {
-        fprintf(stderr,
-                "%s: --json not yet implemented (Phase 1 Plan 03); falling "
-                "back to text output\n",
-                progname);
-    }
-
-    /* Force TagLib to return UTF-8 even from legacy v2.3 ID3 files. Set once
-     * per process — calling it again on every callback would be wasteful. */
+    /* Force TagLib to return UTF-8 even from legacy v2.3 ID3 files. */
     taglib_set_strings_unicode((BOOL)1);
 
-    struct walk_stats stats;
-    int wr = walker_walk(opts.library_path, on_file_print_summary, NULL, &stats);
+    struct report_summary summary;
+    report_summary_init(&summary,
+                        opts.emit_json ? REPORT_FORMAT_JSON : REPORT_FORMAT_TEXT,
+                        stdout);
+
+    struct main_ctx ctx = { .summary = &summary };
+    struct walk_stats walk_stats;
+    int wr = walker_walk(opts.library_path, on_file_check, &ctx, &walk_stats);
     if (wr != 0) {
+        report_summary_free(&summary);
         return TAGCHECK_EXIT_ERROR;
     }
 
-    fprintf(stderr,
-            "walked %zu dirs, %zu files (%zu audio, %zu non-audio skipped, "
-            "%zu dotfiles skipped, %zu symlinks-outside-root skipped, "
-            "%zu open-failures)\n",
-            stats.dirs_visited,
-            stats.files_seen_total,
-            stats.audio_files_seen,
-            stats.skipped_non_audio,
-            stats.skipped_dotfiles,
-            stats.skipped_symlinks_outside_root,
-            stats.taglib_open_failures);
+    report_emit(&summary, &walk_stats);
 
-    return TAGCHECK_EXIT_OK;
+    /* Exit-code resolution per locked CONTEXT decisions:
+     *   files_failed > 0           → 1
+     *   else                       → 0
+     * files_flagged_only > 0 alone does NOT push to 1 — multi-value FLAGs
+     * are advisory only (TAG-03 locked rule). Plan 04 lifts to 2 when
+     * --quarantine moves files. */
+    int exit_code = (summary.files_failed > 0) ? TAGCHECK_EXIT_FAILED_TRACKS
+                                               : TAGCHECK_EXIT_OK;
+
+    report_summary_free(&summary);
+    return exit_code;
 }

@@ -24,4 +24,13 @@ struct scan_stats {
 int scan_run(struct nocturne_db *db, const char *library_root,
              struct scan_stats *out);
 
+/* Walk a subtree of an already-scanned library. Watcher uses this after a
+ * debounced inotify event to apply incremental changes scoped to the
+ * affected directory, leaving rows under sibling dirs untouched.
+ *
+ * Same return contract as scan_run; the deletion-reconciliation prefix is
+ * narrowed to `subdir`. */
+int scan_run_subtree(struct nocturne_db *db, const char *library_root,
+                     const char *subdir, struct scan_stats *out);
+
 #endif /* NOCTURNE_NOCTURNED_SCAN_H */

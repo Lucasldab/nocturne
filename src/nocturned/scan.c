@@ -326,10 +326,24 @@ static enum walk_result on_file(const struct tag_record *rec, void *ud)
     return WALK_CONTINUE;
 }
 
-int scan_run(struct nocturne_db *db, const char *library_root,
-             struct scan_stats *out)
+/* Internal worker shared by scan_run and scan_run_subtree.
+ *
+ *   walk_root        — directory the walker descends into.
+ *   deletion_prefix  — only rows whose path begins with this prefix are
+ *                      considered for the unseen-sweep. Pass library_root
+ *                      to clean the whole library; pass walk_root for
+ *                      subtree-scoped reconciliation.
+ *
+ * scan_meta is updated only when scope == library (full scan). Subtree
+ * scans don't write scan_meta because their scope is partial. */
+static int scan_run_internal(struct nocturne_db *db,
+                             const char *library_root,
+                             const char *walk_root,
+                             const char *deletion_prefix,
+                             int update_scan_meta,
+                             struct scan_stats *out)
 {
-    if (!db || !library_root || !out) return -1;
+    if (!db || !library_root || !walk_root || !deletion_prefix || !out) return -1;
     memset(out, 0, sizeof(*out));
 
     struct timespec t0;
@@ -344,7 +358,7 @@ int scan_run(struct nocturne_db *db, const char *library_root,
     if (db_begin(db) != 0) return -1;
 
     struct walk_stats ws = {0};
-    int wrc = walker_walk(library_root, on_file, &ctx, &ws);
+    int wrc = walker_walk(walk_root, on_file, &ctx, &ws);
     if (wrc != 0 || ctx.hard_error) {
         db_rollback(db);
         struct timespec t1; clock_gettime(CLOCK_MONOTONIC, &t1);
@@ -353,35 +367,36 @@ int scan_run(struct nocturne_db *db, const char *library_root,
         return -1;
     }
 
-    /* Reconcile deletions: anything under root not seen this pass. */
-    long deleted = track_repo_delete_unseen_under_root(db, library_root, ctx.iso_now);
+    /* Reconcile deletions under the configured prefix. */
+    long deleted = track_repo_delete_unseen_under_root(db, deletion_prefix, ctx.iso_now);
     if (deleted < 0) {
         db_rollback(db);
         return -1;
     }
     out->files_removed = (size_t) deleted;
 
-    /* Update scan_meta. */
-    sqlite3_stmt *stmt = NULL;
-    const char *up_sql =
-        "INSERT INTO scan_meta (library_root, last_scan_at, files_seen, "
-        "files_added, files_updated, files_removed) "
-        "VALUES (?, ?, ?, ?, ?, ?) "
-        "ON CONFLICT(library_root) DO UPDATE SET "
-        "last_scan_at=excluded.last_scan_at, "
-        "files_seen=excluded.files_seen, "
-        "files_added=excluded.files_added, "
-        "files_updated=excluded.files_updated, "
-        "files_removed=excluded.files_removed";
-    if (sqlite3_prepare_v2(db_handle(db), up_sql, -1, &stmt, NULL) == SQLITE_OK) {
-        sqlite3_bind_text(stmt, 1, library_root, -1, SQLITE_TRANSIENT);
-        sqlite3_bind_text(stmt, 2, ctx.iso_now, -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int64(stmt, 3, (long long) out->files_seen);
-        sqlite3_bind_int64(stmt, 4, (long long) out->files_added);
-        sqlite3_bind_int64(stmt, 5, (long long) out->files_updated);
-        sqlite3_bind_int64(stmt, 6, (long long) out->files_removed);
-        sqlite3_step(stmt);
-        sqlite3_finalize(stmt);
+    if (update_scan_meta) {
+        sqlite3_stmt *stmt = NULL;
+        const char *up_sql =
+            "INSERT INTO scan_meta (library_root, last_scan_at, files_seen, "
+            "files_added, files_updated, files_removed) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(library_root) DO UPDATE SET "
+            "last_scan_at=excluded.last_scan_at, "
+            "files_seen=excluded.files_seen, "
+            "files_added=excluded.files_added, "
+            "files_updated=excluded.files_updated, "
+            "files_removed=excluded.files_removed";
+        if (sqlite3_prepare_v2(db_handle(db), up_sql, -1, &stmt, NULL) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, library_root, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, ctx.iso_now, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_int64(stmt, 3, (long long) out->files_seen);
+            sqlite3_bind_int64(stmt, 4, (long long) out->files_added);
+            sqlite3_bind_int64(stmt, 5, (long long) out->files_updated);
+            sqlite3_bind_int64(stmt, 6, (long long) out->files_removed);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        }
     }
 
     if (db_commit(db) != 0) return -1;
@@ -391,4 +406,18 @@ int scan_run(struct nocturne_db *db, const char *library_root,
                                 (t1.tv_nsec - t0.tv_nsec) / 1000000);
 
     return (out->hash_failed > 0 || out->tag_parse_failed > 0) ? 1 : 0;
+}
+
+int scan_run(struct nocturne_db *db, const char *library_root,
+             struct scan_stats *out)
+{
+    return scan_run_internal(db, library_root, library_root, library_root, 1, out);
+}
+
+int scan_run_subtree(struct nocturne_db *db, const char *library_root,
+                     const char *subdir, struct scan_stats *out)
+{
+    /* Subtree scans don't bump scan_meta (it tracks the full library). The
+     * deletion prefix is the subdir itself so siblings stay untouched. */
+    return scan_run_internal(db, library_root, subdir, subdir, 0, out);
 }

@@ -89,7 +89,7 @@ NOCTURNED_TEST_BINS := $(NOCTURNED_TEST_SRC_NAMES:%.c=$(BUILDDIR)/tests/%)
 
 ALL_TEST_BINS := $(TAGCHECK_TEST_BINS) $(NOCTURNED_TEST_BINS)
 
-.PHONY: all tagcheck nocturned test test-c test-integration test-e2e-watch test-no-network clean help fixtures
+.PHONY: all tagcheck nocturned test test-c test-integration test-e2e-watch test-no-network clean help fixtures compile-commands
 
 all: tagcheck nocturned
 
@@ -101,6 +101,14 @@ nocturned: $(BIN_NOCTURNED)
 # regression in earlier layers.
 test: test-c test-integration test-e2e-watch test-no-network
 	@echo "==> All test suites PASSED"
+
+# Regenerate compile_commands.json for clangd. Requires bear (Arch: pacman -S bear).
+compile-commands:
+	$(Q)command -v bear >/dev/null 2>&1 || { echo "bear not installed (pacman -S bear)"; exit 1; }
+	$(Q)$(MAKE) clean >/dev/null
+	$(Q)bear -- $(MAKE) all >/dev/null
+	$(Q)bear --append -- $(MAKE) test >/dev/null
+	@echo "==> compile_commands.json regenerated"
 
 # C-suite tests: build fixtures, build per-suite binaries, run each.
 test-c: $(FIXTURES_DIR)/.fixtures.stamp $(ALL_TEST_BINS)

@@ -100,7 +100,7 @@ NOCTURNED_TEST_BINS := $(NOCTURNED_TEST_SRC_NAMES:%.c=$(BUILDDIR)/tests/%)
 
 ALL_TEST_BINS := $(TAGCHECK_TEST_BINS) $(NOCTURNED_TEST_BINS)
 
-.PHONY: all tagcheck nocturned test test-c test-integration test-integration-rotate test-stignore-perf test-e2e-watch test-no-network clean help fixtures compile-commands
+.PHONY: all tagcheck nocturned test test-c test-integration test-integration-rotate test-stignore-perf test-e2e-watch test-no-network test-jsonl-goldens clean help fixtures compile-commands
 
 all: tagcheck nocturned
 
@@ -110,7 +110,7 @@ nocturned: $(BIN_NOCTURNED)
 # Top-level test target: C suites, then integration shell tests, then the
 # CROSS-03 no-network audit. Stop on any failure so we don't paper over a
 # regression in earlier layers.
-test: test-c test-integration test-integration-rotate test-e2e-watch test-no-network
+test: test-c test-integration test-integration-rotate test-e2e-watch test-jsonl-goldens test-no-network
 	@echo "==> All test suites PASSED"
 
 # Regenerate compile_commands.json for clangd. Requires bear (Arch: pacman -S bear).
@@ -154,6 +154,13 @@ test-integration-rotate: $(BIN_NOCTURNED) $(FIXTURES_DIR)/.fixtures.stamp
 test-stignore-perf:
 	@echo "==> Running tests/test_stignore_perf.sh"
 	@bash tests/test_stignore_perf.sh
+
+# Phase 7 normative-spec gate: ingest the byte-frozen JSONL goldens
+# from tests/fixtures/jsonl-goldens/ end-to-end and assert the
+# ingester resolves the locked LWW semantics correctly.
+test-jsonl-goldens: $(BIN_NOCTURNED)
+	@echo "==> Running tests/test_jsonl_goldens.sh"
+	@bash tests/test_jsonl_goldens.sh
 
 # CROSS-03 audit: ldd / nm / source grep / runtime strace / strings.
 test-no-network: $(BIN_NOCTURNED)

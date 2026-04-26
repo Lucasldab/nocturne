@@ -28,6 +28,7 @@
 int scan_cmd_main(struct cli_args *args);
 int watch_cmd_main(struct cli_args *args);
 int doctor_cmd_main(struct cli_args *args);
+int resolve_cmd_main(struct cli_args *args);
 
 /* Acquire the daemon-wide single-writer lock. Prints a clear diagnostic and
  * returns the requested exit code (NOCT_EXIT_LOCK_BUSY on contention,
@@ -62,16 +63,7 @@ static int acquire_lock_or_die(struct nocturne_lock **out_lock)
 
 /* watch handler now lives in watch_cmd.c; main.c just dispatches. */
 
-static int cmd_resolve_stub(const struct cli_args *a)
-{
-    (void) a;
-    struct nocturne_lock *lock = NULL;
-    int rc = acquire_lock_or_die(&lock);
-    if (rc != 0) return rc;
-    fprintf(stdout, "stub: resolve handler lands in plan 02-05\n");
-    lock_release(lock);
-    return NOCT_EXIT_OK;
-}
+/* resolve handler now lives in resolve_cmd.c; main.c just dispatches. */
 
 static int cmd_publish_stub(const struct cli_args *a)
 {
@@ -109,7 +101,7 @@ int main(int argc, char **argv)
         return NOCT_EXIT_OK;
     case CMD_SCAN:    return scan_cmd_main(&args);
     case CMD_WATCH:   return watch_cmd_main(&args);
-    case CMD_RESOLVE: return cmd_resolve_stub(&args);
+    case CMD_RESOLVE: return resolve_cmd_main(&args);
     case CMD_PUBLISH: return cmd_publish_stub(&args);
     case CMD_INGEST:  return cmd_ingest_stub(&args);
     case CMD_DOCTOR:  return doctor_cmd_main(&args);

@@ -100,7 +100,7 @@ NOCTURNED_TEST_BINS := $(NOCTURNED_TEST_SRC_NAMES:%.c=$(BUILDDIR)/tests/%)
 
 ALL_TEST_BINS := $(TAGCHECK_TEST_BINS) $(NOCTURNED_TEST_BINS)
 
-.PHONY: all tagcheck nocturned test test-c test-integration test-e2e-watch test-no-network clean help fixtures compile-commands
+.PHONY: all tagcheck nocturned test test-c test-integration test-integration-rotate test-stignore-perf test-e2e-watch test-no-network clean help fixtures compile-commands
 
 all: tagcheck nocturned
 
@@ -110,7 +110,7 @@ nocturned: $(BIN_NOCTURNED)
 # Top-level test target: C suites, then integration shell tests, then the
 # CROSS-03 no-network audit. Stop on any failure so we don't paper over a
 # regression in earlier layers.
-test: test-c test-integration test-e2e-watch test-no-network
+test: test-c test-integration test-integration-rotate test-e2e-watch test-no-network
 	@echo "==> All test suites PASSED"
 
 # Regenerate compile_commands.json for clangd. Requires bear (Arch: pacman -S bear).
@@ -140,6 +140,20 @@ test-integration: $(BIN_NOCTURNED) $(FIXTURES_DIR)/.fixtures.stamp
 test-e2e-watch: $(BIN_NOCTURNED) $(FIXTURES_DIR)/.fixtures.stamp
 	@echo "==> Running tests/test_e2e_watch.sh"
 	@bash tests/test_e2e_watch.sh
+
+# Phase 3 hermetic integration: real local Syncthing under tmpdir.
+# Skips with exit 77 if `syncthing` not in PATH.
+test-integration-rotate: $(BIN_NOCTURNED) $(FIXTURES_DIR)/.fixtures.stamp
+	@echo "==> Running tests/test_integration_rotate.sh"
+	@bash tests/test_integration_rotate.sh; rc=$$?; \
+	if [ $$rc = 77 ]; then echo "==> SKIPPED (no syncthing in PATH)"; exit 0; \
+	elif [ $$rc != 0 ]; then exit $$rc; fi
+
+# Phase 3 informational benchmark — path-layout vs pattern-list. Slow
+# (~30s for 15k inodes); not in default `make test`.
+test-stignore-perf:
+	@echo "==> Running tests/test_stignore_perf.sh"
+	@bash tests/test_stignore_perf.sh
 
 # CROSS-03 audit: ldd / nm / source grep / runtime strace / strings.
 test-no-network: $(BIN_NOCTURNED)

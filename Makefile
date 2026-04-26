@@ -55,6 +55,17 @@ ifeq ($(JANSSON_LIBS),)
 $(error Jansson not found via pkg-config. Install jansson (Arch: pacman -S jansson))
 endif
 
+# libcurl via pkg-config — Phase 3 introduces this for the Syncthing
+# REST wrapper (src/nocturned/syncthing_api.c). Scoped strictly to
+# https://127.0.0.1; CROSS-03 audit (tests/test_no_network.sh, plan
+# 03-07) enforces the loopback-only invariant at five layers.
+CURL_CFLAGS := $(shell pkg-config --cflags libcurl 2>/dev/null)
+CURL_LIBS   := $(shell pkg-config --libs libcurl 2>/dev/null)
+
+ifeq ($(CURL_LIBS),)
+$(error libcurl not found via pkg-config. Install curl (Arch: pacman -S curl))
+endif
+
 # Optional sanitizer build: SAN=1 → ASan + UBSan
 ifeq ($(SAN),1)
 CFLAGS  += -fsanitize=address,undefined -fno-omit-frame-pointer
@@ -187,10 +198,10 @@ src/nocturned/_schema_%.h: schema/%.sql
 $(BUILDDIR)/nocturned-obj/migrations.o: $(SCHEMA_HDRS)
 
 $(BUILDDIR)/nocturned-obj/%.o: src/nocturned/%.c | $(BUILDDIR)/nocturned-obj
-	$(Q)$(CC) $(CFLAGS) $(SQLITE_CFLAGS) $(TAGLIB_CFLAGS) $(JANSSON_CFLAGS) -Isrc -Isrc/tagcheck -c $< -o $@
+	$(Q)$(CC) $(CFLAGS) $(SQLITE_CFLAGS) $(TAGLIB_CFLAGS) $(JANSSON_CFLAGS) $(CURL_CFLAGS) -Isrc -Isrc/tagcheck -c $< -o $@
 
 $(BIN_NOCTURNED): $(OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) | $(BUILDDIR)
-	$(Q)$(CC) $(LDFLAGS) $(OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) $(SQLITE_LIBS) $(TAGLIB_LIBS) $(JANSSON_LIBS) -o $@
+	$(Q)$(CC) $(LDFLAGS) $(OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) $(SQLITE_LIBS) $(TAGLIB_LIBS) $(JANSSON_LIBS) $(CURL_LIBS) -o $@
 
 # Vendored sha256 build rule.
 $(BUILDDIR)/vendor/sha256/sha256.o: $(SRC_VENDOR_SHA256) | $(BUILDDIR)/vendor/sha256
@@ -215,8 +226,8 @@ $(TAGCHECK_TEST_BINS): $(BUILDDIR)/tests/%: tests/%.c $(TEST_RUNNER_O) $(LIB_OBJ
 # Tagcheck library objects are also linked because scan_*.c and the canonical-
 # tag helpers borrow Phase 1's tags.o / walker.o / check.o symbols directly.
 $(NOCTURNED_TEST_BINS): $(BUILDDIR)/tests/%: tests/%.c $(TEST_RUNNER_O) $(LIB_OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) | $(BUILDDIR)/tests
-	$(Q)$(CC) $(CFLAGS) -Itests -Isrc/nocturned -Isrc -Isrc/tagcheck $(SQLITE_CFLAGS) $(TAGLIB_CFLAGS) $(JANSSON_CFLAGS) $(LDFLAGS) \
-	    $< $(TEST_RUNNER_O) $(LIB_OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) $(SQLITE_LIBS) $(TAGLIB_LIBS) $(JANSSON_LIBS) -o $@
+	$(Q)$(CC) $(CFLAGS) -Itests -Isrc/nocturned -Isrc -Isrc/tagcheck $(SQLITE_CFLAGS) $(TAGLIB_CFLAGS) $(JANSSON_CFLAGS) $(CURL_CFLAGS) $(LDFLAGS) \
+	    $< $(TEST_RUNNER_O) $(LIB_OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) $(SQLITE_LIBS) $(TAGLIB_LIBS) $(JANSSON_LIBS) $(CURL_LIBS) -o $@
 
 $(BUILDDIR)/tests:
 	$(Q)mkdir -p $@

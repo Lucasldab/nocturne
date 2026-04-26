@@ -38,6 +38,9 @@ struct doctor_report {
     int lock_held;                 /* 0 free, 1 held, 2 stale */
     int lock_holder_pid;           /* 0 if unheld */
 
+    /* schema */
+    int schema_version;            /* PRAGMA user_version; -1 if unknown */
+
     /* roll-up */
     int issues_found;              /* 0 = clean; >0 = at least one anomaly */
 };

@@ -26,6 +26,7 @@
 
 #include "_schema_0001_init.h"
 #include "_schema_0002_resolver.h"
+#include "_schema_0003_residency.h"
 
 /* xxd emits `unsigned int <name>_len = N;` (non-const) so we can't use the
  * length in a static initializer. Indirect through a pointer to the length
@@ -39,8 +40,9 @@ struct migration_entry {
 /* xxd prepends `__` when the source filename starts with a digit, so the
  * generated symbols for schema/0001_init.sql are __0001_init_sql{,_len}. */
 static const struct migration_entry MIGRATIONS[] = {
-    { 1, __0001_init_sql,     &__0001_init_sql_len },
-    { 2, __0002_resolver_sql, &__0002_resolver_sql_len },
+    { 1, __0001_init_sql,      &__0001_init_sql_len },
+    { 2, __0002_resolver_sql,  &__0002_resolver_sql_len },
+    { 3, __0003_residency_sql, &__0003_residency_sql_len },
 };
 
 static const size_t MIGRATIONS_COUNT = sizeof(MIGRATIONS) / sizeof(MIGRATIONS[0]);

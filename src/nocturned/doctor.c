@@ -252,10 +252,12 @@ int doctor_collect_with_override(struct nocturne_db *db,
     r->mount_free_bytes = -1;
     r->mount_free_percent = -1;
     r->last_scan_age_seconds = -1;
+    r->schema_version = -1;
 
     struct sqlite3 *raw = db_handle(db);
     if (!raw) return -1;
 
+    r->schema_version     = db_schema_version(db);
     r->total_tracks       = pragma_count(raw, "SELECT COUNT(*) FROM tracks");
     r->parse_failed_count = pragma_count(raw, "SELECT COUNT(*) FROM tracks WHERE tags_status='parse_failed'");
     r->incomplete_count   = pragma_count(raw, "SELECT COUNT(*) FROM tracks WHERE tags_status='incomplete'");
@@ -388,6 +390,8 @@ void doctor_print_text(const struct doctor_report *r, FILE *f)
     if (r->lock_holder_pid > 0) fprintf(f, " (pid=%d)", r->lock_holder_pid);
     fputc('\n', f);
 
+    fprintf(f, "Schema version: %d\n", r->schema_version);
+
     fputc('\n', f);
     fprintf(f, "Issues found: %d%s\n", r->issues_found,
             r->issues_found == 0 ? " (healthy)" : "");
@@ -438,6 +442,7 @@ void doctor_print_json(const struct doctor_report *r, FILE *f)
     fprintf(f, ",\"last_scan_age_seconds\":%ld,", r->last_scan_age_seconds);
     fprintf(f, "\"lock_held\":%d,", r->lock_held);
     fprintf(f, "\"lock_holder_pid\":%d,", r->lock_holder_pid);
+    fprintf(f, "\"schema_version\":%d,", r->schema_version);
     fprintf(f, "\"issues_found\":%d", r->issues_found);
     fprintf(f, "}\n");
 }

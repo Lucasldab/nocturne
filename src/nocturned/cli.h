@@ -41,6 +41,7 @@ struct cli_args {
     int apply;                    /* --apply (migrate, sync-config) */
     const char *sync_config_side; /* --side desktop|phone (sync-config) */
     int sync_config_print;        /* --print (sync-config; default if neither) */
+    const char *meta_dir;         /* --meta-dir (ingest); NULL = config sync_meta.path = ~/sync/nocturne/meta */
 };
 
 /* Parse argv. Returns the chosen subcommand (CMD_HELP / CMD_VERSION / CMD_NONE

@@ -31,7 +31,8 @@ void cli_print_usage(FILE *f)
         "  migrate <lib>     Move flat library into archive/<rel> (dry-run by default)\n"
         "  rotate            Apply manifest_current diff via hardlink+unlink\n"
         "  sync-config       Emit (or apply) Syncthing folder XML\n"
-        "  ingest            (Phase 7) Replay phone JSONL into DB\n"
+        "  ingest [--meta-dir <path>] [--dry-run]\n"
+        "                    Replay phone JSONL into DB (offset-tracked, idempotent)\n"
         "  doctor            Print library + DB health report\n"
         "\n"
         "Options:\n"
@@ -50,6 +51,7 @@ void cli_print_usage(FILE *f)
         "      --print             (sync-config) Print XML to stdout (default)\n"
         "      --side desktop|phone\n"
         "                          (sync-config) Which endpoint to emit (default: desktop)\n"
+        "      --meta-dir <path>   (ingest) Override sync metadata folder (default: config sync_meta.path)\n"
         "\n"
         "WiFi-only sync is a Syncthing-Fork app-level setting on the phone — not in this XML.\n"
         "Trashcan/file versioning is disabled (type=\"none\") on sync-files for both sides.\n"
@@ -93,6 +95,7 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         { "apply",               no_argument,       NULL, 1005 },
         { "print",               no_argument,       NULL, 1006 },
         { "side",                required_argument, NULL, 1007 },
+        { "meta-dir",            required_argument, NULL, 1008 },
         { 0, 0, 0, 0 }
     };
 
@@ -109,6 +112,7 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         out->apply                = 0;
         out->sync_config_side     = NULL;
         out->sync_config_print    = 0;
+        out->meta_dir             = NULL;
     }
     if (!out || argc < 1) return CMD_NONE;
 
@@ -135,6 +139,7 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         case 1005: out->apply = 1; break;
         case 1006: out->sync_config_print = 1; break;
         case 1007: out->sync_config_side = optarg; break;
+        case 1008: out->meta_dir = optarg; break;
         case '?':
         default:
             out->cmd = CMD_NONE;

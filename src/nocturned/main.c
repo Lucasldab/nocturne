@@ -3,14 +3,15 @@
  *
  * This plan (02-01) lands the subcommand routing skeleton. Real handlers
  * arrive in plans 02-02 (scan), 02-03 (watch), 02-04 (doctor), 02-05
- * (resolve), 02-06 (publish). `ingest` stays a permanent stub until
- * Phase 7. The PID lockfile is wired here for write subcommands so
+ * (resolve), 02-06 (publish), and 07-02 (ingest — replaces the Phase
+ * 2/3 stub). The PID lockfile is wired here for write subcommands so
  * DAEMON-04 lands with this plan.
  *
- * Lock policy (revisitable in later plans):
- *   - scan / watch / resolve / publish: take exclusive lock, write subcommands.
- *   - doctor: read-only, skip lock so it works while a long watch is running.
- *   - ingest: permanent stub here, lock decision deferred to Phase 7.
+ * Lock policy:
+ *   - scan / watch / resolve / publish / ingest: take exclusive lock,
+ *     write subcommands.
+ *   - doctor: read-only, skip lock so it works while a long watch is
+ *     running.
  */
 
 #define _GNU_SOURCE
@@ -29,6 +30,7 @@ int publish_cmd_main(struct cli_args *args);
 int migrate_cmd_main(struct cli_args *args);
 int rotate_cmd_main(struct cli_args *args);
 int sync_config_cmd_main(struct cli_args *args);
+int ingest_cmd_main(struct cli_args *args);
 
 /* Each subcommand handler owns its own lock acquisition (scan_cmd.c,
  * watch_cmd.c, resolve_cmd.c, publish_cmd.c). main.c is now pure dispatch. */
@@ -42,15 +44,6 @@ int sync_config_cmd_main(struct cli_args *args);
 /* publish handler now lives in publish_cmd.c; main.c just dispatches. */
 
 /* doctor handler now lives in doctor_cmd.c; main.c just dispatches. */
-
-static int cmd_ingest_stub(const struct cli_args *a)
-{
-    (void) a;
-    /* Permanent stub: real ingest is Phase 7. The argv table keeps the
-     * subcommand reserved so docs and shell completion stay stable. */
-    fprintf(stdout, "not implemented (Phase 7)\n");
-    return NOCT_EXIT_OK;
-}
 
 int main(int argc, char **argv)
 {
@@ -68,7 +61,7 @@ int main(int argc, char **argv)
     case CMD_WATCH:   return watch_cmd_main(&args);
     case CMD_RESOLVE: return resolve_cmd_main(&args);
     case CMD_PUBLISH: return publish_cmd_main(&args);
-    case CMD_INGEST:  return cmd_ingest_stub(&args);
+    case CMD_INGEST:  return ingest_cmd_main(&args);
     case CMD_DOCTOR:  return doctor_cmd_main(&args);
     case CMD_MIGRATE: return migrate_cmd_main(&args);
     case CMD_ROTATE:  return rotate_cmd_main(&args);

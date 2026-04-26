@@ -73,6 +73,16 @@ static int write_manifest_to_db(struct nocturne_db *db, const struct manifest *m
     sqlite3_bind_text(meta, 1, "used_bytes", -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(meta, 2, buf, -1, SQLITE_TRANSIENT);
     sqlite3_step(meta); sqlite3_reset(meta);
+    /* cap_bytes — required by publisher (02-06) so manifest.json carries it. */
+    snprintf(buf, sizeof(buf), "%lld", m->cap_bytes);
+    sqlite3_bind_text(meta, 1, "cap_bytes", -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(meta, 2, buf, -1, SQLITE_TRANSIENT);
+    sqlite3_step(meta); sqlite3_reset(meta);
+    /* cap_effective_bytes — the post-headroom budget actually used by the resolver. */
+    snprintf(buf, sizeof(buf), "%lld", m->cap_effective_bytes);
+    sqlite3_bind_text(meta, 1, "cap_effective_bytes", -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(meta, 2, buf, -1, SQLITE_TRANSIENT);
+    sqlite3_step(meta); sqlite3_reset(meta);
     /* cold_start */
     sqlite3_bind_text(meta, 1, "cold_start", -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(meta, 2, m->cold_start ? "1" : "0", -1, SQLITE_TRANSIENT);

@@ -28,11 +28,20 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#define DB_MAX_FINALIZE_HOOKS 8
+
+struct db_finalize_slot {
+    db_finalize_fn fn;
+    void *ud;
+};
+
 struct nocturne_db {
     sqlite3 *handle;
     char *path;
     void (*err_cb)(const char *msg, void *ud);
     void *ud;
+    struct db_finalize_slot finalize_hooks[DB_MAX_FINALIZE_HOOKS];
+    size_t finalize_count;
 };
 
 static void emit_err(struct nocturne_db *db, const char *msg)
@@ -133,9 +142,27 @@ struct nocturne_db *db_open(const char *path,
     return db;
 }
 
+int db_register_finalize_hook(struct nocturne_db *db, db_finalize_fn fn, void *ud)
+{
+    if (!db || !fn) return -1;
+    if (db->finalize_count >= DB_MAX_FINALIZE_HOOKS) return -1;
+    db->finalize_hooks[db->finalize_count].fn = fn;
+    db->finalize_hooks[db->finalize_count].ud = ud;
+    db->finalize_count++;
+    return 0;
+}
+
 void db_close(struct nocturne_db *db)
 {
     if (!db) return;
+    /* Fire finalize hooks before closing the underlying handle so modules
+     * can sqlite3_finalize their cached statements. */
+    for (size_t i = 0; i < db->finalize_count; i++) {
+        if (db->finalize_hooks[i].fn) {
+            db->finalize_hooks[i].fn(db->finalize_hooks[i].ud);
+        }
+    }
+    db->finalize_count = 0;
     if (db->handle) {
         /* Best-effort checkpoint to keep WAL bounded. Errors here aren't
          * fatal — we still want to release the handle. */

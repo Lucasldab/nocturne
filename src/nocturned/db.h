@@ -27,4 +27,12 @@ int db_rollback(struct nocturne_db *db);
 /* Migration version (PRAGMA user_version). */
 int db_schema_version(struct nocturne_db *db);
 
+/* Register a callback fired during db_close, BEFORE sqlite3_close_v2 runs.
+ * Modules use this to finalise their cached prepared statements so the
+ * close sees a clean handle. Up to 8 hooks per db (asserted on overflow);
+ * each hook is called once in registration order. Added in plan 02-02
+ * as a small extension to the 02-01 contract. */
+typedef void (*db_finalize_fn)(void *ud);
+int db_register_finalize_hook(struct nocturne_db *db, db_finalize_fn fn, void *ud);
+
 #endif /* NOCTURNE_NOCTURNED_DB_H */

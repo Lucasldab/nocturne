@@ -130,7 +130,21 @@ $(BUILDDIR)/tagcheck/%.o: src/tagcheck/%.c | $(BUILDDIR)/tagcheck
 $(BIN): $(OBJ_TAGCHECK) | $(BUILDDIR)
 	$(Q)$(CC) $(LDFLAGS) $(OBJ_TAGCHECK) $(TAGLIB_LIBS) -o $@
 
+# --- Nocturned schema embedding ---
+# Generated headers (xxd -i schema/NNNN_*.sql) live next to the C sources
+# so they're picked up by `-Isrc/nocturned`. They are .gitignored.
+SCHEMA_SQL    := $(wildcard schema/*.sql)
+SCHEMA_HDRS   := $(SCHEMA_SQL:schema/%.sql=src/nocturned/_schema_%.h)
+
+# `cd schema` keeps the xxd-generated symbol name short (just NNNN_init_sql)
+# instead of including the directory path. xxd prepends `__` automatically
+# when the filename starts with a digit; migrations.c depends on that.
+src/nocturned/_schema_%.h: schema/%.sql
+	$(Q)cd schema && xxd -i $*.sql > ../src/nocturned/_schema_$*.h
+
 # --- Nocturned production build rules ---
+$(BUILDDIR)/nocturned-obj/migrations.o: $(SCHEMA_HDRS)
+
 $(BUILDDIR)/nocturned-obj/%.o: src/nocturned/%.c | $(BUILDDIR)/nocturned-obj
 	$(Q)$(CC) $(CFLAGS) $(SQLITE_CFLAGS) -Isrc -c $< -o $@
 

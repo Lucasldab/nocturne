@@ -36,6 +36,9 @@ tests/output/
 # Quarantine artifacts created during local testing
 /quarantine/
 
+# xxd-generated schema headers (regenerated from schema/*.sql at build time)
+src/nocturned/_schema_*.h
+
 # Track .gitkeep files even when their parent dir contents are ignored
 !build/.gitkeep
 !tests/.gitkeep

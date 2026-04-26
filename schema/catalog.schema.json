@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "nocturne catalog.json",
+  "type": "object",
+  "required": ["v", "generated_at", "tracks"],
+  "properties": {
+    "v": { "const": 1 },
+    "generated_at": { "type": "string" },
+    "tracks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "path", "size_bytes", "format", "mtime_ns", "date_added"],
+        "properties": {
+          "id":           { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "path":         { "type": "string" },
+          "title":        { "type": ["string", "null"] },
+          "artist":       { "type": "array", "items": { "type": "string" } },
+          "album":        { "type": ["string", "null"] },
+          "album_artist": { "type": "array", "items": { "type": "string" } },
+          "track":        { "type": ["integer", "null"] },
+          "disc":         { "type": ["integer", "null"] },
+          "year":         { "type": ["integer", "null"] },
+          "genre":        { "type": "array", "items": { "type": "string" } },
+          "duration_ms":  { "type": ["integer", "null"] },
+          "size_bytes":   { "type": "integer", "minimum": 0 },
+          "format":       { "type": ["string", "null"] },
+          "mtime_ns":     { "type": "integer" },
+          "date_added":   { "type": "string" }
+        }
+      }
+    }
+  }
+}

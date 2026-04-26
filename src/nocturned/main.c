@@ -15,49 +15,20 @@
 
 #define _GNU_SOURCE
 
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "cli.h"
-#include "lock.h"
-#include "paths.h"
 
 /* Forward decls for subcommand handlers extracted into their own .c files. */
 int scan_cmd_main(struct cli_args *args);
 int watch_cmd_main(struct cli_args *args);
 int doctor_cmd_main(struct cli_args *args);
 int resolve_cmd_main(struct cli_args *args);
+int publish_cmd_main(struct cli_args *args);
 
-/* Acquire the daemon-wide single-writer lock. Prints a clear diagnostic and
- * returns the requested exit code (NOCT_EXIT_LOCK_BUSY on contention,
- * NOCT_EXIT_FAILURE on other errors) when acquisition fails; returns 0 with
- * *out_lock set on success. */
-static int acquire_lock_or_die(struct nocturne_lock **out_lock)
-{
-    const char *pidfile = paths_pidfile();
-    if (!pidfile) {
-        fprintf(stderr, "nocturned: cannot resolve pidfile path (HOME unset?)\n");
-        return NOCT_EXIT_FAILURE;
-    }
-    int busy_pid = 0;
-    struct nocturne_lock *l = lock_acquire(pidfile, &busy_pid);
-    if (l) {
-        *out_lock = l;
-        return 0;
-    }
-    if (errno == EWOULDBLOCK) {
-        fprintf(stderr,
-                "nocturned: another instance is running (pid=%d); "
-                "single-writer lock at %s\n",
-                busy_pid, pidfile);
-        return NOCT_EXIT_LOCK_BUSY;
-    }
-    fprintf(stderr, "nocturned: lock_acquire(%s) failed: %s\n",
-            pidfile, strerror(errno));
-    return NOCT_EXIT_FAILURE;
-}
+/* Each subcommand handler owns its own lock acquisition (scan_cmd.c,
+ * watch_cmd.c, resolve_cmd.c, publish_cmd.c). main.c is now pure dispatch. */
 
 /* scan handler now lives in scan_cmd.c; main.c just dispatches. */
 
@@ -65,16 +36,7 @@ static int acquire_lock_or_die(struct nocturne_lock **out_lock)
 
 /* resolve handler now lives in resolve_cmd.c; main.c just dispatches. */
 
-static int cmd_publish_stub(const struct cli_args *a)
-{
-    (void) a;
-    struct nocturne_lock *lock = NULL;
-    int rc = acquire_lock_or_die(&lock);
-    if (rc != 0) return rc;
-    fprintf(stdout, "stub: publish handler lands in plan 02-06\n");
-    lock_release(lock);
-    return NOCT_EXIT_OK;
-}
+/* publish handler now lives in publish_cmd.c; main.c just dispatches. */
 
 /* doctor handler now lives in doctor_cmd.c; main.c just dispatches. */
 
@@ -102,7 +64,7 @@ int main(int argc, char **argv)
     case CMD_SCAN:    return scan_cmd_main(&args);
     case CMD_WATCH:   return watch_cmd_main(&args);
     case CMD_RESOLVE: return resolve_cmd_main(&args);
-    case CMD_PUBLISH: return cmd_publish_stub(&args);
+    case CMD_PUBLISH: return publish_cmd_main(&args);
     case CMD_INGEST:  return cmd_ingest_stub(&args);
     case CMD_DOCTOR:  return doctor_cmd_main(&args);
     case CMD_NONE:

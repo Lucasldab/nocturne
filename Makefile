@@ -47,6 +47,14 @@ ifeq ($(SQLITE_LIBS),)
 $(error SQLite3 not found via pkg-config. Install sqlite (Arch: pacman -S sqlite))
 endif
 
+# Jansson via pkg-config — used by catalog.c / publish.c (plan 02-06).
+JANSSON_CFLAGS := $(shell pkg-config --cflags jansson 2>/dev/null)
+JANSSON_LIBS   := $(shell pkg-config --libs jansson 2>/dev/null)
+
+ifeq ($(JANSSON_LIBS),)
+$(error Jansson not found via pkg-config. Install jansson (Arch: pacman -S jansson))
+endif
+
 # Optional sanitizer build: SAN=1 → ASan + UBSan
 ifeq ($(SAN),1)
 CFLAGS  += -fsanitize=address,undefined -fno-omit-frame-pointer
@@ -74,7 +82,7 @@ LIB_OBJ_NOCTURNED := $(filter-out $(BUILDDIR)/nocturned-obj/main.o, $(OBJ_NOCTUR
 # Membership is computed from existing test sources so a half-built tree
 # (e.g. plan 02-01 before db/lock land) still has a valid `make test`.
 TAGCHECK_TEST_SRC_NAMES  := $(notdir $(wildcard tests/test_walker.c tests/test_check.c tests/test_quarantine.c))
-NOCTURNED_TEST_SRC_NAMES := $(notdir $(wildcard tests/test_db.c tests/test_lock.c tests/test_hash.c tests/test_scan.c tests/test_watch.c tests/test_doctor.c tests/test_config.c tests/test_resolver.c))
+NOCTURNED_TEST_SRC_NAMES := $(notdir $(wildcard tests/test_db.c tests/test_lock.c tests/test_hash.c tests/test_scan.c tests/test_watch.c tests/test_doctor.c tests/test_config.c tests/test_resolver.c tests/test_publisher.c tests/test_round_trip.c))
 
 TAGCHECK_TEST_BINS  := $(TAGCHECK_TEST_SRC_NAMES:%.c=$(BUILDDIR)/tests/%)
 NOCTURNED_TEST_BINS := $(NOCTURNED_TEST_SRC_NAMES:%.c=$(BUILDDIR)/tests/%)
@@ -151,10 +159,10 @@ src/nocturned/_schema_%.h: schema/%.sql
 $(BUILDDIR)/nocturned-obj/migrations.o: $(SCHEMA_HDRS)
 
 $(BUILDDIR)/nocturned-obj/%.o: src/nocturned/%.c | $(BUILDDIR)/nocturned-obj
-	$(Q)$(CC) $(CFLAGS) $(SQLITE_CFLAGS) $(TAGLIB_CFLAGS) -Isrc -Isrc/tagcheck -c $< -o $@
+	$(Q)$(CC) $(CFLAGS) $(SQLITE_CFLAGS) $(TAGLIB_CFLAGS) $(JANSSON_CFLAGS) -Isrc -Isrc/tagcheck -c $< -o $@
 
 $(BIN_NOCTURNED): $(OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) | $(BUILDDIR)
-	$(Q)$(CC) $(LDFLAGS) $(OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) $(SQLITE_LIBS) $(TAGLIB_LIBS) -o $@
+	$(Q)$(CC) $(LDFLAGS) $(OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) $(SQLITE_LIBS) $(TAGLIB_LIBS) $(JANSSON_LIBS) -o $@
 
 # Vendored sha256 build rule.
 $(BUILDDIR)/vendor/sha256/sha256.o: $(SRC_VENDOR_SHA256) | $(BUILDDIR)/vendor/sha256
@@ -179,8 +187,8 @@ $(TAGCHECK_TEST_BINS): $(BUILDDIR)/tests/%: tests/%.c $(TEST_RUNNER_O) $(LIB_OBJ
 # Tagcheck library objects are also linked because scan_*.c and the canonical-
 # tag helpers borrow Phase 1's tags.o / walker.o / check.o symbols directly.
 $(NOCTURNED_TEST_BINS): $(BUILDDIR)/tests/%: tests/%.c $(TEST_RUNNER_O) $(LIB_OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) | $(BUILDDIR)/tests
-	$(Q)$(CC) $(CFLAGS) -Itests -Isrc/nocturned -Isrc -Isrc/tagcheck $(SQLITE_CFLAGS) $(TAGLIB_CFLAGS) $(LDFLAGS) \
-	    $< $(TEST_RUNNER_O) $(LIB_OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) $(SQLITE_LIBS) $(TAGLIB_LIBS) -o $@
+	$(Q)$(CC) $(CFLAGS) -Itests -Isrc/nocturned -Isrc -Isrc/tagcheck $(SQLITE_CFLAGS) $(TAGLIB_CFLAGS) $(JANSSON_CFLAGS) $(LDFLAGS) \
+	    $< $(TEST_RUNNER_O) $(LIB_OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) $(SQLITE_LIBS) $(TAGLIB_LIBS) $(JANSSON_LIBS) -o $@
 
 $(BUILDDIR)/tests:
 	$(Q)mkdir -p $@

@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "nocturne manifest.json",
+  "type": "object",
+  "required": ["v", "generated_at", "cap_bytes", "used_bytes", "resident"],
+  "properties": {
+    "v":           { "const": 1 },
+    "generated_at": { "type": "string" },
+    "cap_bytes":   { "type": "integer", "minimum": 0 },
+    "used_bytes":  { "type": "integer", "minimum": 0 },
+    "resident": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "buckets"],
+        "properties": {
+          "id":      { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "buckets": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["recent_adds", "top_played", "recent_plays",
+                       "loved", "exploration", "manual_pins"]
+            }
+          }
+        }
+      }
+    }
+  }
+}

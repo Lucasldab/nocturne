@@ -10,7 +10,6 @@
 #   make tagcheck SAN=1    build with -fsanitize=address,undefined
 #   make V=1               echo recipes (default: quiet)
 #
-# Plan 02 will add: TAGLIB_CFLAGS / TAGLIB_LIBS via pkg-config
 # Plan 05 will replace the `test` target body with real test runners
 
 CC      ?= cc
@@ -22,6 +21,14 @@ BIN      := $(BUILDDIR)/nocturne-tagcheck
 
 SRC_TAGCHECK := $(wildcard src/tagcheck/*.c)
 OBJ_TAGCHECK := $(SRC_TAGCHECK:src/%.c=$(BUILDDIR)/%.o)
+
+# TagLib via pkg-config — Arch package: extra/taglib (provides taglib_c.pc)
+TAGLIB_CFLAGS := $(shell pkg-config --cflags taglib_c 2>/dev/null)
+TAGLIB_LIBS   := $(shell pkg-config --libs taglib_c 2>/dev/null)
+
+ifeq ($(TAGLIB_LIBS),)
+$(error TagLib not found via pkg-config. Install taglib (Arch: pacman -S taglib))
+endif
 
 # Optional sanitizer build: SAN=1 → ASan + UBSan
 ifeq ($(SAN),1)
@@ -60,11 +67,11 @@ help:
 
 # Compile rule. Order-only prereq on the per-package build dir.
 $(BUILDDIR)/tagcheck/%.o: src/tagcheck/%.c | $(BUILDDIR)/tagcheck
-	$(Q)$(CC) $(CFLAGS) -c $< -o $@
+	$(Q)$(CC) $(CFLAGS) $(TAGLIB_CFLAGS) -c $< -o $@
 
 # Link rule.
 $(BIN): $(OBJ_TAGCHECK) | $(BUILDDIR)
-	$(Q)$(CC) $(LDFLAGS) $(OBJ_TAGCHECK) -o $@
+	$(Q)$(CC) $(LDFLAGS) $(OBJ_TAGCHECK) $(TAGLIB_LIBS) -o $@
 
 $(BUILDDIR)/tagcheck $(BUILDDIR):
 	$(Q)mkdir -p $@

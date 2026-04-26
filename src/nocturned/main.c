@@ -24,6 +24,9 @@
 #include "lock.h"
 #include "paths.h"
 
+/* Forward decls for subcommand handlers extracted into their own .c files. */
+int scan_cmd_main(struct cli_args *args);
+
 /* Acquire the daemon-wide single-writer lock. Prints a clear diagnostic and
  * returns the requested exit code (NOCT_EXIT_LOCK_BUSY on contention,
  * NOCT_EXIT_FAILURE on other errors) when acquisition fails; returns 0 with
@@ -53,16 +56,7 @@ static int acquire_lock_or_die(struct nocturne_lock **out_lock)
     return NOCT_EXIT_FAILURE;
 }
 
-static int cmd_scan_stub(const struct cli_args *a)
-{
-    (void) a;
-    struct nocturne_lock *lock = NULL;
-    int rc = acquire_lock_or_die(&lock);
-    if (rc != 0) return rc;
-    fprintf(stdout, "stub: scan handler lands in plan 02-02\n");
-    lock_release(lock);
-    return NOCT_EXIT_OK;
-}
+/* scan handler now lives in scan_cmd.c; main.c just dispatches. */
 
 static int cmd_watch_stub(const struct cli_args *a)
 {
@@ -126,7 +120,7 @@ int main(int argc, char **argv)
     case CMD_VERSION:
         cli_print_version(stdout);
         return NOCT_EXIT_OK;
-    case CMD_SCAN:    return cmd_scan_stub(&args);
+    case CMD_SCAN:    return scan_cmd_main(&args);
     case CMD_WATCH:   return cmd_watch_stub(&args);
     case CMD_RESOLVE: return cmd_resolve_stub(&args);
     case CMD_PUBLISH: return cmd_publish_stub(&args);

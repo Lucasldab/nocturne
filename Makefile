@@ -151,7 +151,7 @@ src/nocturned/_schema_%.h: schema/%.sql
 $(BUILDDIR)/nocturned-obj/migrations.o: $(SCHEMA_HDRS)
 
 $(BUILDDIR)/nocturned-obj/%.o: src/nocturned/%.c | $(BUILDDIR)/nocturned-obj
-	$(Q)$(CC) $(CFLAGS) $(SQLITE_CFLAGS) -Isrc -c $< -o $@
+	$(Q)$(CC) $(CFLAGS) $(SQLITE_CFLAGS) $(TAGLIB_CFLAGS) -Isrc -Isrc/tagcheck -c $< -o $@
 
 $(BIN_NOCTURNED): $(OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) | $(BUILDDIR)
 	$(Q)$(CC) $(LDFLAGS) $(OBJ_NOCTURNED) $(OBJ_VENDOR_SHA256) $(LIB_OBJ) $(SQLITE_LIBS) $(TAGLIB_LIBS) -o $@

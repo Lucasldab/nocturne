@@ -8,6 +8,8 @@ import io.nocturne.phone.data.db.MIGRATION_3_4
 import io.nocturne.phone.data.db.NocturneDatabase
 import io.nocturne.phone.data.prefs.SyncPrefs
 import io.nocturne.phone.data.stats.JsonlFileWriter
+import io.nocturne.phone.data.stats.LikesWriter
+import io.nocturne.phone.data.stats.PinsWriter
 import io.nocturne.phone.data.stats.StatsWriter
 import io.nocturne.phone.player.QueueRepository
 
@@ -58,4 +60,16 @@ class AppContainer(
     // Phase 6 (06-02 / STATS-01 / STATS-02 / D-23 / D-24): play/skip JSONL emitter.
     // Wraps jsonlFileWriter with `stats/phone-<deviceid>.jsonl` path resolution.
     val statsWriter: StatsWriter by lazy { StatsWriter(syncPrefs, jsonlFileWriter) }
+
+    // Phase 6 (06-03 / STATS-03 / D-15 / D-17 / D-25): pin + like JSONL drains.
+    // PinsWriter walks the pins table, LikesWriter walks the likes table; both
+    // emit one JSONL line per unsynced row to top-level metaDir paths
+    // (pins-phone-<deviceid>.jsonl / likes-phone-<deviceid>.jsonl). Triggered
+    // from PlaybackService.onCreate and (for likes) directly from UI toggles.
+    val pinsWriter: PinsWriter by lazy {
+        PinsWriter(db.pinDao(), syncPrefs, jsonlFileWriter)
+    }
+    val likesWriter: LikesWriter by lazy {
+        LikesWriter(db.likeDao(), syncPrefs, jsonlFileWriter)
+    }
 }

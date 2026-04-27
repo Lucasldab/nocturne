@@ -161,6 +161,15 @@ class PlaybackService : MediaSessionService() {
         val statsWriter = container.statsWriter
         player.addListener(StatsListener(player, statsWriter, serviceScope))
 
+        // Phase 6 (D-25 / STATS-03): drain any pending pin/like events on service start.
+        // The serviceScope (FGS) hosts the drain so it survives Doze; if metaTreeUri
+        // is not yet provisioned (first run), drain returns 0 and the rows stay
+        // unsynced for the next attempt.
+        serviceScope.launch {
+            container.pinsWriter.drain()
+            container.likesWriter.drain()
+        }
+
         // Consume the debounced channel and write to DataStore on the IO dispatcher.
         serviceScope.launch {
             queueSaveChannel.consumeAsFlow()

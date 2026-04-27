@@ -121,6 +121,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.datastore.preferences)
+    implementation(libs.documentfile)
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)

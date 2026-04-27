@@ -1,0 +1,9 @@
+{
+  "v": 1,
+  "generated_at": "2026-04-26T00:00:00Z",
+  "tracks": [
+    {"id":"0000000000000000000000000000000000000000000000000000000000000001","path":"resident/A/B/01.flac","title":"Café Bar","artist":["Sigur Rós"],"album":"Ágætis byrjun","album_artist":["Sigur Rós"],"track":1,"disc":1,"year":1999,"genre":["Post-Rock"],"duration_ms":240000,"size_bytes":30000000,"format":"flac","mtime_ns":1700000000000000000,"date_added":"2026-04-20T00:00:00Z"},
+    {"id":"0000000000000000000000000000000000000000000000000000000000000002","path":"archive/C/D/02.mp3","title":"Plain","artist":["ASCII"],"album":"Plain Album","album_artist":["ASCII"],"track":2,"disc":1,"year":2024,"genre":["Pop"],"duration_ms":null,"size_bytes":4000000,"format":"mp3","mtime_ns":1700000000000000001,"date_added":"2026-04-21T00:00:00Z"},
+    {"id":"0000000000000000000000000000000000000000000000000000000000000003","path":"archive/E/F/03.opus","title":"Trois","artist":["Daft Punk","Pharrell"],"album":"Random Access","album_artist":["Daft Punk"],"track":3,"disc":1,"year":2013,"genre":["Electronic"],"duration_ms":300000,"size_bytes":5000000,"format":"opus","mtime_ns":1700000000000000002,"date_added":"2026-04-22T00:00:00Z"}
+  ]
+}

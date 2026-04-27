@@ -6,6 +6,9 @@
     <!-- Phase 4 declares but does NOT request READ_MEDIA_AUDIO; Phase 5 wires the runtime grant. -->
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Phase 5: PlaybackService is a foreground service of type mediaPlayback (Pitfall 2 — mandatory on Android 14+). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application
         android:name=".NocturneApp"
@@ -25,5 +28,27 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Phase 5: Media3 playback service. Bound to MediaController via the
+             MediaSessionService action filter; system UI / BT routes through it. -->
+        <service
+            android:name=".player.PlaybackService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
+
+        <!-- Phase 5: MediaButtonReceiver — required for onPlaybackResumption
+             (RESEARCH.md Pitfall 3: declaring it without implementing
+             onPlaybackResumption throws UnsupportedOperationException at runtime). -->
+        <receiver
+            android:name="androidx.media3.session.MediaButtonReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MEDIA_BUTTON" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

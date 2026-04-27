@@ -6,6 +6,7 @@ import io.nocturne.phone.data.catalog.CatalogImporter
 import io.nocturne.phone.data.db.MIGRATION_2_3
 import io.nocturne.phone.data.db.NocturneDatabase
 import io.nocturne.phone.data.prefs.SyncPrefs
+import io.nocturne.phone.data.stats.JsonlFileWriter
 import io.nocturne.phone.player.QueueRepository
 
 /**
@@ -44,4 +45,9 @@ class AppContainer(
     // Phase 5 (PLAY-04): queue persistence across process death + reboot.
     // PlaybackService accesses this via (application as NocturneApp).container.queueRepository.
     val queueRepository: QueueRepository by lazy { QueueRepository(applicationContext) }
+
+    // Phase 6 (D-01): shared SAF append + fsync writer used by StatsWriter / LikesWriter / PinsWriter.
+    val jsonlFileWriter: JsonlFileWriter by lazy {
+        JsonlFileWriter(applicationContext, syncPrefs)
+    }
 }

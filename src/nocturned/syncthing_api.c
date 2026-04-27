@@ -224,7 +224,10 @@ static size_t discard_write(void *ptr, size_t size, size_t nmemb, void *ud)
 }
 
 /* Build a URL with strict loopback enforcement. Returns a heap buffer
- * the caller must free, or NULL on policy violation. */
+ * the caller must free, or NULL on policy violation.
+ * Test mode (g_use_test_endpoint=1) → http:// against the test mock
+ * (which speaks plain HTTP/1.1). Production → https:// against the
+ * real Syncthing GUI (which speaks TLS with a self-signed cert). */
 static char *build_url(const char *path, const char *query_arg)
 {
     const char *h = active_host();
@@ -235,16 +238,15 @@ static char *build_url(const char *path, const char *query_arg)
             h ? h : "(null)");
         return NULL;
     }
-    /* Tests pass a port that's typically high (ephemeral). For real
-     * Syncthing it's 8384. We don't otherwise constrain the port. */
+    const char *scheme = g_use_test_endpoint ? "http" : "https";
     size_t need = 16 + strlen(h) + 8 + strlen(path) + 1 +
                   (query_arg ? strlen(query_arg) + 8 : 0);
     char *url = malloc(need);
     if (!url) return NULL;
     if (query_arg && *query_arg) {
-        snprintf(url, need, "https://%s:%d%s?%s", h, port, path, query_arg);
+        snprintf(url, need, "%s://%s:%d%s?%s", scheme, h, port, path, query_arg);
     } else {
-        snprintf(url, need, "https://%s:%d%s", h, port, path);
+        snprintf(url, need, "%s://%s:%d%s", scheme, h, port, path);
     }
     return url;
 }
@@ -282,26 +284,8 @@ int syncthing_rescan(const char *folder_id)
     curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, 3L);
     curl_easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(easy, CURLOPT_SSL_VERIFYHOST, 0L);
+    curl_easy_setopt(easy, CURLOPT_HTTP_VERSION, (long) CURL_HTTP_VERSION_1_1);
     curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, discard_write);
-    /* Test mock listener responds with HTTP/1.1 over plain TCP; in
-     * production, Syncthing is HTTPS. libcurl detects scheme from URL
-     * (https://). Tests use https:// against a plain-TCP listener that
-     * speaks HTTP only — this fails the TLS handshake and CURLE_SSL_*
-     * is observed. To make tests work, we let the test override the
-     * scheme by setting the URL directly via CURLOPT_URL above. The
-     * simplest hermetic solution is to honour http:// when the test
-     * endpoint is in effect. */
-    if (g_use_test_endpoint) {
-        /* Rebuild URL with http:// scheme for the test mock. */
-        free(url);
-        size_t need = 16 + strlen(g_test_host) + 8 + strlen("/rest/db/scan") + 1 + strlen(qarg) + 8;
-        url = malloc(need);
-        if (url) {
-            snprintf(url, need, "http://%s:%d/rest/db/scan?%s",
-                     g_test_host, g_test_port, qarg);
-            curl_easy_setopt(easy, CURLOPT_URL, url);
-        }
-    }
 
     CURLcode rc = curl_easy_perform(easy);
     long status = 0;
@@ -358,18 +342,8 @@ int syncthing_put_folder_config(const char *folder_id,
     curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, 3L);
     curl_easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(easy, CURLOPT_SSL_VERIFYHOST, 0L);
+    curl_easy_setopt(easy, CURLOPT_HTTP_VERSION, (long) CURL_HTTP_VERSION_1_1);
     curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, discard_write);
-
-    if (g_use_test_endpoint) {
-        free(url);
-        size_t need = 16 + strlen(g_test_host) + 8 + strlen(path) + 1;
-        url = malloc(need);
-        if (url) {
-            snprintf(url, need, "http://%s:%d%s",
-                     g_test_host, g_test_port, path);
-            curl_easy_setopt(easy, CURLOPT_URL, url);
-        }
-    }
 
     CURLcode rc = curl_easy_perform(easy);
     long status = 0;

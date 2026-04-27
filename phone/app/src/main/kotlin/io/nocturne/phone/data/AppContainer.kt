@@ -13,12 +13,19 @@ import io.nocturne.phone.data.prefs.SyncPrefs
  * stats wires in Phases 5/6) and the dependency graph is acyclic and
  * shallow, so a Hilt/Dagger framework is unnecessary overhead. CONTEXT
  * decision: "NO Hilt/Dagger (manual DI)."
+ *
+ * The optional `dbOverride` parameter is a test seam: Robolectric tests pass
+ * a `Room.inMemoryDatabaseBuilder(...).build()` instance so they don't touch
+ * the real `nocturne.db` file.
  */
-class AppContainer(applicationContext: Context) {
+class AppContainer(
+    applicationContext: Context,
+    private val dbOverride: NocturneDatabase? = null,
+) {
     val appContext: Context = applicationContext
 
     val db: NocturneDatabase by lazy {
-        Room.databaseBuilder(
+        dbOverride ?: Room.databaseBuilder(
             applicationContext,
             NocturneDatabase::class.java,
             "nocturne.db",

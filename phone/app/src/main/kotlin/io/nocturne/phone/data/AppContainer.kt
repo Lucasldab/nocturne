@@ -30,10 +30,12 @@ class AppContainer(
             NocturneDatabase::class.java,
             "nocturne.db",
         )
-            // Phase 4 ships v1; Phase 5+ will introduce explicit Migration objects
-            // when the schema bumps. fallbackToDestructiveMigration(false) makes
-            // accidental no-migration drift fail loudly instead of nuking user data.
-            .fallbackToDestructiveMigration(false)
+            // Phase 4 only: Room is entirely derived state from catalog.json,
+            // so destructive migration on schema bumps is acceptable — the next
+            // import re-populates everything. Phase 5+ introduces user-generated
+            // state (queue, last-played, pin writes) and must switch to explicit
+            // Migration objects.
+            .fallbackToDestructiveMigration(true)
             .build()
     }
 

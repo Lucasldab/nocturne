@@ -23,7 +23,7 @@ import io.nocturne.phone.data.db.entity.TrackFts
         GenreEntity::class,
         TrackFts::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)

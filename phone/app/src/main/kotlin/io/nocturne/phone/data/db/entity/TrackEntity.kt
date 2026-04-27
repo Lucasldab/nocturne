@@ -1,5 +1,6 @@
 package io.nocturne.phone.data.db.entity
 
+import androidx.compose.runtime.Immutable
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -39,6 +40,7 @@ import androidx.room.PrimaryKey
         Index("mtimeNs"),
     ],
 )
+@Immutable
 data class TrackEntity(
     @PrimaryKey val id: String,
     val title: String,

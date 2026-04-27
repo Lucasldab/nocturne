@@ -152,6 +152,7 @@ class CatalogImporter(private val db: NocturneDatabase) {
                         id = albumId,
                         title = albumTitle,
                         albumArtist = t.albumArtist.ifEmpty { listOf(albumArtistGroup) },
+                        albumArtistId = artistId,
                         year = t.year,
                     )
                 }.also {
@@ -196,6 +197,7 @@ class CatalogImporter(private val db: NocturneDatabase) {
                         id = it.id,
                         title = it.title,
                         albumArtist = it.albumArtist,
+                        albumArtistId = it.albumArtistId,
                         year = it.year,
                         trackCount = it.trackCount,
                         totalSizeBytes = it.totalSizeBytes,
@@ -251,6 +253,7 @@ class CatalogImporter(private val db: NocturneDatabase) {
         val id: String,
         val title: String,
         val albumArtist: List<String>,
+        val albumArtistId: String,
         var year: Int?,
         var trackCount: Int = 0,
         var totalSizeBytes: Long = 0L,

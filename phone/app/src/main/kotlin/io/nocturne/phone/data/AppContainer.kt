@@ -6,6 +6,7 @@ import io.nocturne.phone.data.catalog.CatalogImporter
 import io.nocturne.phone.data.db.MIGRATION_2_3
 import io.nocturne.phone.data.db.NocturneDatabase
 import io.nocturne.phone.data.prefs.SyncPrefs
+import io.nocturne.phone.player.QueueRepository
 
 /**
  * Manual DI container — single instance held by NocturneApp.
@@ -39,4 +40,8 @@ class AppContainer(
 
     val syncPrefs: SyncPrefs by lazy { SyncPrefs(applicationContext) }
     val importer: CatalogImporter by lazy { CatalogImporter(db) }
+
+    // Phase 5 (PLAY-04): queue persistence across process death + reboot.
+    // PlaybackService accesses this via (application as NocturneApp).container.queueRepository.
+    val queueRepository: QueueRepository by lazy { QueueRepository(applicationContext) }
 }

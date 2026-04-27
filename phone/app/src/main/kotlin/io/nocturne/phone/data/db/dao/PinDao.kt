@@ -18,6 +18,9 @@ interface PinDao {
     @Query("SELECT id FROM pins")
     fun allPinnedIds(): Flow<List<String>>
 
+    @Query("SELECT * FROM pins ORDER BY pinnedAt DESC")
+    fun flowAllPinned(): Flow<List<PinEntity>>
+
     @Query("SELECT COUNT(*) FROM pins")
     suspend fun count(): Int
 }

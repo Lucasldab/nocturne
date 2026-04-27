@@ -37,6 +37,7 @@ struct cli_args {
     const char *config_path;      /* --config for any subcommand */
     int dry_run;                  /* --dry-run (resolve) */
     int explain;                  /* --explain   (resolve) */
+    int diff;                     /* --diff       (resolve --dry-run; tuning workflow) */
     int debounce_ms;              /* --debounce-ms (watch); 0 = default */
     int periodic_rescan_sec;      /* --periodic-rescan-sec (watch); 0 = default */
     int json;                     /* --json (doctor) */

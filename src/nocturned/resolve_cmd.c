@@ -102,21 +102,55 @@ static int write_manifest_to_db(struct nocturne_db *db, const struct manifest *m
 
 int resolve_cmd_main(struct cli_args *args)
 {
-    if (!args) return 64;
+    if (!args) return NOCT_EXIT_USAGE;
+
+    /* `--diff` is a read-only tuning view. It implies `--dry-run`
+     * (Plan 08-02 contract: never mutate manifest_current under --diff).
+     * Reject the combination explicitly so a future fat-finger
+     * `nocturned resolve --diff` does NOT silently rotate. */
+    if (args->diff && !args->dry_run) {
+        fprintf(stderr, "nocturned resolve: --diff requires --dry-run\n");
+        return NOCT_EXIT_USAGE;
+    }
 
     const char *pidfile = paths_pidfile();
     int busy_pid = 0;
-    struct nocturne_lock *lock = lock_acquire(pidfile, &busy_pid);
-    if (!lock) {
-        if (errno == EWOULDBLOCK) {
-            fprintf(stderr,
-                "nocturned: another instance is running (pid=%d); "
-                "single-writer lock at %s\n", busy_pid, pidfile);
-            return 4;
+    struct nocturne_lock *lock = NULL;
+
+    if (args->diff) {
+        /* Skip-on-busy: the tuning loop must work while `nocturned watch`
+         * holds the writer lock. SQLite WAL gives us a consistent read
+         * snapshot even if the writer is mid-transaction. We still try
+         * the lock first so a clean-slate run benefits from exclusion;
+         * we only proceed unlocked when the lock is *contended*. */
+        lock = lock_acquire(pidfile, &busy_pid);
+        if (!lock) {
+            if (errno == EWOULDBLOCK) {
+                fprintf(stderr,
+                    "note: another instance holds the writer lock "
+                    "(pid=%d); --diff proceeded without lock "
+                    "(read-only against WAL)\n", busy_pid);
+                /* lock stays NULL; release path is no-op-safe. */
+            } else {
+                fprintf(stderr, "nocturned resolve: lock_acquire failed: %s\n",
+                        strerror(errno));
+                return NOCT_EXIT_FAILURE;
+            }
         }
-        fprintf(stderr, "nocturned resolve: lock_acquire failed: %s\n",
-                strerror(errno));
-        return 1;
+    } else {
+        /* Existing exclusive-blocking path; unchanged from pre-08-02. */
+        lock = lock_acquire(pidfile, &busy_pid);
+        if (!lock) {
+            if (errno == EWOULDBLOCK) {
+                fprintf(stderr,
+                    "nocturned: another instance is running (pid=%d); "
+                    "single-writer lock at %s\n", busy_pid, pidfile);
+                return NOCT_EXIT_LOCK_BUSY;
+            }
+            fprintf(stderr, "nocturned resolve: lock_acquire failed: %s\n",
+                    strerror(errno));
+            return NOCT_EXIT_FAILURE;
+        }
     }
 
     const char *db_path = paths_db_file();

@@ -46,6 +46,8 @@ void cli_print_usage(FILE *f)
         "      --out <dir>         (publish) Output directory for catalog/manifest\n"
         "      --dry-run           (resolve) Don't write; report what would change\n"
         "      --explain           (resolve) Per-track inclusion reason output\n"
+        "      --diff              (resolve) With --dry-run: print manifest delta vs current\n"
+        "                          (no DB write; skip-on-busy lock policy)\n"
         "      --debounce-ms N     (watch) Coalesce events for N ms (default 1000)\n"
         "      --periodic-rescan-sec N\n"
         "                          (watch) Periodic rescan interval when in ENOSPC\n"
@@ -104,6 +106,7 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         { "side",                required_argument, NULL, 1007 },
         { "meta-dir",            required_argument, NULL, 1008 },
         { "manifest",            required_argument, NULL, 1009 },
+        { "diff",                no_argument,       NULL, 1010 },
         { 0, 0, 0, 0 }
     };
 
@@ -114,6 +117,7 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         out->config_path          = NULL;
         out->dry_run              = 0;
         out->explain              = 0;
+        out->diff                 = 0;
         out->debounce_ms          = 0;
         out->periodic_rescan_sec  = 0;
         out->json                 = 0;
@@ -151,6 +155,7 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         case 1007: out->sync_config_side = optarg; break;
         case 1008: out->meta_dir = optarg; break;
         case 1009: out->manifest_path_override = optarg; break;
+        case 1010: out->diff = 1; break;
         case '?':
         default:
             out->cmd = CMD_NONE;

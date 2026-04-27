@@ -27,8 +27,10 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
 import io.nocturne.phone.data.db.entity.AlbumEntity
+import io.nocturne.phone.data.db.entity.TrackEntity
 import io.nocturne.phone.player.PlayerViewModel
 import io.nocturne.phone.ui.browser.components.TrackRow
+import io.nocturne.phone.ui.player.rememberNotificationPermissionPrompt
 import kotlinx.coroutines.launch
 
 @Composable
@@ -43,6 +45,23 @@ fun AlbumDetailScreen(
     LaunchedEffect(albumId) { album = vm.albumById(albumId) }
     val tracks = vm.tracksByAlbum(albumId).collectAsLazyPagingItems()
     val scope = rememberCoroutineScope()
+
+    // UI-SPEC Surface 4: POST_NOTIFICATIONS prompt on FIRST PLAY only.
+    // pendingPlay holds the tapped TrackEntity until the permission dialog
+    // resolves; then the onProceed lambda queues and starts playback.
+    var pendingPlay by remember { mutableStateOf<TrackEntity?>(null) }
+    val requestNotifThenPlay = rememberNotificationPermissionPrompt(onProceed = {
+        val t = pendingPlay ?: return@rememberNotificationPermissionPrompt
+        scope.launch {
+            val full = vm.tracksByAlbumList(albumId)
+            val start = full.firstOrNull { it.id == t.id } ?: full.firstOrNull()
+            if (start != null) {
+                playerVm.playAlbumFromTrack(full, start)
+                onPlayStarted()
+            }
+            pendingPlay = null
+        }
+    })
 
     Column(
         modifier = Modifier
@@ -93,17 +112,11 @@ fun AlbumDetailScreen(
                     track = t,
                     onTap = {
                         if (t.isResident) {
-                            // Materialise the full album in a coroutine, then play.
-                            // rememberCoroutineScope() is lifecycle-safe (cancelled on
-                            // recomposition exit — see AppRoot.kt line 86 pattern).
-                            scope.launch {
-                                val full = vm.tracksByAlbumList(albumId)
-                                val start = full.firstOrNull { it.id == t.id } ?: full.firstOrNull()
-                                if (start != null) {
-                                    playerVm.playAlbumFromTrack(full, start)
-                                    onPlayStarted()
-                                }
-                            }
+                            // Route through the POST_NOTIFICATIONS prompt on first play;
+                            // subsequent calls either skip the prompt (already granted) or
+                            // show the rationale dialog before proceeding (UI-SPEC Surface 4).
+                            pendingPlay = t
+                            requestNotifThenPlay()
                         }
                         // Non-resident tap: plan 05-06 wires the pin path. For now no-op.
                     },

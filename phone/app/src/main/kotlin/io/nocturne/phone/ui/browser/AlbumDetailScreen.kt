@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
@@ -45,6 +46,10 @@ fun AlbumDetailScreen(
     LaunchedEffect(albumId) { album = vm.albumById(albumId) }
     val tracks = vm.tracksByAlbum(albumId).collectAsLazyPagingItems()
     val scope = rememberCoroutineScope()
+
+    // PLAY-10: collect pinnedIdSet once per screen; each TrackRow reads its
+    // isPinned state from this shared set (more efficient than per-row flows).
+    val pinnedIds by vm.pinnedIdSet.collectAsStateWithLifecycle()
 
     // UI-SPEC Surface 4: POST_NOTIFICATIONS prompt on FIRST PLAY only.
     // pendingPlay holds the tapped TrackEntity until the permission dialog
@@ -110,6 +115,7 @@ fun AlbumDetailScreen(
                 val t = tracks[idx] ?: return@items
                 TrackRow(
                     track = t,
+                    isPinned = pinnedIds.contains(t.id),
                     onTap = {
                         if (t.isResident) {
                             // Route through the POST_NOTIFICATIONS prompt on first play;
@@ -118,8 +124,8 @@ fun AlbumDetailScreen(
                             pendingPlay = t
                             requestNotifThenPlay()
                         }
-                        // Non-resident tap: plan 05-06 wires the pin path. For now no-op.
                     },
+                    onPinClick = { vm.pinTrack(t.id) },
                 )
             }
         }

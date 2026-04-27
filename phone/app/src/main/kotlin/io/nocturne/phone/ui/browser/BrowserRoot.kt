@@ -171,7 +171,13 @@ fun BrowserRoot(container: AppContainer) {
             }
         }
         if (showSearch) {
-            SearchOverlay(container = container, onDismiss = { showSearch = false })
+            val pinnedIds by vm.pinnedIdSet.collectAsStateWithLifecycle()
+            SearchOverlay(
+                container = container,
+                onDismiss = { showSearch = false },
+                pinnedIds = pinnedIds,
+                onPinTrack = { vm.pinTrack(it) },
+            )
         }
         // MiniPlayer: persistent footer above NavigationBar when a MediaItem is loaded.
         // Plain `if` -- no AnimatedVisibility (UI-SPEC Animation Gate).

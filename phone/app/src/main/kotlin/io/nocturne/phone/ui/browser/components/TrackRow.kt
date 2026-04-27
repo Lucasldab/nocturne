@@ -22,20 +22,30 @@ import io.nocturne.phone.ui.theme.NocturneTheme
 
 /**
  * Single track row. Non-resident tracks dim to NON_RESIDENT_ALPHA and gain a
- * PIN chip on the right (Phase 4: chip is visual-only; Phase 6 wires it).
- * Tap is a no-op in Phase 4 — Phase 5 wires the player.
+ * PIN chip on the right.
+ *
+ * Phase 5 (plan 05-06):
+ *  - [isPinned] drives PinChip's visual state (not-pinned vs pinned-awaiting-sync).
+ *  - [onPinClick] is called when the user taps the PinChip on a non-resident row.
+ *    For resident rows no chip is shown; for queue-context call sites the default
+ *    no-op is acceptable.
+ *  - [onTap] behaviour is unchanged: resident rows play via playAlbumFromTrack;
+ *    non-resident rows do NOT play (no file present) — their tap routes to
+ *    onPinClick so the user can pin the track.
  */
 @Composable
 fun TrackRow(
     track: TrackEntity,
     onTap: () -> Unit,
-    isCurrentlyPlaying: Boolean = false, // TODO 05-05: render leading 2dp accent border when isCurrentlyPlaying
+    isCurrentlyPlaying: Boolean = false, // TODO 05-05: render leading 2dp accent border
+    isPinned: Boolean = false,
+    onPinClick: () -> Unit = {},
 ) {
     val rowAlpha = if (track.isResident) 1f else NON_RESIDENT_ALPHA
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onTap)
+            .clickable(onClick = if (track.isResident) onTap else onPinClick)
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .alpha(rowAlpha),
         verticalAlignment = Alignment.CenterVertically,
@@ -64,7 +74,7 @@ fun TrackRow(
             )
         }
         if (!track.isResident) {
-            PinChip(onClick = {})
+            PinChip(onClick = onPinClick, isPinned = isPinned)
         }
     }
 }
@@ -102,8 +112,16 @@ private fun TrackRowResidentPreview() {
 
 @Preview(showBackground = true, backgroundColor = 0xFF0A0A0A)
 @Composable
-private fun TrackRowNonResidentPreview() {
+private fun TrackRowNonResidentNotPinnedPreview() {
     NocturneTheme {
-        TrackRow(track = PREVIEW_TRACK.copy(isResident = false), onTap = {})
+        TrackRow(track = PREVIEW_TRACK.copy(isResident = false), onTap = {}, isPinned = false)
+    }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF0A0A0A)
+@Composable
+private fun TrackRowNonResidentPinnedPreview() {
+    NocturneTheme {
+        TrackRow(track = PREVIEW_TRACK.copy(isResident = false), onTap = {}, isPinned = true)
     }
 }

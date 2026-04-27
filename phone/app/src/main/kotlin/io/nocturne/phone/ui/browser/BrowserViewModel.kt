@@ -11,8 +11,13 @@ import io.nocturne.phone.data.AppContainer
 import io.nocturne.phone.data.db.entity.AlbumEntity
 import io.nocturne.phone.data.db.entity.ArtistEntity
 import io.nocturne.phone.data.db.entity.GenreEntity
+import io.nocturne.phone.data.db.entity.PinEntity
 import io.nocturne.phone.data.db.entity.TrackEntity
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * Single ViewModel scoping all browser screens. Pager flows for the four axes
@@ -21,6 +26,11 @@ import kotlinx.coroutines.flow.Flow
  *
  * Detail flows (`tracksByAlbum` / `tracksByArtist` / `tracksByGenre`) are
  * created on demand because their query parameter is per-route.
+ *
+ * Phase 5 (plan 05-06) additions:
+ *  - [pinnedIdSet]: StateFlow<Set<String>> derived from PinDao.allPinnedIds().
+ *    Efficient: one Flow shared across all call sites; no per-track Flows.
+ *  - [pinTrack]: upserts a PinEntity via PinDao.upsert with LWW timestamp.
  */
 class BrowserViewModel(private val container: AppContainer) : ViewModel() {
 
@@ -65,8 +75,49 @@ class BrowserViewModel(private val container: AppContainer) : ViewModel() {
      * Non-paged album track list for PLAY-07 queue building (plan 05-03).
      * Albums are bounded (<30 tracks typically) — no Paging needed here.
      */
-    suspend fun tracksByAlbumList(albumId: String): List<io.nocturne.phone.data.db.entity.TrackEntity> =
+    suspend fun tracksByAlbumList(albumId: String): List<TrackEntity> =
         container.db.trackDao().listByAlbum(albumId)
+
+    // -------------------------------------------------------------------------
+    // Phase 5 (plan 05-06) — PLAY-10: pin write from the catalog browser
+    // -------------------------------------------------------------------------
+
+    /**
+     * Set of currently-pinned track IDs derived from PinDao.allPinnedIds().
+     * One StateFlow shared across all TrackRow call sites — much more efficient
+     * than subscribing a separate Flow per row in a large list.
+     *
+     * WhileSubscribed(5_000): keeps the upstream DB query alive for 5s after
+     * the last subscriber disappears (e.g. navigating away) to avoid a cold
+     * restart on immediate back-navigation.
+     */
+    val pinnedIdSet = container.db.pinDao().allPinnedIds()
+        .map { ids -> ids.toSet() }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptySet(),
+        )
+
+    /**
+     * Upsert a pin record for [trackId] with the current timestamp.
+     * Idempotent: Room's OnConflictStrategy.REPLACE on PinDao.upsert updates
+     * the pinnedAt timestamp on a duplicate pin (LWW semantics for Phase 7).
+     *
+     * Unit: always "track" in Phase 5 (album-level pins are a Phase 6+ concern).
+     */
+    fun pinTrack(trackId: String) {
+        viewModelScope.launch {
+            container.db.pinDao().upsert(
+                PinEntity(
+                    id = trackId,
+                    unit = "track",
+                    pinnedAt = System.currentTimeMillis(),
+                    synced = false,
+                ),
+            )
+        }
+    }
 }
 
 class BrowserVMFactory(private val container: AppContainer) : ViewModelProvider.Factory {

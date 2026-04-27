@@ -43,12 +43,20 @@ import kotlinx.collections.immutable.ImmutableList
 import kotlinx.collections.immutable.persistentListOf
 
 /**
- * Modal-style search surface. Plan 04-07 wires the trigger from BrowserRoot.
- * Until then this composable compiles and is unit-test-covered but not
- * reachable from the running app.
+ * Modal-style search surface.
+ *
+ * Plan 04-07 wires the trigger from BrowserRoot.
+ * Plan 05-06 adds pin wiring:
+ *   - [pinnedIds] is the shared Set<String> from BrowserViewModel.pinnedIdSet.
+ *   - [onPinTrack] routes to BrowserViewModel.pinTrack(trackId) on non-resident tap.
  */
 @Composable
-fun SearchOverlay(container: AppContainer, onDismiss: () -> Unit) {
+fun SearchOverlay(
+    container: AppContainer,
+    onDismiss: () -> Unit,
+    pinnedIds: Set<String> = emptySet(),
+    onPinTrack: (String) -> Unit = {},
+) {
     val vm: SearchViewModel = viewModel(factory = SearchVMFactory(container))
     val query by vm.query.collectAsStateWithLifecycle()
     val state by vm.results.collectAsStateWithLifecycle()
@@ -58,6 +66,8 @@ fun SearchOverlay(container: AppContainer, onDismiss: () -> Unit) {
         onChange = vm::onQueryChange,
         onClear = vm::clear,
         onDismiss = onDismiss,
+        pinnedIds = pinnedIds,
+        onPinTrack = onPinTrack,
     )
 }
 
@@ -69,6 +79,8 @@ private fun SearchOverlayBody(
     onChange: (String) -> Unit,
     onClear: () -> Unit,
     onDismiss: () -> Unit,
+    pinnedIds: Set<String> = emptySet(),
+    onPinTrack: (String) -> Unit = {},
 ) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
@@ -125,13 +137,17 @@ private fun SearchOverlayBody(
                 },
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
-            ResultsBody(state)
+            ResultsBody(state, pinnedIds = pinnedIds, onPinTrack = onPinTrack)
         }
     }
 }
 
 @Composable
-private fun ResultsBody(state: SearchResult) {
+private fun ResultsBody(
+    state: SearchResult,
+    pinnedIds: Set<String> = emptySet(),
+    onPinTrack: (String) -> Unit = {},
+) {
     when (state) {
         SearchResult.Idle -> EmptyHint("type to search by title, artist, album, genre")
         SearchResult.Loading -> Box(Modifier.padding(16.dp)) {
@@ -140,7 +156,12 @@ private fun ResultsBody(state: SearchResult) {
         SearchResult.Empty -> EmptyHint("no matches")
         is SearchResult.Results -> LazyColumn(modifier = Modifier.fillMaxSize()) {
             items(items = state.items, key = { it.id }, contentType = { "track" }) { track ->
-                TrackRow(track = track, onTap = { /* P5 wires player */ })
+                TrackRow(
+                    track = track,
+                    isPinned = pinnedIds.contains(track.id),
+                    onTap = { /* P5 wires player for resident tracks */ },
+                    onPinClick = { onPinTrack(track.id) },
+                )
             }
         }
         is SearchResult.Error -> Text(

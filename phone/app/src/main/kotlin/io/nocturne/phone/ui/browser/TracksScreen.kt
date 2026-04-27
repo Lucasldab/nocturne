@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
@@ -14,6 +16,10 @@ import io.nocturne.phone.ui.browser.components.TrackRow
 @Composable
 fun TracksScreen(vm: BrowserViewModel, modifier: Modifier = Modifier) {
     val pagingItems = vm.tracks.collectAsLazyPagingItems()
+
+    // PLAY-10: collect pinnedIdSet once per screen for efficient pin state.
+    val pinnedIds by vm.pinnedIdSet.collectAsStateWithLifecycle()
+
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -25,7 +31,12 @@ fun TracksScreen(vm: BrowserViewModel, modifier: Modifier = Modifier) {
             contentType = pagingItems.itemContentType { "track" },
         ) { index ->
             val track = pagingItems[index] ?: return@items
-            TrackRow(track = track, onTap = { /* Phase 5 wires the player */ })
+            TrackRow(
+                track = track,
+                isPinned = pinnedIds.contains(track.id),
+                onTap = { /* Phase 5 resident-track play is wired in AlbumDetailScreen */ },
+                onPinClick = { vm.pinTrack(track.id) },
+            )
         }
     }
 }

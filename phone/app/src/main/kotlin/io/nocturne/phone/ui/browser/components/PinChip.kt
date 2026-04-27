@@ -13,24 +13,54 @@ import io.nocturne.phone.ui.theme.NocturneTheme
 
 /**
  * Visual-only chip rendered next to non-resident TrackRow / AlbumRow entries.
- * Phase 4: [onClick] is a no-op. Phase 6 wires the pin write through the
- * BrowserViewModel — this composable's contract stays the same; the caller
- * supplies a non-empty lambda then.
  *
- * Compose strong-skipping treats this as skippable since the only argument
- * is a stable `() -> Unit` and the body reads only theme + literals.
+ * Three visual states (UI-SPEC Surface 2 / PinChip state machine):
+ *
+ *   [isPinned = false]            not-pinned:
+ *     border  = onSurfaceVariant
+ *     fill    = surfaceVariant
+ *     label   = onSurface
+ *
+ *   [isPinned = true]             pinned-awaiting-sync (Phase 5 only emits this state):
+ *     border  = primary
+ *     fill    = surfaceVariant
+ *     label   = primary
+ *
+ *   pinned-resident               (Phase 6 toggles synced=true → daemon has pulled the file)
+ *     border  = primary
+ *     fill    = primary
+ *     label   = onPrimary
+ *     (Phase 6 introduces a `isResident: Boolean` param; Phase 5 leaves this for later)
+ *
+ * Compose strong-skipping: this composable is skippable because all params are
+ * stable primitives + `() -> Unit`.
  */
 @Composable
-fun PinChip(onClick: () -> Unit = {}) {
+fun PinChip(
+    onClick: () -> Unit = {},
+    isPinned: Boolean = false,
+) {
+    val borderColor = if (isPinned) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val labelColor = if (isPinned) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+
     Surface(
         modifier = Modifier.padding(start = 8.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.onSurfaceVariant),
+        border = BorderStroke(1.dp, borderColor),
         color = MaterialTheme.colorScheme.surfaceVariant,
+        onClick = onClick,
     ) {
         Text(
             text = "PIN",
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = labelColor,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
         )
     }
@@ -38,6 +68,12 @@ fun PinChip(onClick: () -> Unit = {}) {
 
 @Preview(showBackground = true, backgroundColor = 0xFF0A0A0A)
 @Composable
-private fun PinChipPreview() {
-    NocturneTheme { PinChip() }
+private fun PinChipNotPinnedPreview() {
+    NocturneTheme { PinChip(isPinned = false) }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF0A0A0A)
+@Composable
+private fun PinChipPinnedAwaitingSyncPreview() {
+    NocturneTheme { PinChip(isPinned = true) }
 }

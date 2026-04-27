@@ -44,6 +44,9 @@ fun ArtistDetailScreen(
     val albums by vm.albumsByArtist(artistId).collectAsStateWithLifecycle(initialValue = emptyList())
     val tracks = vm.tracksByArtist(artistId).collectAsLazyPagingItems()
 
+    // PLAY-10: collect pinnedIdSet once per screen for efficient pin state.
+    val pinnedIds by vm.pinnedIdSet.collectAsStateWithLifecycle()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -107,7 +110,12 @@ fun ArtistDetailScreen(
                 contentType = tracks.itemContentType { "track" },
             ) { idx ->
                 val t = tracks[idx] ?: return@items
-                TrackRow(track = t, onTap = {})
+                TrackRow(
+                    track = t,
+                    isPinned = pinnedIds.contains(t.id),
+                    onTap = {},
+                    onPinClick = { vm.pinTrack(t.id) },
+                )
             }
         }
     }

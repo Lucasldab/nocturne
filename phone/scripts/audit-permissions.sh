@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # CROSS-01 audit: assert APK declares ONLY the allowlisted permissions.
 #
-# Phase 4 allowlist:
-#   - android.permission.READ_MEDIA_AUDIO   (declared, not yet requested)
-#   - android.permission.POST_NOTIFICATIONS (declared, not yet requested)
+# Phase 5 allowlist (extends Phase 4):
+#   - android.permission.READ_MEDIA_AUDIO                  (declared)
+#   - android.permission.POST_NOTIFICATIONS                (declared, runtime grant on first play)
+#   - android.permission.FOREGROUND_SERVICE                (PlaybackService)
+#   - android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK (mediaPlayback type)
 #
-# Phase 5 will add FOREGROUND_SERVICE + FOREGROUND_SERVICE_MEDIA_PLAYBACK and
-# this script's allowlist will grow.
+# ExoPlayer's audio focus (handleAudioFocus=true) does not require any
+# additional audio-settings permissions beyond the above.
 set -euo pipefail
 
 APK="${1:-phone/app/build/outputs/apk/debug/nocturne-phone-debug.apk}"
@@ -24,6 +26,10 @@ fi
 ALLOWED=(
   "android.permission.READ_MEDIA_AUDIO"
   "android.permission.POST_NOTIFICATIONS"
+  # Phase 5: PlaybackService FGS (mediaPlayback). audit-permissions confirms
+  # only these two new perms appear; Pitfall 4 — no BOOT_COMPLETED.
+  "android.permission.FOREGROUND_SERVICE"
+  "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
   # AGP 8.x auto-injects a per-app DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
   # so dynamically registered receivers default to non-exported. Synthetic,
   # not an outward permission.

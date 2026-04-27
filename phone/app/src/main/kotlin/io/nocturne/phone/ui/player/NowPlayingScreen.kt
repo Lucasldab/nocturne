@@ -17,6 +17,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,6 +38,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -45,6 +51,7 @@ import androidx.media3.ui.compose.material3.buttons.RepeatButton
 import androidx.media3.ui.compose.material3.buttons.ShuffleButton
 import androidx.media3.ui.compose.material3.indicator.PositionAndDurationText
 import androidx.media3.ui.compose.material3.indicator.ProgressSlider
+import io.nocturne.phone.player.PlayerViewModel
 import io.nocturne.phone.ui.theme.NocturneTheme
 
 /**
@@ -62,21 +69,29 @@ import io.nocturne.phone.ui.theme.NocturneTheme
 @Composable
 fun NowPlayingScreen(
     controller: MediaController,
+    playerVm: PlayerViewModel,
     onBack: () -> Unit,
 ) {
     var metadata by remember { mutableStateOf(controller.mediaMetadata) }
     var currentIndex by remember { mutableIntStateOf(controller.currentMediaItemIndex) }
 
-    DisposableEffect(controller) {
+    DisposableEffect(controller, playerVm) {
+        // Phase 6: publish the current track id eagerly so isLikedFlow has a
+        // value before the first onMediaItemTransition fires.
+        playerVm.publishCurrentTrackId(controller.currentMediaItem?.mediaId)
         val listener = object : Player.Listener {
             override fun onMediaMetadataChanged(m: MediaMetadata) { metadata = m }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 currentIndex = controller.currentMediaItemIndex
+                playerVm.publishCurrentTrackId(controller.currentMediaItem?.mediaId)
             }
         }
         controller.addListener(listener)
         onDispose { controller.removeListener(listener) }
     }
+
+    val isLiked by playerVm.isLikedFlow.collectAsStateWithLifecycle()
+    val currentTrackId = controller.currentMediaItem?.mediaId
 
     NowPlayingBody(
         controller = controller,
@@ -85,6 +100,9 @@ fun NowPlayingScreen(
         album = metadata.albumTitle?.toString().orEmpty(),
         artworkBytes = metadata.artworkData,
         currentIndex = currentIndex,
+        currentTrackId = currentTrackId,
+        isLiked = isLiked,
+        onToggleLike = { playerVm.toggleLike() },
         onBack = onBack,
     )
 }
@@ -98,6 +116,9 @@ private fun NowPlayingBody(
     album: String,
     artworkBytes: ByteArray?,
     currentIndex: Int,
+    currentTrackId: String?,
+    isLiked: Boolean,
+    onToggleLike: () -> Unit,
     onBack: () -> Unit,
 ) {
     val scrollState = rememberScrollState()
@@ -108,7 +129,9 @@ private fun NowPlayingBody(
             .padding(horizontal = 16.dp, vertical = 32.dp)
             .verticalScroll(scrollState),
     ) {
-        // 1. Back row
+        // 1. Back row (Phase 6: trailing-edge heart icon per UI-SPEC Surface 1).
+        // Plain `if` show/hide and `if/else` icon swap — both are explicit
+        // exemptions per UI-SPEC Animation Gate (no AnimatedVisibility / Crossfade).
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "<",
@@ -118,6 +141,20 @@ private fun NowPlayingBody(
                     .clickable(onClick = onBack)
                     .padding(end = 8.dp),
             )
+            Spacer(Modifier.weight(1f))
+            if (currentTrackId != null) {
+                IconButton(onClick = onToggleLike) {
+                    Icon(
+                        imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                        contentDescription = if (isLiked) "Unlike track" else "Like track",
+                        tint = if (isLiked) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                    )
+                }
+            }
         }
 
         Spacer(Modifier.height(24.dp))

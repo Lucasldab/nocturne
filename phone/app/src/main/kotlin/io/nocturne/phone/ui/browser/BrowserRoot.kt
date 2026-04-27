@@ -158,6 +158,7 @@ fun BrowserRoot(container: AppContainer) {
                     if (activeController != null) {
                         NowPlayingScreen(
                             controller = activeController,
+                            playerVm = playerVm,
                             onBack = { nav.popBackStack() },
                         )
                     } else {

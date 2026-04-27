@@ -54,3 +54,8 @@ phone/captures/
 phone/app/build/
 phone/app/release/
 phone/**/*.iml
+
+# tools/nocturne-schedule-resume.sh — local state for next-resume hint
+.nocturne-next-cmd
+.nocturne-resume.log
+.nocturne-kitty.log

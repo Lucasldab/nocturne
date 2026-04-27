@@ -22,8 +22,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.nocturne.phone.ui.player.MiniPlayer
+import io.nocturne.phone.ui.player.NowPlayingScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -150,17 +154,17 @@ fun BrowserRoot(container: AppContainer) {
                     )
                 }
                 composable(Routes.NOW_PLAYING) {
-                    // Plan 05-03 stub — 05-05 replaces with real NowPlayingScreen
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.background),
-                    ) {
-                        Text(
-                            "now playing (05-05 stub)",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.padding(16.dp),
+                    val activeController = playerVm.controller.collectAsStateWithLifecycle().value
+                    if (activeController != null) {
+                        NowPlayingScreen(
+                            controller = activeController,
+                            onBack = { nav.popBackStack() },
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.background),
                         )
                     }
                 }
@@ -168,6 +172,19 @@ fun BrowserRoot(container: AppContainer) {
         }
         if (showSearch) {
             SearchOverlay(container = container, onDismiss = { showSearch = false })
+        }
+        // MiniPlayer: persistent footer above NavigationBar when a MediaItem is loaded.
+        // Plain `if` -- no AnimatedVisibility (UI-SPEC Animation Gate).
+        // padding(bottom = 80.dp) offsets above Material3 NavigationBar (~80dp tall).
+        val miniController = playerVm.controller.collectAsStateWithLifecycle().value
+        if (miniController != null && miniController.currentMediaItem != null) {
+            MiniPlayer(
+                controller = miniController,
+                onTap = { nav.navigate(Routes.NOW_PLAYING) },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 80.dp),
+            )
         }
     }
 }

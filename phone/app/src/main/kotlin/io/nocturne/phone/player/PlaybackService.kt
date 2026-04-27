@@ -6,6 +6,8 @@ import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
@@ -17,6 +19,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Media3 MediaSessionService skeleton (Phase 5 plan 05-02).
@@ -70,6 +74,37 @@ class PlaybackService : MediaSessionService() {
             .setSessionActivity(buildSessionActivityIntent())
             .setCallback(ResumptionCallback())
             .build()
+
+        // PLAY-09 + Pitfall 7: ExoPlayer parses embedded APIC frames and fires
+        // onMediaMetadataChanged with the raw art bytes. We scale them down to
+        // 300x300 JPEG q=85 (ArtworkLoader, RESEARCH.md Pitfall 5 mitigation)
+        // and re-publish via player.replaceMediaItem so the lock-screen /
+        // notification surface receives Binder-IPC-safe bytes.
+        player.addListener(object : Player.Listener {
+            override fun onMediaMetadataChanged(metadata: MediaMetadata) {
+                val raw = metadata.artworkData ?: return
+                serviceScope.launch {
+                    val scaled = ArtworkLoader.scaleTo300(raw) ?: return@launch
+                    // Guard: if the bytes didn't actually change (already scaled),
+                    // skip the replaceMediaItem to avoid a redundant listener cycle.
+                    if (scaled.contentEquals(raw)) return@launch
+                    withContext(Dispatchers.Main) {
+                        val current = player.currentMediaItem ?: return@withContext
+                        val updated = current.buildUpon()
+                            .setMediaMetadata(
+                                metadata.buildUpon()
+                                    .setArtworkData(
+                                        scaled,
+                                        MediaMetadata.PICTURE_TYPE_FRONT_COVER,
+                                    )
+                                    .build(),
+                            )
+                            .build()
+                        player.replaceMediaItem(player.currentMediaItemIndex, updated)
+                    }
+                }
+            }
+        })
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =

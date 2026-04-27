@@ -17,4 +17,6 @@ object Routes {
 
     const val ARTIST_DETAIL_PATTERN = "artist/{artistId}"
     fun artistDetail(artistId: String) = "artist/$artistId"
+
+    const val NOW_PLAYING = "now-playing"
 }

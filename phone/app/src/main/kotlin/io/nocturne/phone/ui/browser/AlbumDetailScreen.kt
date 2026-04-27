@@ -18,6 +18,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,17 +27,22 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
 import io.nocturne.phone.data.db.entity.AlbumEntity
+import io.nocturne.phone.player.PlayerViewModel
 import io.nocturne.phone.ui.browser.components.TrackRow
+import kotlinx.coroutines.launch
 
 @Composable
 fun AlbumDetailScreen(
     albumId: String,
     vm: BrowserViewModel,
+    playerVm: PlayerViewModel,
     onBack: () -> Unit,
+    onPlayStarted: () -> Unit,
 ) {
     var album by remember { mutableStateOf<AlbumEntity?>(null) }
     LaunchedEffect(albumId) { album = vm.albumById(albumId) }
     val tracks = vm.tracksByAlbum(albumId).collectAsLazyPagingItems()
+    val scope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
@@ -83,7 +89,25 @@ fun AlbumDetailScreen(
                 contentType = tracks.itemContentType { "track" },
             ) { idx ->
                 val t = tracks[idx] ?: return@items
-                TrackRow(track = t, onTap = {})
+                TrackRow(
+                    track = t,
+                    onTap = {
+                        if (t.isResident) {
+                            // Materialise the full album in a coroutine, then play.
+                            // rememberCoroutineScope() is lifecycle-safe (cancelled on
+                            // recomposition exit — see AppRoot.kt line 86 pattern).
+                            scope.launch {
+                                val full = vm.tracksByAlbumList(albumId)
+                                val start = full.firstOrNull { it.id == t.id } ?: full.firstOrNull()
+                                if (start != null) {
+                                    playerVm.playAlbumFromTrack(full, start)
+                                    onPlayStarted()
+                                }
+                            }
+                        }
+                        // Non-resident tap: plan 05-06 wires the pin path. For now no-op.
+                    },
+                )
             }
         }
     }

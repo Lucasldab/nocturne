@@ -44,4 +44,12 @@ interface TrackDao {
     /** Clear all residency before re-applying manifest (idempotent). */
     @Query("UPDATE tracks SET isResident = 0")
     suspend fun clearAllResident()
+
+    /**
+     * Non-paged album track list for AlbumQueueBuilder.
+     * Albums are bounded (typically <30 tracks) — no Paging needed for queue
+     * construction in plan 05-03 (PLAY-07).
+     */
+    @Query("SELECT * FROM tracks WHERE albumId = :albumId ORDER BY discNumber, trackNumber")
+    suspend fun listByAlbum(albumId: String): List<TrackEntity>
 }

@@ -26,7 +26,11 @@ import io.nocturne.phone.ui.theme.NocturneTheme
  * Tap is a no-op in Phase 4 — Phase 5 wires the player.
  */
 @Composable
-fun TrackRow(track: TrackEntity, onTap: () -> Unit) {
+fun TrackRow(
+    track: TrackEntity,
+    onTap: () -> Unit,
+    isCurrentlyPlaying: Boolean = false, // TODO 05-05: render leading 2dp accent border when isCurrentlyPlaying
+) {
     val rowAlpha = if (track.isResident) 1f else NON_RESIDENT_ALPHA
     Row(
         modifier = Modifier

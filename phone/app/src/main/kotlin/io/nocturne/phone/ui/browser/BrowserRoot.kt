@@ -1,5 +1,6 @@
 package io.nocturne.phone.ui.browser
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -16,11 +17,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -30,6 +33,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import io.nocturne.phone.data.AppContainer
+import io.nocturne.phone.player.PlayerVMFactory
+import io.nocturne.phone.player.PlayerViewModel
 import io.nocturne.phone.ui.search.SearchOverlay
 
 /**
@@ -41,6 +46,11 @@ import io.nocturne.phone.ui.search.SearchOverlay
 @Composable
 fun BrowserRoot(container: AppContainer) {
     val vm: BrowserViewModel = viewModel(factory = BrowserVMFactory(container))
+    val playerVm: PlayerViewModel = viewModel(factory = PlayerVMFactory(container))
+    DisposableEffect(playerVm) {
+        playerVm.connect()
+        onDispose { playerVm.disconnect() }
+    }
     val nav = rememberNavController()
     var showSearch by remember { mutableStateOf(false) }
 
@@ -119,7 +129,13 @@ fun BrowserRoot(container: AppContainer) {
                     arguments = listOf(navArgument("albumId") { type = NavType.StringType }),
                 ) { entry ->
                     val id = entry.arguments?.getString("albumId") ?: return@composable
-                    AlbumDetailScreen(albumId = id, vm = vm, onBack = { nav.popBackStack() })
+                    AlbumDetailScreen(
+                        albumId = id,
+                        vm = vm,
+                        playerVm = playerVm,
+                        onBack = { nav.popBackStack() },
+                        onPlayStarted = { nav.navigate(Routes.NOW_PLAYING) },
+                    )
                 }
                 composable(
                     route = Routes.ARTIST_DETAIL_PATTERN,
@@ -132,6 +148,21 @@ fun BrowserRoot(container: AppContainer) {
                         onBack = { nav.popBackStack() },
                         onAlbumTap = { albumId -> nav.navigate(Routes.albumDetail(albumId)) },
                     )
+                }
+                composable(Routes.NOW_PLAYING) {
+                    // Plan 05-03 stub — 05-05 replaces with real NowPlayingScreen
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background),
+                    ) {
+                        Text(
+                            "now playing (05-05 stub)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.padding(16.dp),
+                        )
+                    }
                 }
             }
         }

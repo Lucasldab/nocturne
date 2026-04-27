@@ -60,6 +60,13 @@ class BrowserViewModel(private val container: AppContainer) : ViewModel() {
 
     suspend fun albumById(id: String): AlbumEntity? = container.db.albumDao().byId(id)
     suspend fun artistById(id: String): ArtistEntity? = container.db.artistDao().byId(id)
+
+    /**
+     * Non-paged album track list for PLAY-07 queue building (plan 05-03).
+     * Albums are bounded (<30 tracks typically) — no Paging needed here.
+     */
+    suspend fun tracksByAlbumList(albumId: String): List<io.nocturne.phone.data.db.entity.TrackEntity> =
+        container.db.trackDao().listByAlbum(albumId)
 }
 
 class BrowserVMFactory(private val container: AppContainer) : ViewModelProvider.Factory {

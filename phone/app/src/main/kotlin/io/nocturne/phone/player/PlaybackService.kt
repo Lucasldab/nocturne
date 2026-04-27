@@ -16,6 +16,7 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import io.nocturne.phone.MainActivity
 import io.nocturne.phone.NocturneApp
+import io.nocturne.phone.data.stats.StatsListener
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -150,6 +151,15 @@ class PlaybackService : MediaSessionService() {
                 if (!isPlaying) enqueueSnapshot(player)
             }
         })
+
+        // Phase 6 (STATS-01 / STATS-02 / D-24): stats listener for play/skip
+        // JSONL emission. Hosted on serviceScope (FGS — Doze-immune) so writes
+        // survive when the screen is off. Writes go to the SAF tree URI from
+        // SyncPrefs.metaTreeUri; if not provisioned the writer drops events
+        // silently. Attached as a SECOND listener — the queue-persistence
+        // listener above is intentionally untouched.
+        val statsWriter = container.statsWriter
+        player.addListener(StatsListener(player, statsWriter, serviceScope))
 
         // Consume the debounced channel and write to DataStore on the IO dispatcher.
         serviceScope.launch {

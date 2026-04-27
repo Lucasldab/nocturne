@@ -11,6 +11,11 @@
 #
 # ExoPlayer's audio focus (handleAudioFocus=true) does not require any
 # additional audio-settings permissions beyond the above.
+#
+# Phase 6 (CONTEXT.md D-34): NO new permissions. Stats writer + likes/pins
+# writer + Settings UI write only to the user-granted SAF tree (already
+# authorized via Phase 4's metaTreeUri); zero network calls; CROSS-01
+# contract preserved. ALLOWED below is identical to Phase 5.
 set -euo pipefail
 
 APK="${1:-phone/app/build/outputs/apk/debug/nocturne-phone-debug.apk}"

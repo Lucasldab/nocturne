@@ -5,6 +5,10 @@
 # Catches dependency drift that AGP's permission merge wouldn't (a library
 # that does NOT declare android.permission.INTERNET could still ship a
 # network stack that we'd want to know about).
+# Phase 6 (CONTEXT.md D-34, CROSS-01): JsonlFileWriter, StatsWriter,
+# LikesWriter, PinsWriter, SettingsScreen — all write only to SAF tree URIs
+# (no network surface). The BANNED list below already catches any drift.
+# No update required to BANNED for Phase 6.
 set -euo pipefail
 
 APK="${1:-phone/app/build/outputs/apk/debug/nocturne-phone-debug.apk}"

@@ -34,6 +34,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 /* ---- module state ---- */
 static int  g_initialized   = 0;
@@ -127,16 +128,34 @@ int syncthing_get_config(const char *config_dir)
     if (config_dir && *config_dir) {
         snprintf(path, sizeof(path), "%s/config.xml", config_dir);
     } else {
+        /* Probe candidate paths in order: XDG_CONFIG_HOME/syncthing,
+         * ~/.local/state/syncthing (Syncthing 2.x default),
+         * ~/.config/syncthing (legacy). Pick first that exists. */
         const char *xdg = getenv("XDG_CONFIG_HOME");
         const char *home = getenv("HOME");
+        const char *candidates[3] = {NULL, NULL, NULL};
+        char buf0[1024], buf1[1024], buf2[1024];
+        int n = 0;
         if (xdg && *xdg == '/') {
-            snprintf(path, sizeof(path), "%s/syncthing/config.xml", xdg);
-        } else if (home && *home == '/') {
-            snprintf(path, sizeof(path),
-                     "%s/.config/syncthing/config.xml", home);
-        } else {
-            return -1;
+            snprintf(buf0, sizeof(buf0), "%s/syncthing/config.xml", xdg);
+            candidates[n++] = buf0;
         }
+        if (home && *home == '/') {
+            snprintf(buf1, sizeof(buf1),
+                     "%s/.local/state/syncthing/config.xml", home);
+            candidates[n++] = buf1;
+            snprintf(buf2, sizeof(buf2),
+                     "%s/.config/syncthing/config.xml", home);
+            candidates[n++] = buf2;
+        }
+        path[0] = '\0';
+        for (int i = 0; i < n; i++) {
+            if (access(candidates[i], R_OK) == 0) {
+                snprintf(path, sizeof(path), "%s", candidates[i]);
+                break;
+            }
+        }
+        if (path[0] == '\0') return -1;
     }
 
     FILE *f = fopen(path, "rb");

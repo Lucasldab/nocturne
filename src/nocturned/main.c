@@ -31,6 +31,7 @@ int migrate_cmd_main(struct cli_args *args);
 int rotate_cmd_main(struct cli_args *args);
 int sync_config_cmd_main(struct cli_args *args);
 int ingest_cmd_main(struct cli_args *args);
+int cycle_cmd_main(struct cli_args *args);
 
 /* Each subcommand handler owns its own lock acquisition (scan_cmd.c,
  * watch_cmd.c, resolve_cmd.c, publish_cmd.c). main.c is now pure dispatch. */
@@ -66,6 +67,7 @@ int main(int argc, char **argv)
     case CMD_MIGRATE: return migrate_cmd_main(&args);
     case CMD_ROTATE:  return rotate_cmd_main(&args);
     case CMD_SYNC_CONFIG: return sync_config_cmd_main(&args);
+    case CMD_CYCLE:   return cycle_cmd_main(&args);
     case CMD_NONE:
     default:
         cli_print_usage(stderr);

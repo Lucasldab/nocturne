@@ -33,6 +33,8 @@ void cli_print_usage(FILE *f)
         "  sync-config       Emit (or apply) Syncthing folder XML\n"
         "  ingest [--meta-dir <path>] [--dry-run]\n"
         "                    Replay phone JSONL into DB (offset-tracked, idempotent)\n"
+        "  cycle [<library>] Run scan -> ingest -> resolve -> rotate -> publish\n"
+        "                    in sequence (intended for systemd timer / cron)\n"
         "  doctor            Print library + DB health report\n"
         "\n"
         "Options:\n"
@@ -75,6 +77,7 @@ static enum nocturned_subcommand subcommand_from_string(const char *s)
     if (!strcmp(s, "migrate")) return CMD_MIGRATE;
     if (!strcmp(s, "rotate"))  return CMD_ROTATE;
     if (!strcmp(s, "sync-config")) return CMD_SYNC_CONFIG;
+    if (!strcmp(s, "cycle"))   return CMD_CYCLE;
     if (!strcmp(s, "help"))    return CMD_HELP;
     if (!strcmp(s, "version")) return CMD_VERSION;
     return CMD_NONE;
@@ -162,8 +165,8 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
     optind++;
     out->cmd = sub;
 
-    /* First trailing positional is the library path for scan/watch/migrate. */
-    if ((sub == CMD_SCAN || sub == CMD_WATCH || sub == CMD_MIGRATE) && optind < argc) {
+    /* First trailing positional is the library path for scan/watch/migrate/cycle. */
+    if ((sub == CMD_SCAN || sub == CMD_WATCH || sub == CMD_MIGRATE || sub == CMD_CYCLE) && optind < argc) {
         out->library_path = argv[optind++];
     }
 

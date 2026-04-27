@@ -6,6 +6,8 @@
 #   - android.permission.POST_NOTIFICATIONS                (declared, runtime grant on first play)
 #   - android.permission.FOREGROUND_SERVICE                (PlaybackService)
 #   - android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK (mediaPlayback type)
+#   - android.permission.WAKE_LOCK                         (Media3 1.10: background playback)
+#   - android.permission.ACCESS_NETWORK_STATE              (Media3 1.10: transitive, adaptive-streaming guard)
 #
 # ExoPlayer's audio focus (handleAudioFocus=true) does not require any
 # additional audio-settings permissions beyond the above.
@@ -30,6 +32,14 @@ ALLOWED=(
   # only these two new perms appear; Pitfall 4 — no BOOT_COMPLETED.
   "android.permission.FOREGROUND_SERVICE"
   "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+  # Phase 5: Media3 1.10.0 transitive manifest merges.
+  #   WAKE_LOCK: ExoPlayer holds a partial wake lock during background playback
+  #     so audio continues while the screen is off (non-negotiable for a player).
+  #   ACCESS_NETWORK_STATE: ExoPlayer checks connectivity for adaptive streaming
+  #     decisions; nocturne serves local files, but this perm is baked into the
+  #     Media3 merged manifest and cannot be stripped without a manifest override.
+  "android.permission.WAKE_LOCK"
+  "android.permission.ACCESS_NETWORK_STATE"
   # AGP 8.x auto-injects a per-app DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
   # so dynamically registered receivers default to non-exported. Synthetic,
   # not an outward permission.

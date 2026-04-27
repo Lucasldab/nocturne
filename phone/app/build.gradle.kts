@@ -10,7 +10,8 @@ plugins {
 
 android {
     namespace = "io.nocturne.phone"
-    compileSdk = 35
+    // Phase 5: Media3 1.10.0 requires compileSdk 36. AGP 8.13.x max is 36.
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "io.nocturne.phone"
@@ -137,7 +138,14 @@ tasks.register<Copy>("copyRoomSchemasToDebugAssets") {
     from(layout.projectDirectory.dir("schemas"))
     into(layout.buildDirectory.dir("intermediates/assets/debug/mergeDebugAssets"))
 }
-tasks.matching { it.name in setOf("testDebugUnitTest", "packageDebugUnitTestForUnitTest") }.configureEach {
+tasks.matching {
+    it.name in setOf(
+        "testDebugUnitTest",
+        "packageDebugUnitTestForUnitTest",
+        "compressDebugAssets",
+        "generateDebugUnitTestConfig",
+    )
+}.configureEach {
     dependsOn("copyRoomSchemasToDebugAssets")
 }
 
@@ -193,6 +201,11 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.datastore.preferences)
     implementation(libs.documentfile)
+
+    // Phase 5: Media3 playback engine + session + Compose UI
+    implementation(libs.media3.exoplayer)
+    implementation(libs.media3.session)
+    implementation(libs.media3.ui.compose)
 
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)

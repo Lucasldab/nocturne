@@ -123,6 +123,24 @@ base {
     archivesName.set("nocturne-phone")
 }
 
+// === Phase 5: Room schema copy for Robolectric MigrationTestHelper ===
+//
+// MigrationTestHelper in Robolectric unit tests loads schema files from the
+// android_merged_assets path recorded in test_config.properties, which points
+// to the debug build's merged-assets directory. Copy KSP-generated schemas/
+// into that directory so Robolectric finds them without bundling schema JSON
+// in the release APK. Task is configuration-cache-safe: uses layout APIs.
+tasks.register<Copy>("copyRoomSchemasToDebugAssets") {
+    description = "Copy Room schemas into debug merged-assets for Robolectric MigrationTestHelper"
+    group = "verification"
+    dependsOn("mergeDebugAssets")
+    from(layout.projectDirectory.dir("schemas"))
+    into(layout.buildDirectory.dir("intermediates/assets/debug/mergeDebugAssets"))
+}
+tasks.matching { it.name in setOf("testDebugUnitTest", "packageDebugUnitTestForUnitTest") }.configureEach {
+    dependsOn("copyRoomSchemasToDebugAssets")
+}
+
 // Reproducibility: pin the Kotlin JVM bytecode target to 11 to match
 // compileOptions.{source,target}Compatibility above. We avoid jvmToolchain(11)
 // here because the dev machine ships only JDK 21 (Gradle compiles with JDK 21

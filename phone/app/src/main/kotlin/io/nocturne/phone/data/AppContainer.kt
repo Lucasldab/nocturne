@@ -3,6 +3,7 @@ package io.nocturne.phone.data
 import android.content.Context
 import androidx.room.Room
 import io.nocturne.phone.data.catalog.CatalogImporter
+import io.nocturne.phone.data.db.MIGRATION_2_3
 import io.nocturne.phone.data.db.NocturneDatabase
 import io.nocturne.phone.data.prefs.SyncPrefs
 
@@ -30,12 +31,9 @@ class AppContainer(
             NocturneDatabase::class.java,
             "nocturne.db",
         )
-            // Phase 4 only: Room is entirely derived state from catalog.json,
-            // so destructive migration on schema bumps is acceptable — the next
-            // import re-populates everything. Phase 5+ introduces user-generated
-            // state (queue, last-played, pin writes) and must switch to explicit
-            // Migration objects.
-            .fallbackToDestructiveMigration(true)
+            // Phase 5+: pins are user-generated state. Use explicit Migration objects;
+            // destructive migration would silently wipe PLAY-10 data on schema bump.
+            .addMigrations(MIGRATION_2_3)
             .build()
     }
 

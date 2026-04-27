@@ -11,7 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -23,6 +23,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.nocturne.phone.NocturneApp
 import io.nocturne.phone.data.AppContainer
+import io.nocturne.phone.ui.browser.BrowserRoot
 import io.nocturne.phone.ui.firstrun.FirstRunScreen
 import io.nocturne.phone.ui.firstrun.FirstRunViewModel
 import io.nocturne.phone.ui.firstrun.ImportProgressScreen
@@ -45,7 +46,7 @@ fun AppRoot(app: NocturneApp) {
     val container = app.container
     val metaTreeUri by container.syncPrefs.metaTreeUri
         .collectAsStateWithLifecycle(initialValue = LOADING_SENTINEL)
-    var trackCount by remember { mutableStateOf(-1) }
+    var trackCount by remember { mutableIntStateOf(-1) }
 
     LaunchedEffect(metaTreeUri) {
         if (metaTreeUri != LOADING_SENTINEL) {
@@ -70,7 +71,7 @@ fun AppRoot(app: NocturneApp) {
                 }
             }
             else -> {
-                BrowserPlaceholder(trackCount)
+                BrowserRoot(container)
             }
         }
     }
@@ -109,22 +110,9 @@ private fun FirstRunRoute(
     }
 }
 
-@Composable
-private fun BrowserPlaceholder(count: Int) {
-    // Plan 04-05 replaces this with the real browser
-    // (Albums / Artists / Tracks / Genres tabs).
-    Box(Modifier.fillMaxSize().padding(24.dp)) {
-        Text(
-            "$count tracks indexed.\n\nBrowser screens land in plan 04-05.",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
-    }
-}
-
 /**
- * Manual ViewModelProvider.Factory — Phase 4 convention; plans 04-05 and
- * 04-06 follow this same pattern for their VMs (no Hilt).
+ * Manual ViewModelProvider.Factory — Phase 4 convention; plan 04-06 follows
+ * this same pattern for its search VM (no Hilt).
  */
 class FirstRunVMFactory(private val container: AppContainer) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")

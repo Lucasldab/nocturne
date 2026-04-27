@@ -35,6 +35,8 @@ void cli_print_usage(FILE *f)
         "                    Replay phone JSONL into DB (offset-tracked, idempotent)\n"
         "  cycle [<library>] Run scan -> ingest -> resolve -> rotate -> publish\n"
         "                    in sequence (intended for systemd timer / cron)\n"
+        "  why <track-id>    Explain why a track is on the phone (read-only)\n"
+        "                    <track-id>: full 64-char sha256 hex OR unique >=8-char prefix\n"
         "  doctor            Print library + DB health report\n"
         "\n"
         "Options:\n"
@@ -54,6 +56,7 @@ void cli_print_usage(FILE *f)
         "      --side desktop|phone\n"
         "                          (sync-config) Which endpoint to emit (default: desktop)\n"
         "      --meta-dir <path>   (ingest) Override sync metadata folder (default: config sync_meta.path)\n"
+        "      --manifest <path>   (why) Override <sync_meta>/manifest.json source path\n"
         "\n"
         "WiFi-only sync is a Syncthing-Fork app-level setting on the phone — not in this XML.\n"
         "Trashcan/file versioning is disabled (type=\"none\") on sync-files for both sides.\n"
@@ -70,6 +73,7 @@ static enum nocturned_subcommand subcommand_from_string(const char *s)
     if (!s) return CMD_NONE;
     if (!strcmp(s, "scan"))    return CMD_SCAN;
     if (!strcmp(s, "watch"))   return CMD_WATCH;
+    if (!strcmp(s, "why"))     return CMD_WHY;
     if (!strcmp(s, "resolve")) return CMD_RESOLVE;
     if (!strcmp(s, "publish")) return CMD_PUBLISH;
     if (!strcmp(s, "ingest"))  return CMD_INGEST;
@@ -99,6 +103,7 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         { "print",               no_argument,       NULL, 1006 },
         { "side",                required_argument, NULL, 1007 },
         { "meta-dir",            required_argument, NULL, 1008 },
+        { "manifest",            required_argument, NULL, 1009 },
         { 0, 0, 0, 0 }
     };
 
@@ -116,6 +121,8 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         out->sync_config_side     = NULL;
         out->sync_config_print    = 0;
         out->meta_dir             = NULL;
+        out->track_id                = NULL;
+        out->manifest_path_override  = NULL;
     }
     if (!out || argc < 1) return CMD_NONE;
 
@@ -143,6 +150,7 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         case 1006: out->sync_config_print = 1; break;
         case 1007: out->sync_config_side = optarg; break;
         case 1008: out->meta_dir = optarg; break;
+        case 1009: out->manifest_path_override = optarg; break;
         case '?':
         default:
             out->cmd = CMD_NONE;
@@ -168,6 +176,13 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
     /* First trailing positional is the library path for scan/watch/migrate/cycle. */
     if ((sub == CMD_SCAN || sub == CMD_WATCH || sub == CMD_MIGRATE || sub == CMD_CYCLE) && optind < argc) {
         out->library_path = argv[optind++];
+    }
+
+    /* `why` takes a single trailing positional: the track id (full sha256 hex
+     * or >=8-char prefix). Validation of charset/length happens in
+     * why_cmd_main; we only capture the string here. */
+    if (sub == CMD_WHY && optind < argc) {
+        out->track_id = argv[optind++];
     }
 
     return sub;

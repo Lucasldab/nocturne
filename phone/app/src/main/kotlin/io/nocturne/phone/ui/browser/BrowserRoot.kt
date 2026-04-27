@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.nocturne.phone.ui.player.MiniPlayer
 import io.nocturne.phone.ui.player.NowPlayingScreen
+import io.nocturne.phone.ui.settings.SettingsScreen
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -89,6 +90,7 @@ fun BrowserRoot(container: AppContainer) {
                         Routes.ARTISTS to "Artists",
                         Routes.TRACKS to "Tracks",
                         Routes.GENRES to "Genres",
+                        Routes.SETTINGS to "Settings",
                     ).forEach { (route, label) ->
                         NavigationBarItem(
                             selected = currentRoute == route,
@@ -128,6 +130,9 @@ fun BrowserRoot(container: AppContainer) {
                 }
                 composable(Routes.TRACKS) { TracksScreen(vm) }
                 composable(Routes.GENRES) { GenresScreen(vm) }
+                composable(Routes.SETTINGS) {
+                    SettingsScreen(container = container)
+                }
                 composable(
                     route = Routes.ALBUM_DETAIL_PATTERN,
                     arguments = listOf(navArgument("albumId") { type = NavType.StringType }),

@@ -131,7 +131,7 @@ private fun NowPlayingBody(
     ) {
         // 1. Back row (Phase 6: trailing-edge heart icon per UI-SPEC Surface 1).
         // Plain `if` show/hide and `if/else` icon swap — both are explicit
-        // exemptions per UI-SPEC Animation Gate (no AnimatedVisibility / Crossfade).
+        // exemptions per UI-SPEC Animation Gate (instant swap; no fade/morph).
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "<",

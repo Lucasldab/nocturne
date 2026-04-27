@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.annotation.OptIn
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -80,6 +81,69 @@ class PlayerViewModel(
         c.setMediaItems(items, startIndex, /* startPositionMs = */ 0L)
         c.prepare()
         c.play()
+    }
+
+    /**
+     * PLAY-08: enable album-unit shuffle.
+     *
+     * Builds the flat MediaItem list in album-cohesive shuffled order (albums
+     * shuffled as units; tracks within each album stay in track-number order)
+     * and queues it via setMediaItems. Setting shuffleModeEnabled = true makes
+     * the UI shuffle indicator reflect state, while the queue itself already
+     * encodes the album-unit permutation (avoiding ExoPlayer's per-track
+     * random shuffle which is the anti-pattern described in RESEARCH.md).
+     *
+     * Note: MediaController (IPC proxy) does not expose setShuffleOrder
+     * (an ExoPlayer-only API). The album-unit order is therefore embedded
+     * directly in the MediaItem sequence — same observable effect.
+     *
+     * Caller responsibility: pass `albumGroups` already ordered by track-
+     * number within each group. The browser screens already do this via
+     * pagedByAlbum / listByAlbum.
+     *
+     * Seed defaults to `System.currentTimeMillis()` so each invocation
+     * produces a fresh shuffle. Pass an explicit seed in tests for
+     * determinism.
+     */
+    fun enableAlbumShuffle(
+        albumGroups: List<List<TrackEntity>>,
+        seed: Long = System.currentTimeMillis(),
+    ) {
+        val c = _controller.value ?: return
+        val flat = albumGroups.flatten()
+        if (flat.isEmpty()) return
+
+        // Build album-unit shuffled index permutation, then reorder the flat
+        // list according to that permutation.
+        val indices = AlbumUnitShuffle.buildShuffledIndices(albumGroups, seed)
+        val shuffledItems = indices.map { flat[it].toMediaItem() }
+
+        c.setMediaItems(shuffledItems, /* startIndex = */ 0, /* startPositionMs = */ 0L)
+        c.shuffleModeEnabled = true
+        c.prepare()
+        c.play()
+    }
+
+    /** Disable shuffle (returns to the natural queue order). */
+    fun disableShuffle() {
+        _controller.value?.shuffleModeEnabled = false
+    }
+
+    /**
+     * PLAY-01 (repeat): cycle OFF -> ALL -> ONE -> OFF.
+     *
+     * The RepeatButton from media3-ui-compose-material3 cycles automatically
+     * when tapped, so the UI in 05-05 doesn't strictly need this — but
+     * exposing it on the VM keeps the cycle deterministic for tests and
+     * for future polish features (e.g. sleep timer that disables repeat).
+     */
+    fun cycleRepeat() {
+        val c = _controller.value ?: return
+        c.repeatMode = when (c.repeatMode) {
+            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+            else /* REPEAT_MODE_ONE */ -> Player.REPEAT_MODE_OFF
+        }
     }
 
     override fun onCleared() {

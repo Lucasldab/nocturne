@@ -64,6 +64,57 @@ android {
     androidResources {
         // Intentionally no compression toggles — keep defaults deterministic.
     }
+
+    lint {
+        lintConfig = file("$rootDir/lint.xml")
+        abortOnError = true
+        checkReleaseBuilds = true
+        warningsAsErrors = false
+    }
+}
+
+// === CROSS-01 enforcement: build-failing INTERNET permission audit ===
+//
+// Reads the merged AndroidManifest (post-AGP merge of source + library manifests)
+// and fails the build if android.permission.INTERNET is present. Catches
+// transitive permission injection from any future dependency (T-04-07-01).
+//
+// Uses AGP's typed variant artifact API so the manifest provider is a real
+// build input — config-cache friendly, properly carries upstream task deps.
+androidComponents {
+    onVariants { variant ->
+        val variantCap = variant.name.replaceFirstChar { it.uppercase() }
+        val verifyTaskName = "verifyNoInternetPermission$variantCap"
+        val manifestProvider = variant.artifacts.get(
+            com.android.build.api.artifact.SingleArtifact.MERGED_MANIFEST,
+        )
+        val variantName = variant.name
+        val verifyTask = tasks.register(verifyTaskName) {
+            group = "verification"
+            description = "Fail build if INTERNET permission appears in merged AndroidManifest for $variantName"
+            inputs.file(manifestProvider)
+            doLast {
+                val manifest = manifestProvider.get().asFile
+                if (!manifest.exists()) {
+                    throw GradleException("$verifyTaskName: merged manifest not found at ${manifest.absolutePath}")
+                }
+                val raw = manifest.readText()
+                // Strip XML comments before scanning — the manifest deliberately
+                // documents CROSS-01 in a `<!-- INTERNET ABSENT -->` comment that
+                // would false-positive a naive regex.
+                val text = raw.replace(Regex("<!--[\\s\\S]*?-->"), "")
+                if (Regex("android\\.permission\\.INTERNET").containsMatchIn(text)) {
+                    throw GradleException(
+                        "CROSS-01 VIOLATION: android.permission.INTERNET found in ${manifest.absolutePath}",
+                    )
+                }
+                logger.lifecycle("CROSS-01 OK: no INTERNET permission in $variantName merged manifest")
+            }
+        }
+        tasks.matching { it.name == "assemble$variantCap" }.configureEach {
+            dependsOn(verifyTask)
+        }
+    }
 }
 
 // Archive name pinning so APK filenames are deterministic across machines.

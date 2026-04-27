@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Phase 4 lint configuration. Strict on Compose stability + key correctness;
+  ignore version-pinning warnings since libs.versions.toml is the source of
+  truth and AGP/library cadence shouldn't make builds flap.
+-->
+<lint>
+    <issue id="MissingKey" severity="error" />
+    <issue id="ComposableNaming" severity="error" />
+    <issue id="ComposableLambdaParameterNaming" severity="error" />
+    <issue id="MutableCollectionMutableState" severity="error" />
+    <issue id="ProduceStateDoesNotAssignValue" severity="error" />
+    <issue id="UnrememberedMutableState" severity="error" />
+    <issue id="AutoboxingStateCreation" severity="error" />
+
+    <!-- Ignored: project-config noise on intentionally pinned versions. -->
+    <issue id="GradleDependency" severity="ignore" />
+    <issue id="NewerVersionAvailable" severity="ignore" />
+    <issue id="ObsoleteLintCustomCheck" severity="ignore" />
+    <issue id="OldTargetApi" severity="ignore" />
+    <issue id="AndroidGradlePluginVersion" severity="ignore" />
+    <issue id="DataExtractionRules" severity="ignore" />
+</lint>

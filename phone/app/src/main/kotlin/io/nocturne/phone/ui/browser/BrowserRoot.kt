@@ -177,7 +177,7 @@ fun BrowserRoot(container: AppContainer) {
                 container = container,
                 onDismiss = { showSearch = false },
                 pinnedIds = pinnedIds,
-                onPinTrack = { vm.pinTrack(it) },
+                onPinTrack = { vm.togglePinTrack(it) },
             )
         }
         // MiniPlayer: persistent footer above NavigationBar when a MediaItem is loaded.

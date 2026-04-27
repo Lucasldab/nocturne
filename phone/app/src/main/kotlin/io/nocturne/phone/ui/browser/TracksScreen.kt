@@ -35,7 +35,7 @@ fun TracksScreen(vm: BrowserViewModel, modifier: Modifier = Modifier) {
                 track = track,
                 isPinned = pinnedIds.contains(track.id),
                 onTap = { /* Phase 5 resident-track play is wired in AlbumDetailScreen */ },
-                onPinClick = { vm.pinTrack(track.id) },
+                onPinClick = { vm.togglePinTrack(track.id) },
             )
         }
     }

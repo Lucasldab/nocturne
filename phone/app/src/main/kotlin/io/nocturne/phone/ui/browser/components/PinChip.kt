@@ -14,26 +14,29 @@ import io.nocturne.phone.ui.theme.NocturneTheme
 /**
  * Visual-only chip rendered next to non-resident TrackRow / AlbumRow entries.
  *
- * Three visual states (UI-SPEC Surface 2 / PinChip state machine):
+ * Two visual states (UI-SPEC Surface 2):
  *
  *   [isPinned = false]            not-pinned:
  *     border  = onSurfaceVariant
  *     fill    = surfaceVariant
  *     label   = onSurface
  *
- *   [isPinned = true]             pinned-awaiting-sync (Phase 5 only emits this state):
+ *   [isPinned = true]             pinned-awaiting-sync:
  *     border  = primary
  *     fill    = surfaceVariant
  *     label   = primary
  *
- *   pinned-resident               (Phase 6 toggles synced=true → daemon has pulled the file)
- *     border  = primary
- *     fill    = primary
- *     label   = onPrimary
- *     (Phase 6 introduces a `isResident: Boolean` param; Phase 5 leaves this for later)
+ * Phase 6 introduces toggle behavior: tap-once when isPinned=false pins,
+ * tap-again when isPinned=true unpins (emits a `pinned: false` JSONL
+ * tombstone). The PinChip API is unchanged — call sites route their
+ * onClick lambda through `BrowserViewModel.togglePinTrack` /
+ * `togglePinAlbum` (the toggle dispatcher).
  *
- * Compose strong-skipping: this composable is skippable because all params are
- * stable primitives + `() -> Unit`.
+ * The `pinned-resident` third state from Phase 5's docstring (fill = primary,
+ * label = onPrimary) remains a future feature — Phase 6 explicitly defers it.
+ *
+ * Compose strong-skipping: this composable is skippable because all params
+ * are stable primitives + `() -> Unit`.
  */
 @Composable
 fun PinChip(

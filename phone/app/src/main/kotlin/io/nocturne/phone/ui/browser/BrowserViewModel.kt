@@ -15,6 +15,7 @@ import io.nocturne.phone.data.db.entity.PinEntity
 import io.nocturne.phone.data.db.entity.TrackEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -116,6 +117,47 @@ class BrowserViewModel(private val container: AppContainer) : ViewModel() {
                     synced = false,
                 ),
             )
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 6 (STATS-03 / D-17 / D-18) — PinChip toggle dispatcher
+    //
+    // If no row exists OR the row is currently pinned=false, this pins the
+    // (id, unit) by upserting with pinned=true and synced=false.
+    // If the row exists and is currently pinned=true, this flips pinned=false
+    // (the unpin tombstone) and resets synced=false.
+    //
+    // After the DB write, kicks off a one-shot drain so the JSONL line emits
+    // promptly while the user's screen is on. Drain runs on viewModelScope —
+    // if the user navigates away mid-drain, the FGS or next-launch drain
+    // (PlaybackService.onCreate per 06-03) picks up any unsynced rows.
+    // -------------------------------------------------------------------------
+
+    fun togglePinTrack(trackId: String) = togglePin(id = trackId, unit = "track")
+
+    fun togglePinAlbum(albumId: String) = togglePin(id = albumId, unit = "album")
+
+    private fun togglePin(id: String, unit: String) {
+        viewModelScope.launch {
+            val dao = container.db.pinDao()
+            val now = System.currentTimeMillis()
+            val existing = dao.flowAllPinned().first().firstOrNull { it.id == id && it.unit == unit }
+            if (existing == null) {
+                // Brand-new pin.
+                dao.upsert(
+                    PinEntity(
+                        id = id,
+                        unit = unit,
+                        pinnedAt = now,
+                        synced = false,
+                        pinned = true,
+                    ),
+                )
+            } else {
+                dao.setPinned(id = id, pinned = !existing.pinned, ts = now)
+            }
+            container.pinsWriter.drain()
         }
     }
 }

@@ -114,7 +114,7 @@ fun ArtistDetailScreen(
                     track = t,
                     isPinned = pinnedIds.contains(t.id),
                     onTap = {},
-                    onPinClick = { vm.pinTrack(t.id) },
+                    onPinClick = { vm.togglePinTrack(t.id) },
                 )
             }
         }

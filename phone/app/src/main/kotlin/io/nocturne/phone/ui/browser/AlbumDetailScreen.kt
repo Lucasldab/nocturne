@@ -125,7 +125,7 @@ fun AlbumDetailScreen(
                             requestNotifThenPlay()
                         }
                     },
-                    onPinClick = { vm.pinTrack(t.id) },
+                    onPinClick = { vm.togglePinTrack(t.id) },
                 )
             }
         }

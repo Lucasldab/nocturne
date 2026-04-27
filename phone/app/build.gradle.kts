@@ -89,6 +89,20 @@ ksp {
     arg("room.generateKotlin", "true")
 }
 
+configurations.all {
+    resolutionStrategy {
+        // Room 2.8.0 ships `$$serializer` classes generated against
+        // kotlinx-serialization-core 1.8.x. The Kotlin 2.1.20 serialization
+        // compiler plugin pulls 1.7.x by default, which causes
+        // AbstractMethodError on `typeParametersSerializers()` during KSP's
+        // schema-bundle round-trip. Force the entire classpath to 1.8.1.
+        force("org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1")
+        force("org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.8.1")
+        force("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
+        force("org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.8.1")
+    }
+}
+
 dependencies {
     val composeBom = platform(libs.compose.bom)
     implementation(composeBom)

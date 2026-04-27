@@ -23,6 +23,12 @@ android {
         resourceConfigurations += listOf("en")
     }
 
+    sourceSets["androidTest"].assets.srcDir("$projectDir/schemas")
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -74,6 +80,13 @@ kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_11)
     }
+}
+
+// Room/KSP schema export — schemas/ is committed for migration diff visibility.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+    arg("room.incremental", "true")
+    arg("room.generateKotlin", "true")
 }
 
 dependencies {

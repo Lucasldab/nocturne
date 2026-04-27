@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import io.nocturne.phone.data.catalog.CatalogImporter
 import io.nocturne.phone.data.db.MIGRATION_2_3
+import io.nocturne.phone.data.db.MIGRATION_3_4
 import io.nocturne.phone.data.db.NocturneDatabase
 import io.nocturne.phone.data.prefs.SyncPrefs
 import io.nocturne.phone.data.stats.JsonlFileWriter
@@ -36,7 +37,9 @@ class AppContainer(
         )
             // Phase 5+: pins are user-generated state. Use explicit Migration objects;
             // destructive migration would silently wipe PLAY-10 data on schema bump.
-            .addMigrations(MIGRATION_2_3)
+            // Phase 6 (D-19): MIGRATION_3_4 atomically adds the `pinned` column on
+            // pins + creates the new `likes` table.
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
             .build()
     }
 

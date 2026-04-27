@@ -23,4 +23,23 @@ interface PinDao {
 
     @Query("SELECT COUNT(*) FROM pins")
     suspend fun count(): Int
+
+    // --- Phase 6 (STATS-03 / D-17 / D-19) drain methods ---
+
+    /**
+     * Snapshot list of unsynced pins (suspend, NOT Flow). Used by PinsWriter
+     * to iterate, append-JSONL, and markSynced per row.
+     */
+    @Query("SELECT * FROM pins WHERE synced = 0 ORDER BY pinnedAt ASC")
+    suspend fun unsyncedList(): List<PinEntity>
+
+    @Query("UPDATE pins SET synced = 1 WHERE id = :id")
+    suspend fun markSynced(id: String)
+
+    /**
+     * Toggle the pin/unpin state. Resets synced=0 and updates pinnedAt so the
+     * PinsWriter drains a fresh JSONL line for the tombstone (D-17 / D-18).
+     */
+    @Query("UPDATE pins SET pinned = :pinned, synced = 0, pinnedAt = :ts WHERE id = :id")
+    suspend fun setPinned(id: String, pinned: Boolean, ts: Long)
 }

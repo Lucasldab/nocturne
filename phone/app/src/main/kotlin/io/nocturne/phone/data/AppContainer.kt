@@ -7,6 +7,7 @@ import io.nocturne.phone.data.db.MIGRATION_2_3
 import io.nocturne.phone.data.db.NocturneDatabase
 import io.nocturne.phone.data.prefs.SyncPrefs
 import io.nocturne.phone.data.stats.JsonlFileWriter
+import io.nocturne.phone.data.stats.StatsWriter
 import io.nocturne.phone.player.QueueRepository
 
 /**
@@ -50,4 +51,8 @@ class AppContainer(
     val jsonlFileWriter: JsonlFileWriter by lazy {
         JsonlFileWriter(applicationContext, syncPrefs)
     }
+
+    // Phase 6 (06-02 / STATS-01 / STATS-02 / D-23 / D-24): play/skip JSONL emitter.
+    // Wraps jsonlFileWriter with `stats/phone-<deviceid>.jsonl` path resolution.
+    val statsWriter: StatsWriter by lazy { StatsWriter(syncPrefs, jsonlFileWriter) }
 }

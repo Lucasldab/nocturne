@@ -15,15 +15,20 @@ import androidx.media3.session.MediaSessionService
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import io.nocturne.phone.MainActivity
+import io.nocturne.phone.NocturneApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.consumeAsFlow
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Media3 MediaSessionService skeleton (Phase 5 plan 05-02).
+ * Media3 MediaSessionService (Phase 5).
  *
  * Owns a single ExoPlayer instance configured with:
  *   - setAudioAttributes(USAGE_MEDIA + CONTENT_TYPE_MUSIC, handleAudioFocus = true)
@@ -41,13 +46,13 @@ import kotlinx.coroutines.withContext
  *   - No manual FGS promotion — MediaSessionService manages FGS lifecycle.
  *   - No custom BroadcastReceiver for becoming-noisy.
  *   - No custom AudioFocusRequest state machine.
- *   - No direct setMediaItems() in onCreate — the service is a passive player;
- *     the UI sends commands via MediaController (plan 05-03).
  *
- * Plan 05-06 extends this file in two places:
- *   1. Replace ResumptionCallback's onPlaybackResumption with a real DataStore
- *      read (queue restoration after reboot — PLAY-04).
- *   2. Attach a Player.Listener that persists the queue on transitions.
+ * Plan 05-06 extensions:
+ *   1. ResumptionCallback.onPlaybackResumption now reads QueueRepository via
+ *      PlaybackResumption.toMediaItemsWithStartPosition (PLAY-04 reboot resumption).
+ *   2. A Player.Listener emits queue snapshots into a Channel that is debounced
+ *      500ms before writing to QueueRepository.saveQueue (avoids write storms
+ *      on rapid seek / track transitions).
  */
 @OptIn(UnstableApi::class)
 class PlaybackService : MediaSessionService() {
@@ -55,8 +60,18 @@ class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    // Channel for debounced queue persistence. Capacity CONFLATED keeps only
+    // the latest snapshot (older ones are overwritten before the debounce fires).
+    private val queueSaveChannel = Channel<SavedQueue>(Channel.CONFLATED)
+
+    @OptIn(FlowPreview::class)
     override fun onCreate() {
         super.onCreate()
+
+        val container = (application as NocturneApp).container
+        val queueRepository = container.queueRepository
+        val trackDao = container.db.trackDao()
+
         val player = ExoPlayer.Builder(this)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -72,7 +87,7 @@ class PlaybackService : MediaSessionService() {
 
         mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(buildSessionActivityIntent())
-            .setCallback(ResumptionCallback())
+            .setCallback(ResumptionCallback(queueRepository, trackDao))
             .build()
 
         // PLAY-09 + Pitfall 7: ExoPlayer parses embedded APIC frames and fires
@@ -104,7 +119,44 @@ class PlaybackService : MediaSessionService() {
                     }
                 }
             }
+
+            // --- PLAY-04: queue persistence listener ---
+            // Every salient state change emits a snapshot into queueSaveChannel.
+            // The channel is CONFLATED so rapid events only keep the latest.
+            // The debounce(500ms) downstream coalesces bursts into a single write.
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                enqueueSnapshot(player)
+            }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) {
+                enqueueSnapshot(player)
+            }
+
+            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+                enqueueSnapshot(player)
+            }
+
+            override fun onRepeatModeChanged(repeatMode: Int) {
+                enqueueSnapshot(player)
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                // Capture position on pause so resumption starts at the right spot.
+                if (!isPlaying) enqueueSnapshot(player)
+            }
         })
+
+        // Consume the debounced channel and write to DataStore on the IO dispatcher.
+        serviceScope.launch {
+            queueSaveChannel.consumeAsFlow()
+                .debounce(500L)
+                .collect { snapshot -> queueRepository.saveQueue(snapshot) }
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
@@ -124,6 +176,7 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         serviceScope.cancel()
+        queueSaveChannel.close()
         mediaSession?.run {
             player.release()
             release()
@@ -141,25 +194,61 @@ class PlaybackService : MediaSessionService() {
         )
 
     /**
-     * Minimal Callback for plan 05-02. Plan 05-06 overrides
-     * onPlaybackResumption with a real DataStore-backed implementation.
-     *
-     * The non-throwing empty-queue future here is REQUIRED — RESEARCH.md
-     * Pitfall 3: the default Callback implementation throws
-     * UnsupportedOperationException, which crashes the service on first
-     * boot resumption.
+     * Snapshot the player's current queue state and send it to the debounced
+     * save channel. Called from Player.Listener callbacks (main thread);
+     * the channel send is non-blocking (CONFLATED — drops older pending).
      */
-    private inner class ResumptionCallback : MediaSession.Callback {
+    private fun enqueueSnapshot(player: Player) {
+        val mediaIds = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
+        val snapshot = SavedQueue(
+            mediaIds = mediaIds,
+            currentIndex = player.currentMediaItemIndex.coerceAtLeast(0),
+            currentPositionMs = player.currentPosition.coerceAtLeast(0L),
+            shuffleMode = player.shuffleModeEnabled,
+            repeatMode = player.repeatMode,
+        )
+        // trySend on CONFLATED channel: never blocks, never returns false
+        // (oldest pending is replaced). Safe to call from main thread.
+        queueSaveChannel.trySend(snapshot)
+    }
+
+    /**
+     * MediaSession callback that reads QueueRepository on playback resumption
+     * (e.g. reboot + media-button / BT reconnect — PLAY-04).
+     *
+     * Replaces the 05-02 stub which returned an empty queue.
+     */
+    private inner class ResumptionCallback(
+        private val queueRepository: QueueRepository,
+        private val trackDao: io.nocturne.phone.data.db.dao.TrackDao,
+    ) : MediaSession.Callback {
+
         override fun onPlaybackResumption(
             mediaSession: MediaSession,
             controller: MediaSession.ControllerInfo,
-        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> =
-            Futures.immediateFuture(
-                MediaSession.MediaItemsWithStartPosition(
-                    /* mediaItems = */ emptyList<MediaItem>(),
-                    /* startIndex = */ 0,
-                    /* startPositionMs = */ 0L,
-                ),
-            )
+        ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
+            // Run on the service's IO scope; wrap the result in an immediate future.
+            // Media3 calls this on the application's main thread; we hand it off to
+            // the service scope so DataStore reads don't block the main thread.
+            // Futures.submit is unavailable — use a coroutine future bridge instead.
+            val future = com.google.common.util.concurrent.SettableFuture.create<MediaSession.MediaItemsWithStartPosition>()
+            serviceScope.launch {
+                try {
+                    val saved = queueRepository.loadQueue()
+                    val result = PlaybackResumption.toMediaItemsWithStartPosition(saved, trackDao)
+                    future.set(result)
+                } catch (e: Exception) {
+                    // Never propagate exceptions to Media3's callback — return empty queue.
+                    future.set(
+                        MediaSession.MediaItemsWithStartPosition(
+                            emptyList<MediaItem>(),
+                            0,
+                            0L,
+                        ),
+                    )
+                }
+            }
+            return future
+        }
     }
 }

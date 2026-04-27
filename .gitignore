@@ -44,3 +44,13 @@ src/nocturned/_schema_*.h
 !tests/.gitkeep
 !src/tagcheck/.gitkeep
 !tests/fixtures/.gitkeep
+
+# Phone (Android) — Gradle artifacts and machine-local config
+phone/.gradle/
+phone/build/
+phone/local.properties
+phone/.idea/
+phone/captures/
+phone/app/build/
+phone/app/release/
+phone/**/*.iml

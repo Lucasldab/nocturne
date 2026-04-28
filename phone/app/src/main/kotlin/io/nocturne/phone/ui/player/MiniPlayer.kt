@@ -88,13 +88,13 @@ fun MiniPlayer(
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface),
     ) {
-        // 1px top hairline #837a6c per design pass2026-04-28 hand-tuning —
-        // sits ABOVE the 2dp progress strip so the progress fill never crosses it.
+        // 1px top + bottom hairlines #655D53 sandwich the 2dp progress strip
+        // (design pass2026-04-28 hand-tuning, second pass).
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(androidx.compose.ui.graphics.Color(0xFF837A6C)),
+                .background(androidx.compose.ui.graphics.Color(0xFF655D53)),
         )
         // 2dp progress strip — purple fill on surfaceVariant track.
         val progress = if (durationMs > 0L) {
@@ -113,6 +113,12 @@ fun MiniPlayer(
                     .background(MaterialTheme.colorScheme.primary),
             )
         }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(androidx.compose.ui.graphics.Color(0xFF655D53)),
+        )
 
         Row(
             modifier = Modifier

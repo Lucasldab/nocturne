@@ -212,10 +212,13 @@ fun BrowserRoot(
                             NavigationBarItem(
                                 selected = activeTabRoute == route,
                                 colors = androidx.compose.material3.NavigationBarItemDefaults.colors(
-                                    indicatorColor = androidx.compose.ui.graphics.Color(0xFF703490),
-                                    selectedIconColor = androidx.compose.ui.graphics.Color(0xFFE0E0E0),
+                                    // Indicator carries 50% alpha so the pill reads as a
+                                    // tint; selected icon + label render in opaque #703490
+                                    // on top (260428-981 polish pass).
+                                    indicatorColor = androidx.compose.ui.graphics.Color(0x80703490),
+                                    selectedIconColor = androidx.compose.ui.graphics.Color(0xFF703490),
                                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                                    selectedTextColor = androidx.compose.ui.graphics.Color(0xFF703490),
                                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 ),
                                 onClick = {

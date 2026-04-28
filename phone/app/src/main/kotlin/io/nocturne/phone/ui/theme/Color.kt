@@ -11,7 +11,7 @@ internal val NocturneSurface    = Color(0xFF0E0E0E)
 internal val NocturneSurfaceVariant = Color(0xFF161616)
 internal val NocturneOnBackground = Color(0xFFE0E0E0)
 internal val NocturneOnSurface  = Color(0xFFC8C8C8)
-internal val NocturneOnSurfaceMuted = Color(0xFF8A8A8A)
+internal val NocturneOnSurfaceMuted = Color(0xFF9E9689)
 internal val NocturnePrimary    = Color(0xFF7E3AA0)  // deep purple accent — slightly darker than #8C41B4
 internal val NocturneOnPrimary  = Color(0xFF000000)
 // Selected nav-pill: alpha-blended deeper purple (#5B2378 ~ design `primaryDeep`).

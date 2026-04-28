@@ -20,7 +20,14 @@ private val Inter = FontFamily(
     Font(R.font.inter_bold,     FontWeight.Bold),
 )
 
-private val Mono = FontFamily.Monospace
+internal val JetBrainsMono = FontFamily(
+    Font(R.font.jetbrains_mono_regular,  FontWeight.Normal),
+    Font(R.font.jetbrains_mono_medium,   FontWeight.Medium),
+    Font(R.font.jetbrains_mono_semibold, FontWeight.SemiBold),
+    Font(R.font.jetbrains_mono_bold,     FontWeight.Bold),
+)
+
+private val Mono = JetBrainsMono
 private val Sans = Inter
 
 internal val NocturneTypography = Typography(

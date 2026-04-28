@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
+import io.nocturne.phone.ui.theme.JetBrainsMono
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -157,7 +158,7 @@ private fun NowPlayingBody(
                 )
                 Text(
                     text = "~/now-playing",
-                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMono),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.weight(1f))
@@ -194,7 +195,7 @@ private fun NowPlayingBody(
                     // ▸ playing eyebrow — primary accent, mono caps, letterspaced
                     Text(
                         text = "▸ playing",
-                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                        style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMono),
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Spacer(Modifier.height(4.dp))
@@ -363,12 +364,12 @@ private fun NowPlayingProgressBar(controller: MediaController) {
     ) {
         Text(
             text = formatMs(positionMs),
-            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMono),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
             text = formatMs(durationMs),
-            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMono),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
@@ -401,9 +402,9 @@ private fun formatMs(ms: Long): String {
 private fun FileInfoCard(controller: MediaController, currentIndex: Int) {
     // design pass2026-04-28: explicit FileInfoCard palette.
     // Border #837a6c, all glyphs #9e9689, JetBrains Mono — falling back to
-    // FontFamily.Monospace (Roboto Mono) until the OFL JetBrains Mono TTFs
+    // JetBrainsMono (Roboto Mono) until the OFL JetBrains Mono TTFs
     // are bundled in res/font/ alongside Inter.
-    val mono = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace)
+    val mono = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMono)
     val mutedColor = androidx.compose.ui.graphics.Color(0xFF9E9689)
     val onSurface = androidx.compose.ui.graphics.Color(0xFF9E9689)
     val borderColor = androidx.compose.ui.graphics.Color(0xFF837A6C)

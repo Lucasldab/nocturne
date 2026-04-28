@@ -42,6 +42,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import io.nocturne.phone.ui.theme.JetBrainsMono
 import androidx.compose.ui.text.withStyle
 import androidx.navigation.navArgument
 import io.nocturne.phone.data.AppContainer
@@ -312,6 +313,6 @@ private fun BrandWordmark() {
             withStyle(SpanStyle(color = nameColor)) { append("nocturne") }
             withStyle(SpanStyle(color = cursorColor)) { append(" ▌") }
         },
-        style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+        style = MaterialTheme.typography.titleMedium.copy(fontFamily = JetBrainsMono),
     )
 }

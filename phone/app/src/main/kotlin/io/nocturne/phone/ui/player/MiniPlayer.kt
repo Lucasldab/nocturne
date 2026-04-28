@@ -88,8 +88,8 @@ fun MiniPlayer(
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface),
     ) {
-        // 1px top + bottom hairlines #655D53 sandwich the 2dp progress strip
-        // (design pass2026-04-28 hand-tuning, second pass).
+        // 1px top hairline only (no bottom border) — separates the mini-player
+        // from the content above; bottom flows directly into the NavigationBar.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -113,12 +113,6 @@ fun MiniPlayer(
                     .background(MaterialTheme.colorScheme.primary),
             )
         }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(1.dp)
-                .background(androidx.compose.ui.graphics.Color(0xFF655D53)),
-        )
 
         Row(
             modifier = Modifier

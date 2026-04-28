@@ -60,7 +60,7 @@ without modifications. Phone APK sideloaded via Obtainium / `adb install`
 
 1. **Build daemon from HEAD on the user's box.**
 
-   ```bash
+   ```
    cd /home/projects/nocturne
    make clean && make
    ```
@@ -70,7 +70,7 @@ without modifications. Phone APK sideloaded via Obtainium / `adb install`
 
 2. **Install daemon binary + systemd user units.**
 
-   ```bash
+   ```
    sudo make install                    # or `make install PREFIX=$HOME/.local`
    systemctl --user daemon-reload
    systemctl --user enable --now nocturned-watch.service
@@ -86,7 +86,7 @@ without modifications. Phone APK sideloaded via Obtainium / `adb install`
    At minimum: `[library].path`, `[cap].bytes`, `[sync_meta].path`,
    `[syncthing].desktop_device_id`, `[syncthing].phone_device_id`.
 
-   ```bash
+   ```
    nocturned doctor --json
    ```
 
@@ -97,7 +97,7 @@ without modifications. Phone APK sideloaded via Obtainium / `adb install`
 
 4. **Run a full cycle once (scan → ingest → resolve → rotate → publish).**
 
-   ```bash
+   ```
    nocturned cycle
    ```
 
@@ -107,7 +107,7 @@ without modifications. Phone APK sideloaded via Obtainium / `adb install`
 
 5. **Build the phone APK on the desktop.**
 
-   ```bash
+   ```
    cd /home/projects/nocturne/phone
    ./gradlew :app:assembleRelease --quiet
    ls -la app/build/outputs/apk/release/
@@ -199,7 +199,7 @@ into the 7-day observation window.
 
 1. **One-shot probe.**
 
-   ```bash
+   ```
    nocturned diskcheck
    ```
 
@@ -210,7 +210,7 @@ into the 7-day observation window.
 
 2. **JSON probe (machine-readable).**
 
-   ```bash
+   ```
    nocturned diskcheck --json | jq
    ```
 
@@ -224,7 +224,7 @@ into the 7-day observation window.
    that runs `nocturned diskcheck` every hour and writes failures to
    a log. Sample units (informational; not required for v1):
 
-   ```ini
+   ```
    # nocturned-diskcheck.service
    [Service]
    Type=oneshot
@@ -276,7 +276,7 @@ track which bucket(s) qualified it.
 
 1. **Pick three resident tracks.** From the manifest:
 
-   ```bash
+   ```
    jq -r '.resident[].id' < $SYNC_META/manifest.json | head -3
    ```
 
@@ -284,7 +284,7 @@ track which bucket(s) qualified it.
 
 2. **Query each.**
 
-   ```bash
+   ```
    nocturned why <full-sha-1>
    nocturned why <prefix-2>      # 8-char prefix
    nocturned why <full-sha-3> --json
@@ -297,7 +297,7 @@ track which bucket(s) qualified it.
 
 3. **Negative case.** A made-up sha or one not in the manifest:
 
-   ```bash
+   ```
    nocturned why deadbeefdeadbeef
    echo "exit=$?"
    ```
@@ -308,7 +308,7 @@ track which bucket(s) qualified it.
 
 1. **Idempotency check.** Without changing anything:
 
-   ```bash
+   ```
    nocturned resolve --dry-run --diff
    ```
 
@@ -318,7 +318,7 @@ track which bucket(s) qualified it.
 2. **Tuning iteration.** Edit `~/.config/nocturne/nocturne.toml` —
    e.g. `buckets[recent_plays].count = 50` (raise from default).
 
-   ```bash
+   ```
    nocturned resolve --dry-run --diff
    ```
 
@@ -328,7 +328,7 @@ track which bucket(s) qualified it.
 
 3. **Read-only contract sanity.** While `nocturned watch` is running:
 
-   ```bash
+   ```
    nocturned resolve --dry-run --diff
    ```
 
@@ -336,7 +336,7 @@ track which bucket(s) qualified it.
    (skip-on-busy warning), but the diff still emits and the binary
    exits 0. The watch service keeps holding its lock — verify with:
 
-   ```bash
+   ```
    nocturned doctor | grep Lockfile     # held (pid=<watch pid>)
    ```
 
@@ -387,7 +387,7 @@ closes both gates.
 
 1. **Day 0 — record baseline.**
 
-   ```bash
+   ```
    nocturned doctor --json > /tmp/nocturne-baseline-day0.json
    nocturned diskcheck --json > /tmp/nocturne-diskcheck-day0.json
    jq '.resident | length' < $SYNC_META/manifest.json     # baseline resident count
@@ -407,7 +407,7 @@ closes both gates.
 
    For each:
 
-   ```bash
+   ```
    nocturned why <sha>                          # for surprising
    # for missing — use catalog.json to find sha, then:
    nocturned why <sha>                          # exit 1 confirms it's not resident

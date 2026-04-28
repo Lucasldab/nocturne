@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -28,6 +29,7 @@ import io.nocturne.phone.ui.firstrun.FirstRunScreen
 import io.nocturne.phone.ui.firstrun.FirstRunViewModel
 import io.nocturne.phone.ui.firstrun.ImportProgressScreen
 import io.nocturne.phone.ui.firstrun.ImportState
+import io.nocturne.phone.ui.player.FirstPlayNotifGate
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -54,6 +56,14 @@ fun AppRoot(app: NocturneApp) {
         if (metaTreeUri != LOADING_SENTINEL) {
             trackCount = container.db.trackDao().count()
         }
+    }
+
+    // Quick task 260428-8i6: AppRoot-hosted POST_NOTIFICATIONS gate. Tap-to-play
+    // call sites submit a deferred action via requestPlay; FirstPlayNotifGate
+    // decides whether to show the rationale (first time only) or run immediately.
+    var pendingPlayAction by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val requestPlay: ((() -> Unit) -> Unit) = { action ->
+        pendingPlayAction = action
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -86,9 +96,18 @@ fun AppRoot(app: NocturneApp) {
                 )
             }
             else -> {
-                BrowserRoot(container)
+                BrowserRoot(container = container, requestPlay = requestPlay)
             }
         }
+        // Quick task 260428-8i6: mount the gate unconditionally so tap-to-play
+        // requests from BrowserRoot can overlay an AlertDialog. pendingPlayAction
+        // is null in the splash / first-run / picker paths so the gate is a no-op
+        // until BrowserRoot fires requestPlay.
+        FirstPlayNotifGate(
+            syncPrefs = container.syncPrefs,
+            pendingAction = pendingPlayAction,
+            onConsumed = { pendingPlayAction = null },
+        )
     }
 }
 

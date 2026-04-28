@@ -57,7 +57,14 @@ import io.nocturne.phone.ui.search.SearchOverlay
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BrowserRoot(container: AppContainer) {
+fun BrowserRoot(
+    container: AppContainer,
+    requestPlay: (() -> Unit) -> Unit,
+) {
+    // Quick task 260428-8i6: requestPlay is the AppRoot-hosted gate's submission
+    // lambda. Tap-to-play sites below wrap their playback action inside
+    // requestPlay { ... } so the FirstPlayNotifGate decides whether to show the
+    // rationale (first time) or run immediately.
     val vm: BrowserViewModel = viewModel(factory = BrowserVMFactory(container))
     val playerVm: PlayerViewModel = viewModel(factory = PlayerVMFactory(container))
     DisposableEffect(playerVm) {
@@ -219,8 +226,10 @@ fun BrowserRoot(container: AppContainer) {
                     TracksScreen(
                         vm = vm,
                         onTrackTap = { track ->
-                            playerVm.playSingleTrack(track)
-                            nav.navigate(Routes.NOW_PLAYING)
+                            requestPlay {
+                                playerVm.playSingleTrack(track)
+                                nav.navigate(Routes.NOW_PLAYING)
+                            }
                         },
                     )
                 }
@@ -237,6 +246,7 @@ fun BrowserRoot(container: AppContainer) {
                         albumId = id,
                         vm = vm,
                         playerVm = playerVm,
+                        requestPlay = requestPlay,
                         onBack = { nav.popBackStack() },
                         onPlayStarted = { nav.navigate(Routes.NOW_PLAYING) },
                     )
@@ -252,8 +262,10 @@ fun BrowserRoot(container: AppContainer) {
                         onBack = { nav.popBackStack() },
                         onAlbumTap = { albumId -> nav.navigate(Routes.albumDetail(albumId)) },
                         onTrackTap = { track ->
-                            playerVm.playSingleTrack(track)
-                            nav.navigate(Routes.NOW_PLAYING)
+                            requestPlay {
+                                playerVm.playSingleTrack(track)
+                                nav.navigate(Routes.NOW_PLAYING)
+                            }
                         },
                     )
                 }
@@ -283,9 +295,14 @@ fun BrowserRoot(container: AppContainer) {
                 pinnedIds = pinnedIds,
                 onPinTrack = { vm.togglePinTrack(it) },
                 onTrackTap = { track ->
+                    // Quick task 260428-8i6: dismiss the overlay BEFORE submitting
+                    // to requestPlay so the gate's AlertDialog (if any) is not
+                    // rendered behind the still-present overlay scrim.
                     showSearch = false
-                    playerVm.playSingleTrack(track)
-                    nav.navigate(Routes.NOW_PLAYING)
+                    requestPlay {
+                        playerVm.playSingleTrack(track)
+                        nav.navigate(Routes.NOW_PLAYING)
+                    }
                 },
             )
         }

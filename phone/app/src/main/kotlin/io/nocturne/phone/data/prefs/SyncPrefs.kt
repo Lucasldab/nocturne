@@ -1,6 +1,7 @@
 package io.nocturne.phone.data.prefs
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
@@ -18,6 +19,7 @@ private val LAST_IMPORT_AT = stringPreferencesKey("last_import_at_iso")
 private val DEVICE_ID = stringPreferencesKey("device_id")
 private val LAST_STATS_SYNC_AT = longPreferencesKey("last_stats_sync_at_ms")
 private val STORAGE_BUDGET_GB = intPreferencesKey("storage_budget_gb")
+private val NOTIF_PROMPT_SHOWN = booleanPreferencesKey("notif_prompt_shown")
 
 /**
  * Single-purpose DataStore wrapper. Keys:
@@ -110,5 +112,21 @@ class SyncPrefs(private val ctx: Context) {
     suspend fun setStorageBudgetGb(gb: Int) {
         val clamped = gb.coerceIn(4, 32)
         ctx.syncDataStore.edit { it[STORAGE_BUDGET_GB] = clamped }
+    }
+
+    /**
+     * Quick task 260428-8i6 (POST_NOTIFICATIONS gate): true once the
+     * AppRoot-hosted FirstPlayNotifGate has shown its rationale dialog
+     * for the first time. The gate persists this on EVERY terminal
+     * state (Allow tapped + system dialog resolved, "Not now" tapped,
+     * outside-tap dismiss) so the rationale never repeats. Pre-Android-13
+     * never reaches the gate; this flag stays false on those builds and
+     * never affects behavior.
+     */
+    val notifPromptShown: Flow<Boolean> =
+        ctx.syncDataStore.data.map { it[NOTIF_PROMPT_SHOWN] ?: false }
+
+    suspend fun setNotifPromptShown(shown: Boolean) {
+        ctx.syncDataStore.edit { it[NOTIF_PROMPT_SHOWN] = shown }
     }
 }

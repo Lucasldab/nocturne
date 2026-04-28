@@ -28,10 +28,8 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
 import io.nocturne.phone.data.db.entity.AlbumEntity
-import io.nocturne.phone.data.db.entity.TrackEntity
 import io.nocturne.phone.player.PlayerViewModel
 import io.nocturne.phone.ui.browser.components.TrackRow
-import io.nocturne.phone.ui.player.rememberNotificationPermissionPrompt
 import kotlinx.coroutines.launch
 
 @Composable
@@ -39,6 +37,7 @@ fun AlbumDetailScreen(
     albumId: String,
     vm: BrowserViewModel,
     playerVm: PlayerViewModel,
+    requestPlay: (() -> Unit) -> Unit,
     onBack: () -> Unit,
     onPlayStarted: () -> Unit,
 ) {
@@ -50,23 +49,6 @@ fun AlbumDetailScreen(
     // PLAY-10: collect pinnedIdSet once per screen; each TrackRow reads its
     // isPinned state from this shared set (more efficient than per-row flows).
     val pinnedIds by vm.pinnedIdSet.collectAsStateWithLifecycle()
-
-    // UI-SPEC Surface 4: POST_NOTIFICATIONS prompt on FIRST PLAY only.
-    // pendingPlay holds the tapped TrackEntity until the permission dialog
-    // resolves; then the onProceed lambda queues and starts playback.
-    var pendingPlay by remember { mutableStateOf<TrackEntity?>(null) }
-    val requestNotifThenPlay = rememberNotificationPermissionPrompt(onProceed = {
-        val t = pendingPlay ?: return@rememberNotificationPermissionPrompt
-        scope.launch {
-            val full = vm.tracksByAlbumList(albumId)
-            val start = full.firstOrNull { it.id == t.id } ?: full.firstOrNull()
-            if (start != null) {
-                playerVm.playAlbumFromTrack(full, start)
-                onPlayStarted()
-            }
-            pendingPlay = null
-        }
-    })
 
     Column(
         modifier = Modifier
@@ -118,11 +100,21 @@ fun AlbumDetailScreen(
                     isPinned = pinnedIds.contains(t.id),
                     onTap = {
                         if (t.isResident) {
-                            // Route through the POST_NOTIFICATIONS prompt on first play;
-                            // subsequent calls either skip the prompt (already granted) or
-                            // show the rationale dialog before proceeding (UI-SPEC Surface 4).
-                            pendingPlay = t
-                            requestNotifThenPlay()
+                            // Quick task 260428-8i6: route through the AppRoot-hosted
+                            // gate so the POST_NOTIFICATIONS rationale appears at most
+                            // once per install. The gate may run this lambda
+                            // immediately (already-shown / granted / pre-Android-13)
+                            // or after the rationale's terminal state resolves.
+                            requestPlay {
+                                scope.launch {
+                                    val full = vm.tracksByAlbumList(albumId)
+                                    val start = full.firstOrNull { it.id == t.id } ?: full.firstOrNull()
+                                    if (start != null) {
+                                        playerVm.playAlbumFromTrack(full, start)
+                                        onPlayStarted()
+                                    }
+                                }
+                            }
                         }
                     },
                     onPinClick = { vm.togglePinTrack(t.id) },

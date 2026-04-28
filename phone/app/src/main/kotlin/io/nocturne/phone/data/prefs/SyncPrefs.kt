@@ -12,6 +12,7 @@ import java.security.SecureRandom
 
 private val Context.syncDataStore by preferencesDataStore(name = "nocturne_sync")
 private val META_TREE_URI = stringPreferencesKey("meta_tree_uri")
+private val MUSIC_TREE_URI = stringPreferencesKey("music_tree_uri")
 private val LAST_IMPORT_AT = stringPreferencesKey("last_import_at_iso")
 private val DEVICE_ID = stringPreferencesKey("device_id")
 private val LAST_STATS_SYNC_AT = longPreferencesKey("last_stats_sync_at_ms")
@@ -31,11 +32,17 @@ private val LAST_STATS_SYNC_AT = longPreferencesKey("last_stats_sync_at_ms")
 class SyncPrefs(private val ctx: Context) {
     val metaTreeUri: Flow<String?> =
         ctx.syncDataStore.data.map { it[META_TREE_URI] }
+    val musicTreeUri: Flow<String?> =
+        ctx.syncDataStore.data.map { it[MUSIC_TREE_URI] }
     val lastImportAt: Flow<String?> =
         ctx.syncDataStore.data.map { it[LAST_IMPORT_AT] }
 
     suspend fun setMetaTreeUri(uri: String) {
         ctx.syncDataStore.edit { it[META_TREE_URI] = uri }
+    }
+
+    suspend fun setMusicTreeUri(uri: String) {
+        ctx.syncDataStore.edit { it[MUSIC_TREE_URI] = uri }
     }
 
     suspend fun setLastImportAt(iso: String) {
@@ -44,6 +51,10 @@ class SyncPrefs(private val ctx: Context) {
 
     suspend fun clearMetaTreeUri() {
         ctx.syncDataStore.edit { it.remove(META_TREE_URI) }
+    }
+
+    suspend fun clearMusicTreeUri() {
+        ctx.syncDataStore.edit { it.remove(MUSIC_TREE_URI) }
     }
 
     /**

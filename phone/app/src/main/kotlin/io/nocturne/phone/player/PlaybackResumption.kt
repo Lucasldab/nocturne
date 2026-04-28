@@ -32,6 +32,7 @@ object PlaybackResumption {
     suspend fun toMediaItemsWithStartPosition(
         saved: SavedQueue,
         trackDao: TrackDao,
+        musicTreeUri: android.net.Uri? = null,
     ): MediaSession.MediaItemsWithStartPosition {
         if (saved.mediaIds.isEmpty()) {
             return emptyResult()
@@ -41,7 +42,7 @@ object PlaybackResumption {
         val resolved = mutableListOf<Pair<Int, MediaItem>>()
         for ((originalIdx, mediaId) in saved.mediaIds.withIndex()) {
             val entity = trackDao.byId(mediaId) ?: continue // silently skip missing tracks
-            resolved.add(Pair(originalIdx, entity.toMediaItem()))
+            resolved.add(Pair(originalIdx, entity.toMediaItem(musicTreeUri = musicTreeUri)))
         }
 
         if (resolved.isEmpty()) return emptyResult()

@@ -1,11 +1,15 @@
 package io.nocturne.phone.ui.settings
 
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -14,10 +18,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.nocturne.phone.data.AppContainer
+import kotlinx.coroutines.launch
 
 /**
  * Phase 6 (STATS-06 / UI-SPEC Surface 3): read-only Settings screen.
@@ -38,6 +45,23 @@ import io.nocturne.phone.data.AppContainer
 fun SettingsScreen(container: AppContainer) {
     val lastSync by container.syncPrefs.lastStatsSyncAt
         .collectAsStateWithLifecycle(initialValue = null)
+    val musicTreeUri by container.syncPrefs.musicTreeUri
+        .collectAsStateWithLifecycle(initialValue = null)
+
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val musicPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri != null) {
+            // Persist read permission across reboots.
+            ctx.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+            scope.launch { container.syncPrefs.setMusicTreeUri(uri.toString()) }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -85,6 +109,33 @@ fun SettingsScreen(container: AppContainer) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
+
+            // MUSIC FOLDER section (Phase 8 hw-acceptance fix).
+            // GrapheneOS + targetSdk 35 blocks raw file:// reads outside the app
+            // private dir. The audio files live in the user's Syncthing-Fork
+            // sync-files folder; the player needs a SAF tree URI for that
+            // folder to build content:// URIs ExoPlayer can open.
+            Text(
+                text = "MUSIC FOLDER",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 24.dp, bottom = 8.dp),
+            )
+            Text(
+                text = if (musicTreeUri == null) {
+                    "Not selected — playback will fail until you pick the Syncthing music-files folder."
+                } else {
+                    "Selected: ${android.net.Uri.parse(musicTreeUri!!).lastPathSegment ?: musicTreeUri}"
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Button(
+                onClick = { musicPicker.launch(null) },
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                Text(if (musicTreeUri == null) "Pick music folder" else "Change music folder")
+            }
         }
     }
 }

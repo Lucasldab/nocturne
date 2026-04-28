@@ -1,5 +1,6 @@
 package io.nocturne.phone.player
 
+import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
@@ -23,8 +24,9 @@ object AlbumQueueBuilder {
     fun buildFromTrack(
         tracks: List<TrackEntity>,
         startTrack: TrackEntity,
+        musicTreeUri: Uri? = null,
     ): Pair<List<MediaItem>, Int> {
-        val items = tracks.map { it.toMediaItem() }
+        val items = tracks.map { it.toMediaItem(musicTreeUri = musicTreeUri) }
         val startIndex = tracks.indexOfFirst { it.id == startTrack.id }.coerceAtLeast(0)
         return items to startIndex
     }

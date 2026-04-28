@@ -86,10 +86,13 @@ class PlayerViewModel(
      */
     fun playAlbumFromTrack(tracks: List<TrackEntity>, startTrack: TrackEntity) {
         val c = _controller.value ?: return  // not yet connected
-        val (items, startIndex) = AlbumQueueBuilder.buildFromTrack(tracks, startTrack)
-        c.setMediaItems(items, startIndex, /* startPositionMs = */ 0L)
-        c.prepare()
-        c.play()
+        viewModelScope.launch {
+            val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
+            val (items, startIndex) = AlbumQueueBuilder.buildFromTrack(tracks, startTrack, musicUri)
+            c.setMediaItems(items, startIndex, /* startPositionMs = */ 0L)
+            c.prepare()
+            c.play()
+        }
     }
 
     /**
@@ -125,12 +128,14 @@ class PlayerViewModel(
         // Build album-unit shuffled index permutation, then reorder the flat
         // list according to that permutation.
         val indices = AlbumUnitShuffle.buildShuffledIndices(albumGroups, seed)
-        val shuffledItems = indices.map { flat[it].toMediaItem() }
-
-        c.setMediaItems(shuffledItems, /* startIndex = */ 0, /* startPositionMs = */ 0L)
-        c.shuffleModeEnabled = true
-        c.prepare()
-        c.play()
+        viewModelScope.launch {
+            val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
+            val shuffledItems = indices.map { flat[it].toMediaItem(musicTreeUri = musicUri) }
+            c.setMediaItems(shuffledItems, /* startIndex = */ 0, /* startPositionMs = */ 0L)
+            c.shuffleModeEnabled = true
+            c.prepare()
+            c.play()
+        }
     }
 
     /** Disable shuffle (returns to the natural queue order). */

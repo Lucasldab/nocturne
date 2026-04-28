@@ -15,6 +15,7 @@ import androidx.media3.session.MediaSessionService
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import io.nocturne.phone.MainActivity
+import kotlinx.coroutines.flow.first
 import io.nocturne.phone.NocturneApp
 import io.nocturne.phone.data.stats.StatsListener
 import kotlinx.coroutines.CoroutineScope
@@ -88,7 +89,7 @@ class PlaybackService : MediaSessionService() {
 
         mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(buildSessionActivityIntent())
-            .setCallback(ResumptionCallback(queueRepository, trackDao))
+            .setCallback(ResumptionCallback(queueRepository, trackDao, container.syncPrefs))
             .build()
 
         // PLAY-09 + Pitfall 7: ExoPlayer parses embedded APIC frames and fires
@@ -240,6 +241,7 @@ class PlaybackService : MediaSessionService() {
     private inner class ResumptionCallback(
         private val queueRepository: QueueRepository,
         private val trackDao: io.nocturne.phone.data.db.dao.TrackDao,
+        private val syncPrefs: io.nocturne.phone.data.prefs.SyncPrefs,
     ) : MediaSession.Callback {
 
         override fun onPlaybackResumption(
@@ -254,7 +256,8 @@ class PlaybackService : MediaSessionService() {
             serviceScope.launch {
                 try {
                     val saved = queueRepository.loadQueue()
-                    val result = PlaybackResumption.toMediaItemsWithStartPosition(saved, trackDao)
+                    val musicUri = syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
+                    val result = PlaybackResumption.toMediaItemsWithStartPosition(saved, trackDao, musicUri)
                     future.set(result)
                 } catch (e: Exception) {
                     // Never propagate exceptions to Media3's callback — return empty queue.

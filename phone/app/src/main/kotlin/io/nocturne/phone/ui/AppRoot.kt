@@ -58,6 +58,44 @@ fun AppRoot(app: NocturneApp) {
         }
     }
 
+    // Manifest reconciliation on every app launch. CatalogImporter only ever
+    // ran on first install; without this, `track.isResident` stays frozen at
+    // the original import even though the daemon's manifest.json keeps
+    // changing as new pins land. Re-read the latest manifest, clear+set the
+    // resident flag for every track id in `manifest.resident[]`. Cheap (~18 KB
+    // JSON, ~125 ids) and idempotent.
+    LaunchedEffect(metaTreeUri, trackCount) {
+        if (metaTreeUri == LOADING_SENTINEL || metaTreeUri == null) return@LaunchedEffect
+        if (trackCount <= 0) return@LaunchedEffect
+        runCatching {
+            val tree = androidx.documentfile.provider.DocumentFile
+                .fromTreeUri(container.appContext, Uri.parse(metaTreeUri))
+                ?: return@runCatching
+            val manifestFile = tree.findFile("manifest.json") ?: return@runCatching
+            val text = container.appContext.contentResolver
+                .openInputStream(manifestFile.uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
+                ?: return@runCatching
+            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            val manifest = json.decodeFromString(
+                io.nocturne.phone.data.catalog.ManifestJson.serializer(), text,
+            )
+            val residentIds = manifest.resident.map { it.id }
+            container.db.trackDao().clearAllResident()
+            if (residentIds.isNotEmpty()) {
+                // Room IN-clause has SQLite parameter limits. Chunk to be safe.
+                residentIds.chunked(500).forEach { batch ->
+                    container.db.trackDao().setResidentFor(batch, true)
+                }
+            }
+            android.util.Log.i(
+                "AppRoot",
+                "manifest reconciled: ${residentIds.size} resident tracks",
+            )
+        }.onFailure {
+            android.util.Log.w("AppRoot", "manifest reconcile failed: ${it.message}")
+        }
+    }
+
     // Quick task 260428-8i6: AppRoot-hosted POST_NOTIFICATIONS gate. Tap-to-play
     // call sites submit a deferred action via requestPlay; FirstPlayNotifGate
     // decides whether to show the rationale (first time only) or run immediately.

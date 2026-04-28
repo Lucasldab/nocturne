@@ -14,8 +14,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -31,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import io.nocturne.phone.ui.browser.components.NocturneBottomNav
 import io.nocturne.phone.ui.player.MiniPlayer
 import io.nocturne.phone.ui.player.NowPlayingScreen
 import io.nocturne.phone.ui.settings.SettingsScreen
@@ -207,73 +206,38 @@ fun BrowserRoot(
                             onTap = { nav.navigate(Routes.NOW_PLAYING) },
                         )
                     }
-                    // 1px top hairline above the NavigationBar — always
-                    // present so the boundary between mini-player and nav (or
-                    // content and nav, when mini absent) reads consistently.
+                    // 1dp top hairline #1A1A1A (matches surfaceVariant per
+                    // bottom-nav design spec — softer separator than the
+                    // previous warm-tan #837A6C).
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(1.dp)
-                            .background(androidx.compose.ui.graphics.Color(0xFF837A6C)),
+                            .background(androidx.compose.ui.graphics.Color(0xFF1A1A1A)),
                     )
-                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                        // Settings tab dropped 2026-04-28 — music-folder picker
-                        // moved to first-run, so the only durable use of the
-                        // Settings page is gone. The composable still exists
-                        // for the STATS SYNC affordance but is no longer in
-                        // the bottom nav.
-                        // Map the active route to the tab it lives under so the
-                        // selected pill survives navigation into detail screens
-                        // (album / artist detail). Without this the pill would
-                        // un-highlight as soon as the user drilled into a list.
-                        val activeTabRoute: String? = when {
-                            currentRoute == Routes.ALBUMS -> Routes.ALBUMS
-                            currentRoute == Routes.ARTISTS -> Routes.ARTISTS
-                            currentRoute == Routes.TRACKS -> Routes.TRACKS
-                            currentRoute == Routes.GENRES -> Routes.GENRES
-                            currentRoute == Routes.ALBUM_DETAIL_PATTERN -> Routes.ALBUMS
-                            currentRoute == Routes.ARTIST_DETAIL_PATTERN -> Routes.ARTISTS
-                            else -> null
-                        }
-                        listOf(
-                            Routes.ALBUMS to "Albums",
-                            Routes.ARTISTS to "Artists",
-                            Routes.TRACKS to "Tracks",
-                            Routes.GENRES to "Genres",
-                        ).forEach { (route, label) ->
-                            NavigationBarItem(
-                                selected = activeTabRoute == route,
-                                colors = androidx.compose.material3.NavigationBarItemDefaults.colors(
-                                    // Selected: 50% alpha purple pill carries the highlight,
-                                    // solid #703490 letter sits fully opaque on top so it
-                                    // stays readable against the translucent fill.
-                                    indicatorColor = androidx.compose.ui.graphics.Color(0x80703490),
-                                    selectedIconColor = androidx.compose.ui.graphics.Color(0xFF703490),
-                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    selectedTextColor = androidx.compose.ui.graphics.Color(0xFF703490),
-                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                ),
-                                onClick = {
-                                    nav.navigate(route) {
-                                        popUpTo(nav.graph.findStartDestination().id) {
-                                            saveState = true
-                                        }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                },
-                                icon = {
-                                    Text(
-                                        text = label.first().toString(),
-                                        style = MaterialTheme.typography.labelMedium,
-                                    )
-                                },
-                                label = {
-                                    Text(text = label, style = MaterialTheme.typography.labelMedium)
-                                },
-                            )
-                        }
+                    // Map active route to its tab so the selected state survives
+                    // navigation into detail screens (album / artist detail).
+                    val activeTabRoute: String? = when {
+                        currentRoute == Routes.ALBUMS -> Routes.ALBUMS
+                        currentRoute == Routes.ARTISTS -> Routes.ARTISTS
+                        currentRoute == Routes.TRACKS -> Routes.TRACKS
+                        currentRoute == Routes.GENRES -> Routes.GENRES
+                        currentRoute == Routes.ALBUM_DETAIL_PATTERN -> Routes.ALBUMS
+                        currentRoute == Routes.ARTIST_DETAIL_PATTERN -> Routes.ARTISTS
+                        else -> null
                     }
+                    NocturneBottomNav(
+                        activeRoute = activeTabRoute,
+                        onTab = { route ->
+                            nav.navigate(route) {
+                                popUpTo(nav.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                    )
                 }
             },
         ) { padding ->

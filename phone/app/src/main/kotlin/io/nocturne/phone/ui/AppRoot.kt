@@ -18,8 +18,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import io.nocturne.phone.NocturneApp
@@ -58,10 +60,21 @@ fun AppRoot(app: NocturneApp) {
         }
     }
 
-    // v0.4.6: cold-start reconcile flips isResident for newly-pinned tracks.
-    // v0.4.7: poll loop below closes the warm-start case (kill+reopen
-    // workaround) by re-running when the daemon rewrites manifest.json.
+    // v0.4.6: cold-start reconcile flipped isResident for newly-pinned
+    // tracks but only on first composition.
+    // v0.4.7: 45s mtime poll while composed.
+    // v0.4.8: ON_RESUME reconcile. GrapheneOS aggressively kills backgrounded
+    // apps; if nocturne dies while waiting for Syncthing to pull a file, the
+    // poll never gets to fire. ON_RESUME runs every time the user returns to
+    // the app — short backgrounding (process alive) AND process restart both
+    // hit it. This is the path that makes pin-as-download "just work" without
+    // any manual step.
+    val reconcileScope = rememberCoroutineScope()
     var lastReconciledMtime by remember { mutableStateOf(0L) }
+
+    // Cold-start path — fires once when metaTreeUri + trackCount become
+    // valid. ON_RESUME below fires before SyncPrefs flows have emitted on
+    // first composition, so we'd skip the very first reconcile without this.
     LaunchedEffect(metaTreeUri, trackCount) {
         if (metaTreeUri == LOADING_SENTINEL || metaTreeUri == null) return@LaunchedEffect
         if (trackCount <= 0) return@LaunchedEffect
@@ -71,12 +84,19 @@ fun AppRoot(app: NocturneApp) {
         if (mtime != null) lastReconciledMtime = mtime
     }
 
-    // Foreground poll: every 45s while AppRoot is composed, probe manifest
-    // mtime and re-reconcile on change. collectAsStateWithLifecycle pauses
-    // the metaTreeUri/musicTreeUri flows when the screen is off, so this
-    // LaunchedEffect re-keys naturally and the loop body only runs while
-    // visible. Probe is a cheap SAF lastModified() call — no JSON parse
-    // unless mtime advanced.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        val uri = metaTreeUri
+        if (uri == null || uri == LOADING_SENTINEL) return@LifecycleEventEffect
+        if (trackCount <= 0) return@LifecycleEventEffect
+        reconcileScope.launch {
+            val mtime = io.nocturne.phone.data.catalog.ManifestReconciler
+                .reconcile(container.appContext, uri, container.db)
+            if (mtime != null) lastReconciledMtime = mtime
+        }
+    }
+
+    // Long-foreground fallback: if user keeps the app open continuously and
+    // a file lands, no ON_RESUME fires. Probe manifest mtime every 45s.
     LaunchedEffect(metaTreeUri, trackCount) {
         if (metaTreeUri == LOADING_SENTINEL || metaTreeUri == null) return@LaunchedEffect
         if (trackCount <= 0) return@LaunchedEffect

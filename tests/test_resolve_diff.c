@@ -57,12 +57,39 @@ static int exec_sql(struct nocturne_db *db, const char *sql)
     return rc == SQLITE_OK ? 0 : -1;
 }
 
+/* seed_track — insert a tracks row so the manifest_current FK constraint
+ * (sha256 -> tracks.sha256) is satisfied. tracks NOT NULL columns:
+ * sha256, path, mtime_ns, size_bytes, date_added, last_seen_at. */
+static void seed_track(struct nocturne_db *db,
+                       const char *sha, long long size_bytes)
+{
+    sqlite3_stmt *st = NULL;
+    sqlite3_prepare_v2(db_handle(db),
+        "INSERT INTO tracks (sha256, path, mtime_ns, size_bytes, "
+        "date_added, last_seen_at) VALUES (?, ?, 0, ?, "
+        "'2026-04-27T00:00:00Z', '2026-04-27T00:00:00Z')",
+        -1, &st, NULL);
+    sqlite3_bind_text(st, 1, sha, -1, SQLITE_TRANSIENT);
+    char path[256];
+    snprintf(path, sizeof(path), "/tmp/diff-fixture/%s.mp3", sha);
+    sqlite3_bind_text(st, 2, path, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(st, 3, size_bytes);
+    int rc = sqlite3_step(st);
+    if (rc != SQLITE_DONE && rc != SQLITE_CONSTRAINT) {
+        fprintf(stderr, "seed_track(%s) failed: %s\n", sha,
+                sqlite3_errmsg(db_handle(db)));
+    }
+    sqlite3_finalize(st);
+}
+
 /* seed_current — insert a manifest_current row. buckets_csv is comma-joined
- * (matches resolve_cmd.c writer). */
+ * (matches resolve_cmd.c writer). Auto-seeds the parent tracks row so the
+ * FK constraint is satisfied. */
 static void seed_current(struct nocturne_db *db,
                          const char *sha, const char *buckets_csv,
                          long long size_bytes)
 {
+    seed_track(db, sha, size_bytes);
     sqlite3_stmt *st = NULL;
     sqlite3_prepare_v2(db_handle(db),
         "INSERT INTO manifest_current (sha256, buckets_csv, size_bytes) "
@@ -70,7 +97,11 @@ static void seed_current(struct nocturne_db *db,
     sqlite3_bind_text(st, 1, sha, -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(st, 2, buckets_csv, -1, SQLITE_TRANSIENT);
     sqlite3_bind_int64(st, 3, size_bytes);
-    sqlite3_step(st);
+    int rc = sqlite3_step(st);
+    if (rc != SQLITE_DONE) {
+        fprintf(stderr, "seed_current(%s) failed: %s\n", sha,
+                sqlite3_errmsg(db_handle(db)));
+    }
     sqlite3_finalize(st);
 }
 
@@ -170,7 +201,7 @@ int main(int argc, char **argv)
         expect(rc == 0, "test_diff_added_only: print_resolve_diff returns 0");
         expect(buf && strstr(buf, "ADDED: 1") != NULL,
                "test_diff_added_only: text contains 'ADDED: 1'");
-        expect(buf && strstr(buf, "cccccccccccc") != NULL,
+        expect(buf && strstr(buf, "cccccccc3333") != NULL,
                "test_diff_added_only: ADDED line names the new track (sha-12)");
         expect(buf && strstr(buf, "recent_adds") != NULL,
                "test_diff_added_only: ADDED line names the bucket");
@@ -210,7 +241,7 @@ int main(int argc, char **argv)
         expect(rc == 0, "test_diff_removed_only: print_resolve_diff returns 0");
         expect(buf && strstr(buf, "REMOVED: 1") != NULL,
                "test_diff_removed_only: text contains 'REMOVED: 1'");
-        expect(buf && strstr(buf, "bbbbbbbbbbbb") != NULL,
+        expect(buf && strstr(buf, "bbbbbbbb2222") != NULL,
                "test_diff_removed_only: REMOVED line names the dropped track");
         expect(buf && strstr(buf, "top_played") != NULL,
                "test_diff_removed_only: REMOVED line names the bucket");
@@ -286,11 +317,11 @@ int main(int argc, char **argv)
                "test_diff_combined: REMOVED:1 (bbbbbb...)");
         expect(buf && strstr(buf, "SHIFTED BUCKETS: 1") != NULL,
                "test_diff_combined: SHIFTED:1 (dddddd...)");
-        expect(buf && strstr(buf, "cccccccccccc") != NULL,
+        expect(buf && strstr(buf, "cccccccc3333") != NULL,
                "test_diff_combined: ADDED line names cccccc track");
-        expect(buf && strstr(buf, "bbbbbbbbbbbb") != NULL,
+        expect(buf && strstr(buf, "bbbbbbbb2222") != NULL,
                "test_diff_combined: REMOVED line names bbbbbb track");
-        expect(buf && strstr(buf, "dddddddddddd") != NULL,
+        expect(buf && strstr(buf, "dddddddd4444") != NULL,
                "test_diff_combined: SHIFTED line names dddddd track");
 
         free(buf);

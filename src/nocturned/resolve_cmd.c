@@ -12,6 +12,7 @@
 #include "cli.h"
 #include "config.h"
 #include "db.h"
+#include "diff.h"
 #include "lock.h"
 #include "paths.h"
 #include "resolver.h"
@@ -180,7 +181,17 @@ int resolve_cmd_main(struct cli_args *args)
         }
     }
 
-    if (args->explain) {
+    /* `--diff` consumes the resolved manifest read-only and prints the
+     * delta against `manifest_current`. It supersedes `--explain` (the
+     * tuning loop wants ADD/REMOVE/SHIFT, not per-track attribution). */
+    if (args->diff) {
+        if (print_resolve_diff(db, &m, args->json, stdout) != 0) {
+            fprintf(stderr, "nocturned resolve: diff formatter failed\n");
+            manifest_free(&m); config_free(&cfg);
+            db_close(db); lock_release(lock);
+            return NOCT_EXIT_FAILURE;
+        }
+    } else if (args->explain) {
         for (size_t i = 0; i < m.resident_n; i++) {
             const struct manifest_track *t = &m.resident[i];
             printf("%.12s  ", t->sha256);
@@ -191,11 +202,16 @@ int resolve_cmd_main(struct cli_args *args)
         }
     }
 
-    fprintf(stdout,
-        "resolve: residents=%zu used=%lld cap=%lld effective=%lld cold_start=%s%s\n",
-        m.resident_n, m.used_bytes, m.cap_bytes, m.cap_effective_bytes,
-        m.cold_start ? "yes" : "no",
-        args->dry_run ? " (dry-run)" : "");
+    /* The summary line is the legacy --dry-run / --explain shape. Skip it
+     * under --diff: the diff output already carries USED:/cap_effective
+     * and the tuning loop benefits from clean stdout for piping. */
+    if (!args->diff) {
+        fprintf(stdout,
+            "resolve: residents=%zu used=%lld cap=%lld effective=%lld cold_start=%s%s\n",
+            m.resident_n, m.used_bytes, m.cap_bytes, m.cap_effective_bytes,
+            m.cold_start ? "yes" : "no",
+            args->dry_run ? " (dry-run)" : "");
+    }
 
     /* Nudge (NOT auto-invoke) — the rotate engine is a separate write
      * subcommand the user runs explicitly after resolve. UI-priority

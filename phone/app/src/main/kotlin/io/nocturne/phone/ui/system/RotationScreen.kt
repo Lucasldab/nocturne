@@ -82,7 +82,7 @@ fun RotationScreen(container: AppContainer) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = "${(pct * 100).toInt()}% of %.0f GB cap".format(capGb),
+                text = "%d%% of %.0f GB cap".format((pct * 100).toInt(), capGb),
                 style = monoStyle(11),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

@@ -59,3 +59,9 @@ phone/**/*.iml
 .nocturne-next-cmd
 .nocturne-resume.log
 .nocturne-kitty.log
+
+# On-device screenshots dropped in repo root for design review (not source).
+/*.png
+/*.jpg
+/*.jpeg
+/*.webp

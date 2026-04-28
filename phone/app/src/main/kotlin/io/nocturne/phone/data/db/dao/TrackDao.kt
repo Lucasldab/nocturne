@@ -60,4 +60,12 @@ interface TrackDao {
      */
     @Query("SELECT * FROM tracks ORDER BY title COLLATE NOCASE")
     suspend fun listAll(): List<TrackEntity>
+
+    /**
+     * First resident track of an album. Used as the embedded-artwork source
+     * when rendering AlbumRow cover art via MediaMetadataRetriever — pick the
+     * lowest disc/track number that's actually on disk.
+     */
+    @Query("SELECT * FROM tracks WHERE albumId = :albumId AND isResident = 1 ORDER BY discNumber, trackNumber LIMIT 1")
+    suspend fun firstResidentByAlbum(albumId: String): TrackEntity?
 }

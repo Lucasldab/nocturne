@@ -189,12 +189,22 @@ class PlaybackService : MediaSessionService() {
         player.addListener(object : Player.Listener {
             override fun onMediaMetadataChanged(metadata: MediaMetadata) {
                 val raw = metadata.artworkData ?: return
+                // Snapshot mediaId at listener entry. The artwork-scaling
+                // coroutine below may resume AFTER an auto-skip (missing-file
+                // → seekToNextMediaItem) has advanced the player. Without this
+                // guard, replaceMediaItem(currentIndex, updated) would clobber
+                // the NEW track's metadata with the OLD track's title/artist
+                // — visible as the queue row showing the past song's name.
+                val capturedMediaId = player.currentMediaItem?.mediaId ?: return
+                val capturedIndex = player.currentMediaItemIndex
                 serviceScope.launch {
                     val scaled = ArtworkLoader.scaleTo300(raw) ?: return@launch
                     // Guard: if the bytes didn't actually change (already scaled),
                     // skip the replaceMediaItem to avoid a redundant listener cycle.
                     if (scaled.contentEquals(raw)) return@launch
                     withContext(Dispatchers.Main) {
+                        // Bail if the player moved on while we were scaling.
+                        if (player.currentMediaItem?.mediaId != capturedMediaId) return@withContext
                         val current = player.currentMediaItem ?: return@withContext
                         val updated = current.buildUpon()
                             .setMediaMetadata(
@@ -206,7 +216,9 @@ class PlaybackService : MediaSessionService() {
                                     .build(),
                             )
                             .build()
-                        player.replaceMediaItem(player.currentMediaItemIndex, updated)
+                        // Use captured index (still valid since mediaId matches)
+                        // — never re-read currentMediaItemIndex inside the post.
+                        player.replaceMediaItem(capturedIndex, updated)
                     }
                 }
             }

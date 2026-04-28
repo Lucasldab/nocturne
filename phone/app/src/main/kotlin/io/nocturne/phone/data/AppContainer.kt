@@ -2,6 +2,7 @@ package io.nocturne.phone.data
 
 import android.content.Context
 import androidx.room.Room
+import io.nocturne.phone.data.catalog.AlbumArtRepository
 import io.nocturne.phone.data.catalog.CatalogImporter
 import io.nocturne.phone.data.db.MIGRATION_2_3
 import io.nocturne.phone.data.db.MIGRATION_3_4
@@ -71,5 +72,12 @@ class AppContainer(
     }
     val likesWriter: LikesWriter by lazy {
         LikesWriter(db.likeDao(), syncPrefs, jsonlFileWriter)
+    }
+
+    // Embedded album-art reader (cached). AlbumRow uses this to render real
+    // covers from the audio file's APIC / METADATA_BLOCK_PICTURE bytes via
+    // MediaMetadataRetriever — no Coil dependency.
+    val albumArt: AlbumArtRepository by lazy {
+        AlbumArtRepository(applicationContext, db, syncPrefs)
     }
 }

@@ -1,42 +1,66 @@
 package io.nocturne.phone.ui.browser.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.nocturne.phone.data.AppContainer
 import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Generative gradient placeholder for album art (design pass2026-04-27).
+ * Album-art tile.
  *
- * Per the design pass, art comes via Syncthing later — gradients are honest
- * placeholders. Algorithm mirrors the design's `albumGradient`:
- *   - Hash the seed with a 31-multiplier rolling FNV-ish.
- *   - Two HSL stops, hue h1 and h1+30+offset.
- *   - Saturation 18-30 / 22-36, lightness 14-22 / 26-36 — dark + muted.
- *   - Gradient angle from a separate hash bit.
+ * If [container] is provided AND the album's first resident track has embedded
+ * artwork, decodes it via [io.nocturne.phone.data.catalog.AlbumArtRepository]
+ * and renders the bitmap. Otherwise falls back to the deterministic gradient
+ * placeholder (design pass2026-04-27 albumGradient).
  *
- * Deterministic — same id always gets the same gradient.
+ * The gradient is ALWAYS painted under the bitmap so a partially-loaded row
+ * never flashes a blank box. `produceState` runs on the default dispatcher;
+ * AlbumArtRepository moves the actual MMR call onto Dispatchers.IO.
  */
 @Composable
 fun AlbumArt(
     seed: String,
     modifier: Modifier = Modifier,
     size: Dp = 48.dp,
+    container: AppContainer? = null,
 ) {
     val brush = remember(seed, size) { albumGradientBrush(seed) }
+    val bitmap: ImageBitmap? = if (container == null) null else {
+        val state = produceState<ImageBitmap?>(initialValue = null, key1 = seed) {
+            value = container.albumArt.load(seed)?.asImageBitmap()
+        }
+        state.value
+    }
     Box(
         modifier = modifier
             .size(size)
             .background(brush),
-    )
+    ) {
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
 }
 
 internal fun albumGradientBrush(seed: String): Brush {

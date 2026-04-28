@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
+import io.nocturne.phone.data.AppContainer
 import io.nocturne.phone.ui.browser.components.AlbumRow
 import io.nocturne.phone.ui.browser.components.SectionLabel
 
@@ -16,6 +17,7 @@ import io.nocturne.phone.ui.browser.components.SectionLabel
 fun AlbumsScreen(
     vm: BrowserViewModel,
     onNavigate: (String) -> Unit,
+    container: AppContainer? = null,
     modifier: Modifier = Modifier,
 ) {
     val pagingItems = vm.albums.collectAsLazyPagingItems()
@@ -33,7 +35,7 @@ fun AlbumsScreen(
             contentType = pagingItems.itemContentType { "album" },
         ) { index ->
             val album = pagingItems[index] ?: return@items
-            AlbumRow(album = album, onTap = { onNavigate(album.id) })
+            AlbumRow(album = album, onTap = { onNavigate(album.id) }, container = container)
         }
     }
 }

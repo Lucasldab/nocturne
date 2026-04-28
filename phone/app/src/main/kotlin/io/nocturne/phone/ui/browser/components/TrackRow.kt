@@ -1,6 +1,7 @@
 package io.nocturne.phone.ui.browser.components
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -33,6 +34,7 @@ import io.nocturne.phone.ui.theme.NocturneTheme
  *    non-resident rows do NOT play (no file present) — their tap routes to
  *    onPinClick so the user can pin the track.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TrackRow(
     track: TrackEntity,
@@ -40,12 +42,16 @@ fun TrackRow(
     isCurrentlyPlaying: Boolean = false, // TODO 05-05: render leading 2dp accent border
     isPinned: Boolean = false,
     onPinClick: () -> Unit = {},
+    onLongPress: () -> Unit = {},
 ) {
     val rowAlpha = if (track.isResident) 1f else NON_RESIDENT_ALPHA
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = if (track.isResident) onTap else onPinClick)
+            .combinedClickable(
+                onClick = if (track.isResident) onTap else onPinClick,
+                onLongClick = if (track.isResident) onLongPress else null,
+            )
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .alpha(rowAlpha),
         verticalAlignment = Alignment.CenterVertically,

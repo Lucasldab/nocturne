@@ -92,6 +92,11 @@ class PlayerViewModel(
      * exactly the tapped track and start playback. The user can build an
      * album-context queue by going via Albums → Album Detail.
      */
+    /** DB lookup for the current MediaController item — used by NowPlaying
+     *  to pull format / bitrate / size into the file-info card. */
+    suspend fun getTrack(id: String): TrackEntity? =
+        container.db.trackDao().byId(id)
+
     fun playSingleTrack(track: TrackEntity) {
         val c = _controller.value ?: return  // not yet connected
         viewModelScope.launch {

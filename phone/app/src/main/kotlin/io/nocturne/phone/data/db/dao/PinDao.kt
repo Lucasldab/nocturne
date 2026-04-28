@@ -15,7 +15,7 @@ interface PinDao {
     @Query("SELECT * FROM pins WHERE synced = 0 ORDER BY pinnedAt ASC")
     fun unsynced(): Flow<List<PinEntity>>
 
-    @Query("SELECT id FROM pins")
+    @Query("SELECT id FROM pins WHERE pinned = 1")
     fun allPinnedIds(): Flow<List<String>>
 
     @Query("SELECT * FROM pins ORDER BY pinnedAt DESC")

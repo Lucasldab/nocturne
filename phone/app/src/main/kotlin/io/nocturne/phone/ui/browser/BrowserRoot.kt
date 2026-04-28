@@ -244,10 +244,10 @@ fun BrowserRoot(
                             NavigationBarItem(
                                 selected = activeTabRoute == route,
                                 colors = androidx.compose.material3.NavigationBarItemDefaults.colors(
-                                    // Selected = solid purple letter (no pill). Indicator
-                                    // pill rendered transparent so the letter alone carries
-                                    // the active state.
-                                    indicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                                    // Selected: 50% alpha purple pill carries the highlight,
+                                    // solid #703490 letter sits fully opaque on top so it
+                                    // stays readable against the translucent fill.
+                                    indicatorColor = androidx.compose.ui.graphics.Color(0x80703490),
                                     selectedIconColor = androidx.compose.ui.graphics.Color(0xFF703490),
                                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                     selectedTextColor = androidx.compose.ui.graphics.Color(0xFF703490),
@@ -298,13 +298,14 @@ fun BrowserRoot(
                 modifier = Modifier.padding(padding),
             ) {
                 composable(Routes.ALBUMS) {
-                    AlbumsScreen(vm, onNavigate = { id -> nav.navigate(Routes.albumDetail(id)) })
+                    AlbumsScreen(vm, onNavigate = { id -> nav.navigate(Routes.albumDetail(id)) }, container = container)
                 }
                 composable(Routes.ARTISTS) {
                     ArtistsScreen(vm, onNavigate = { id -> nav.navigate(Routes.artistDetail(id)) })
                 }
                 composable(Routes.TRACKS) {
                     val scope = androidx.compose.runtime.rememberCoroutineScope()
+                    val ctx = androidx.compose.ui.platform.LocalContext.current
                     TracksScreen(
                         vm = vm,
                         onTrackTap = { track ->
@@ -315,6 +316,14 @@ fun BrowserRoot(
                                     nav.navigate(Routes.NOW_PLAYING)
                                 }
                             }
+                        },
+                        onTrackLongPress = { track ->
+                            playerVm.enqueueTrack(track)
+                            android.widget.Toast.makeText(
+                                ctx,
+                                "Added to queue",
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
                         },
                     )
                 }

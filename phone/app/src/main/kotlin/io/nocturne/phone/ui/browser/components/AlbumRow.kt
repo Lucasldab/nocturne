@@ -16,12 +16,13 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import io.nocturne.phone.data.AppContainer
 import io.nocturne.phone.data.db.entity.AlbumEntity
 import io.nocturne.phone.ui.theme.NON_RESIDENT_ALPHA
 import io.nocturne.phone.ui.theme.NocturneTheme
 
 @Composable
-fun AlbumRow(album: AlbumEntity, onTap: () -> Unit) {
+fun AlbumRow(album: AlbumEntity, onTap: () -> Unit, container: AppContainer? = null) {
     val rowAlpha = if (album.hasResident) 1f else NON_RESIDENT_ALPHA
     Row(
         modifier = Modifier
@@ -31,7 +32,7 @@ fun AlbumRow(album: AlbumEntity, onTap: () -> Unit) {
             .alpha(rowAlpha),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AlbumArt(seed = album.id)
+        AlbumArt(seed = album.id, container = container)
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(

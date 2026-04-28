@@ -15,8 +15,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -41,6 +44,7 @@ import io.nocturne.phone.ui.theme.NocturnePrimary
 fun QueueSection(
     controller: MediaController,
     currentIndex: Int,
+    playerVm: PlayerViewModel? = null,
     modifier: Modifier = Modifier,
 ) {
     val items = remember { mutableStateOf<List<MediaItem>>(emptyList()) }
@@ -72,9 +76,21 @@ fun QueueSection(
                 key = { it.mediaId },
             ) { item ->
                 val idx = items.value.indexOf(item)
+                // Resolve title/artist from the DB by mediaId — the live
+                // MediaItem.mediaMetadata can lag or inherit from the previously
+                // active item when ExoPlayer skips a missing-file row.
+                var dbTitle by remember(item.mediaId) { mutableStateOf<String?>(null) }
+                var dbArtist by remember(item.mediaId) { mutableStateOf<String?>(null) }
+                LaunchedEffect(item.mediaId, playerVm) {
+                    if (playerVm != null) {
+                        val track = playerVm.getTrack(item.mediaId)
+                        dbTitle = track?.title
+                        dbArtist = track?.artist?.firstOrNull()
+                    }
+                }
                 QueueRow(
-                    title = item.mediaMetadata.title?.toString().orEmpty(),
-                    artist = item.mediaMetadata.artist?.toString().orEmpty(),
+                    title = dbTitle ?: item.mediaMetadata.title?.toString().orEmpty(),
+                    artist = dbArtist ?: item.mediaMetadata.artist?.toString().orEmpty(),
                     isCurrent = idx == currentIndex,
                     onTap = {
                         controller.seekToDefaultPosition(idx)

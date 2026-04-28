@@ -103,14 +103,25 @@ fun NowPlayingScreen(
     val isLiked by playerVm.isLikedFlow.collectAsStateWithLifecycle()
     val currentTrackId = controller.currentMediaItem?.mediaId
 
+    // FileInfoCard needs format / size / duration from the DB row (the
+    // MediaController metadata only carries title/artist/album).
+    var trackEntity by remember(currentTrackId) {
+        mutableStateOf<io.nocturne.phone.data.db.entity.TrackEntity?>(null)
+    }
+    androidx.compose.runtime.LaunchedEffect(currentTrackId) {
+        trackEntity = currentTrackId?.let { playerVm.getTrack(it) }
+    }
+
     NowPlayingBody(
         controller = controller,
+        playerVm = playerVm,
         title = metadata.title?.toString().orEmpty(),
         artist = metadata.artist?.toString().orEmpty(),
         album = metadata.albumTitle?.toString().orEmpty(),
         artworkBytes = metadata.artworkData,
         currentIndex = currentIndex,
         currentTrackId = currentTrackId,
+        currentTrack = trackEntity,
         isLiked = isLiked,
         onToggleLike = { playerVm.toggleLike() },
         onBack = onBack,
@@ -121,12 +132,14 @@ fun NowPlayingScreen(
 @Composable
 private fun NowPlayingBody(
     controller: MediaController,
+    playerVm: PlayerViewModel,
     title: String,
     artist: String,
     album: String,
     artworkBytes: ByteArray?,
     currentIndex: Int,
     currentTrackId: String?,
+    currentTrack: io.nocturne.phone.data.db.entity.TrackEntity?,
     isLiked: Boolean,
     onToggleLike: () -> Unit,
     onBack: () -> Unit,
@@ -229,7 +242,7 @@ private fun NowPlayingBody(
             Spacer(Modifier.height(18.dp))
 
             // 3. File-info card — bordered metadata table (mono, muted).
-            FileInfoCard(controller = controller, currentIndex = currentIndex)
+            FileInfoCard(controller = controller, currentIndex = currentIndex, track = currentTrack)
 
             Spacer(Modifier.height(16.dp))
 
@@ -237,6 +250,7 @@ private fun NowPlayingBody(
             QueueSection(
                 controller = controller,
                 currentIndex = currentIndex,
+                playerVm = playerVm,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -405,7 +419,11 @@ private fun formatMs(ms: Long): String {
  */
 @OptIn(UnstableApi::class)
 @Composable
-private fun FileInfoCard(controller: MediaController, currentIndex: Int) {
+private fun FileInfoCard(
+    controller: MediaController,
+    currentIndex: Int,
+    track: io.nocturne.phone.data.db.entity.TrackEntity?,
+) {
     // design pass2026-04-28: explicit FileInfoCard palette.
     // Border #837a6c, all glyphs #9e9689, JetBrains Mono — falling back to
     // JetBrainsMono (Roboto Mono) until the OFL JetBrains Mono TTFs
@@ -452,20 +470,49 @@ private fun FileInfoCard(controller: MediaController, currentIndex: Int) {
         "%02d:%02d".format(mm, ss)
     } else "—"
 
+    // "format" line — codec + computed bitrate. Codec source priority:
+    //   1. track.format (Room — populated from catalog.json)
+    //   2. file extension parsed off the controller's currentMediaItem URI
+    //      (works even when Room lookup races composition or the row is missing)
+    //   3. literal "audio" as the last fallback.
+    // Bitrate prefers track.durationMs when known (catalog), else falls back to
+    // controller.duration (live ExoPlayer reading) once it has settled past the
+    // initial -1.
+    val formatLine = run {
+        val codecFromUri = run {
+            val uri = controller.currentMediaItem?.localConfiguration?.uri?.toString()
+            uri?.substringAfterLast('.', "")
+                ?.substringBefore('?')
+                ?.takeIf { it.isNotBlank() && it.length <= 5 }
+                ?.lowercase()
+        }
+        val codec = track?.format?.lowercase() ?: codecFromUri
+        val effDurationMs = (track?.durationMs ?: 0L).takeIf { it > 0L }
+            ?: durationMs.takeIf { it > 0L }
+            ?: 0L
+        val effSizeBytes = track?.sizeBytes ?: 0L
+        val kbps = if (effSizeBytes > 0L && effDurationMs > 0L) {
+            (effSizeBytes * 8L / effDurationMs).toInt()
+        } else 0
+        when {
+            codec != null && kbps > 0 -> "$codec $kbps kbps"
+            codec != null -> codec
+            kbps > 0 -> "$kbps kbps"
+            else -> "audio"
+        }
+    }
+    val residentLine = if (track != null) (if (track.isResident) "yes" else "no") else "yes"
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .border(1.dp, borderColor)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        FileInfoRow("format", "audio", mono, mutedColor, onSurface)
+        FileInfoRow("format", formatLine, mono, mutedColor, onSurface)
         FileInfoRow("track", trackLine, mono, mutedColor, onSurface)
         FileInfoRow("duration", durationLine, mono, mutedColor, onSurface)
-        // resident: every queued track came from the resident set on this phone
-        // (phone never receives archive/ content per Phase 3 design), so 'yes'
-        // is the only honest value. Future: bind to TrackEntity.isResident
-        // once a DAO query is plumbed.
-        FileInfoRow("resident", "yes", mono, mutedColor, onSurface)
+        FileInfoRow("resident", residentLine, mono, mutedColor, onSurface)
     }
 }
 

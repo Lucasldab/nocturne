@@ -127,11 +127,7 @@ without modifications. Phone APK sideloaded via Obtainium / `adb install`
      GitHub). In Obtainium on the phone: Add App → URL pointing at the
      release; Obtainium pulls the APK and installs it.
 
-   - **`adb install` path:**
-
-     ```bash
-     adb install -r phone/app/build/outputs/apk/release/nocturne-phone-release.apk
-     ```
+   - **`adb install` path:** `adb install -r phone/app/build/outputs/apk/release/nocturne-phone-release.apk`
 
    Expected: install succeeds; the app appears in the launcher.
 
@@ -154,10 +150,7 @@ without modifications. Phone APK sideloaded via Obtainium / `adb install`
 
    1. On the phone, find a non-resident track (dimmed in the browser).
    2. Tap its PinChip. Wait ≤5 minutes (per SYNC-06 timing).
-   3. On the desktop:
-      ```bash
-      nocturned cycle
-      ```
+   3. On the desktop, run `nocturned cycle`.
    4. Confirm the file is now under `<library_root>/resident/` and the
       phone's Syncthing-Fork "Out of Sync" count is 0.
 

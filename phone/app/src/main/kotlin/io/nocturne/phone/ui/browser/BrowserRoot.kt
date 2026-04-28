@@ -202,16 +202,19 @@ fun BrowserRoot(
                             onTap = { nav.navigate(Routes.NOW_PLAYING) },
                         )
                     }
-                    // 1px top hairline above the NavigationBar — #837A6C
-                    // (260428-ja8 polish pass). Matches the NowPlaying bottom
-                    // transport hairline so the two ruled-boundary accents
-                    // share one tone across the chrome.
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(1.dp)
-                            .background(androidx.compose.ui.graphics.Color(0xFF837A6C)),
-                    )
+                    // 1px top hairline above the NavigationBar — #837A6C.
+                    // Skipped when the mini-player sits above: the mini already
+                    // owns the upper boundary, and an extra rule directly under
+                    // its 44dp row reads as a bottom border on the mini's
+                    // progress strip (260428 user feedback).
+                    if (!(hasMediaItem && activeController != null)) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(androidx.compose.ui.graphics.Color(0xFF837A6C)),
+                        )
+                    }
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                         // Settings tab dropped 2026-04-28 — music-folder picker
                         // moved to first-run, so the only durable use of the

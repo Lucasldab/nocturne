@@ -47,9 +47,21 @@ fun TrackEntity.toMediaItem(
         }
         .build()
 
+    // Catalog paths are LIBRARY-ROOT relative (`resident/...` or `archive/...`)
+    // because the desktop daemon owns the path-layout subtrees. But desktop
+    // Syncthing's sync-files folder is mapped at `<library>/resident/` and
+    // sends only the contents — so on the phone, files arrive WITHOUT the
+    // `resident/` prefix. Strip the leading subtree segment before composing
+    // the SAF URI. (Phase 3 architecture: the phone never receives `archive/`
+    // content, so the `archive/` branch should never fire in practice — kept
+    // for robustness in case a track flips during a rotation.)
+    val phoneRelativePath = path
+        .removePrefix("resident/")
+        .removePrefix("archive/")
+
     val uri: Uri = if (musicTreeUri != null) {
         val treeDocId = DocumentsContract.getTreeDocumentId(musicTreeUri)
-        val childDocId = "$treeDocId/$path"
+        val childDocId = "$treeDocId/$phoneRelativePath"
         DocumentsContract.buildDocumentUriUsingTree(musicTreeUri, childDocId)
     } else {
         Uri.fromFile(File(path))

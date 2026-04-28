@@ -65,3 +65,6 @@ phone/**/*.iml
 /*.jpg
 /*.jpeg
 /*.webp
+
+# Agent runtime state (worktrees, locks, local settings)
+.claude/

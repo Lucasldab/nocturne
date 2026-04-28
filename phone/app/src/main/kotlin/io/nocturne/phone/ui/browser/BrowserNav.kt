@@ -21,11 +21,4 @@ object Routes {
     const val NOW_PLAYING = "now-playing"
 
     const val SETTINGS = "settings"
-
-    // Quick task 260428-7zc — System hub + four sub-screens.
-    const val SYSTEM_HUB = "system"
-    const val SYSTEM_ROTATION = "system/rotation"
-    const val SYSTEM_SYNC = "system/sync"
-    const val SYSTEM_STORAGE = "system/storage"
-    const val SYSTEM_STATS = "system/stats"
 }

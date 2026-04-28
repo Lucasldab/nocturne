@@ -2,6 +2,7 @@ package io.nocturne.phone.data.prefs
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -16,6 +17,7 @@ private val MUSIC_TREE_URI = stringPreferencesKey("music_tree_uri")
 private val LAST_IMPORT_AT = stringPreferencesKey("last_import_at_iso")
 private val DEVICE_ID = stringPreferencesKey("device_id")
 private val LAST_STATS_SYNC_AT = longPreferencesKey("last_stats_sync_at_ms")
+private val STORAGE_BUDGET_GB = intPreferencesKey("storage_budget_gb")
 
 /**
  * Single-purpose DataStore wrapper. Keys:
@@ -88,5 +90,25 @@ class SyncPrefs(private val ctx: Context) {
 
     suspend fun setLastStatsSyncAt(epochMs: Long) {
         ctx.syncDataStore.edit { it[LAST_STATS_SYNC_AT] = epochMs }
+    }
+
+    /**
+     * Quick task 260428-7zc (System / Storage screen): user-configurable
+     * resident-set byte budget in whole gigabytes. Default 12 GB matches
+     * PROJECT.md's "default ~12GB" constraint. Range clamped to 4..32 GB on
+     * write — the slider in StorageScreen renders the same domain so
+     * out-of-range values can only arrive via direct DataStore tampering.
+     *
+     * NOTE: this preference is the phone-side display target only. The
+     * authoritative cap that drives rotation lives on the desktop daemon's
+     * config.toml; this value is currently advisory until a future plan
+     * pushes it back via the meta folder.
+     */
+    val storageBudgetGb: Flow<Int> =
+        ctx.syncDataStore.data.map { it[STORAGE_BUDGET_GB] ?: 12 }
+
+    suspend fun setStorageBudgetGb(gb: Int) {
+        val clamped = gb.coerceIn(4, 32)
+        ctx.syncDataStore.edit { it[STORAGE_BUDGET_GB] = clamped }
     }
 }

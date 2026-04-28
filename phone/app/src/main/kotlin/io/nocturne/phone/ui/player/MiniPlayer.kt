@@ -19,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -63,8 +64,8 @@ fun MiniPlayer(
     modifier: Modifier = Modifier,
 ) {
     var metadata by remember { mutableStateOf(controller.mediaMetadata) }
-    var positionMs by remember { mutableStateOf(controller.currentPosition) }
-    var durationMs by remember { mutableStateOf(controller.duration) }
+    var positionMs by remember { mutableLongStateOf(controller.currentPosition) }
+    var durationMs by remember { mutableLongStateOf(controller.duration) }
     DisposableEffect(controller) {
         val listener = object : Player.Listener {
             override fun onMediaMetadataChanged(m: MediaMetadata) { metadata = m }

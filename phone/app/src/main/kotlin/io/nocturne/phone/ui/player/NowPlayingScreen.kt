@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -299,8 +300,8 @@ private fun NowPlayingBody(
 @OptIn(UnstableApi::class)
 @Composable
 private fun NowPlayingProgressBar(controller: MediaController) {
-    var positionMs by remember { mutableStateOf(controller.currentPosition) }
-    var durationMs by remember { mutableStateOf(controller.duration) }
+    var positionMs by remember { mutableLongStateOf(controller.currentPosition) }
+    var durationMs by remember { mutableLongStateOf(controller.duration) }
     androidx.compose.runtime.LaunchedEffect(controller) {
         while (true) {
             positionMs = controller.currentPosition
@@ -412,8 +413,8 @@ private fun FileInfoCard(controller: MediaController, currentIndex: Int) {
     // Poll the controller for fields that aren't State-backed: duration is
     // -1 until ExoPlayer prepares the timeline, then settles to the real ms
     // value. mediaItemCount can also lag a transition by a frame.
-    var durationMs by remember(currentIndex) { mutableStateOf(controller.duration) }
-    var mediaItemCount by remember(currentIndex) { mutableStateOf(controller.mediaItemCount) }
+    var durationMs by remember(currentIndex) { mutableLongStateOf(controller.duration) }
+    var mediaItemCount by remember(currentIndex) { mutableIntStateOf(controller.mediaItemCount) }
     androidx.compose.runtime.LaunchedEffect(controller, currentIndex) {
         // Tick every 500ms until duration becomes known (then stop polling).
         // Also refresh on first composition so the value isn't stale.

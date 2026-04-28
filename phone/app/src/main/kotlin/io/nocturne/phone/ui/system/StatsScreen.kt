@@ -14,16 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,87 +36,66 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * Quick task 260428-7zc — Stats / listening dashboard. Mirrors
+ * Quick task 260428-ja8 — Stats / listening dashboard, now an inline
+ * utility-mode content slot (no Scaffold / TopAppBar / back-button — the
+ * BrowserRoot shell owns chrome). Mirrors
  * /tmp/nocturne-design/nocturne/project/screens-system.jsx lines 268-308.
  *
  * Hero counts (listened / plays / unique) + 7d × 24h heatmap + top-played
  * list. All data is aggregated by StatsAggregator from the local
  * phone-<deviceid>.jsonl; absent file → all-zero render.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StatsScreen(container: AppContainer, onBack: () -> Unit) {
+fun StatsScreen(container: AppContainer) {
     val vm: SystemViewModel = viewModel(factory = SystemViewModel.Factory(container))
     LaunchedEffect(Unit) { vm.refreshStats() }
     val view by vm.stats.collectAsStateWithLifecycle()
     val tracks by vm.topPlayedTracks.collectAsStateWithLifecycle()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Stats", style = MaterialTheme.typography.titleMedium) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-            )
-        },
-    ) { padding ->
-        Column(
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 80.dp)
+            .verticalScroll(rememberScrollState()),
+    ) {
+        TerminalPrompt("~/stats", modifier = Modifier.padding(top = 16.dp))
+        ScreenHero("last 7 days")
+
+        // Hero row: listened / plays / unique
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(padding)
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 80.dp)
-                .verticalScroll(rememberScrollState()),
+                .fillMaxWidth()
+                .padding(top = 18.dp),
         ) {
-            TerminalPrompt("~/stats", modifier = Modifier.padding(top = 16.dp))
-            ScreenHero("last 7 days")
+            StatCard(label = "listened", value = formatListened(view.totalListenedMs), modifier = Modifier.weight(1f))
+            StatCard(label = "plays",    value = view.playCount.toString(),             modifier = Modifier.weight(1f))
+            StatCard(label = "unique",   value = view.uniqueTrackCount.toString(),      modifier = Modifier.weight(1f))
+        }
 
-            // Hero row: listened / plays / unique
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 18.dp),
-            ) {
-                StatCard(label = "listened", value = formatListened(view.totalListenedMs), modifier = Modifier.weight(1f))
-                StatCard(label = "plays",    value = view.playCount.toString(),             modifier = Modifier.weight(1f))
-                StatCard(label = "unique",   value = view.uniqueTrackCount.toString(),      modifier = Modifier.weight(1f))
-            }
+        SectionHeader("heatmap · hour × day")
+        Heatmap(view = view)
 
-            SectionHeader("heatmap · hour × day")
-            Heatmap(view = view)
-
-            SectionHeader("top played")
-            if (view.topPlayed.isEmpty()) {
-                Text(
-                    text = "no plays yet",
-                    style = monoStyle(12),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
+        SectionHeader("top played")
+        if (view.topPlayed.isEmpty()) {
+            Text(
+                text = "no plays yet",
+                style = monoStyle(12),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        } else {
+            val maxPlays = view.topPlayed.maxOf { it.playCount }.coerceAtLeast(1)
+            view.topPlayed.forEachIndexed { i, row ->
+                TopPlayedRowView(
+                    index = i,
+                    row = row,
+                    maxPlays = maxPlays,
+                    title = tracks[row.trackId]?.title ?: row.trackId.take(8) + "…",
+                    artist = tracks[row.trackId]?.artist?.firstOrNull() ?: "",
                 )
-            } else {
-                val maxPlays = view.topPlayed.maxOf { it.playCount }.coerceAtLeast(1)
-                view.topPlayed.forEachIndexed { i, row ->
-                    TopPlayedRowView(
-                        index = i,
-                        row = row,
-                        maxPlays = maxPlays,
-                        title = tracks[row.trackId]?.title ?: row.trackId.take(8) + "…",
-                        artist = tracks[row.trackId]?.artist?.firstOrNull() ?: "",
-                    )
-                }
             }
         }
     }
@@ -307,4 +278,3 @@ private fun TopPlayedRowView(
         )
     }
 }
-

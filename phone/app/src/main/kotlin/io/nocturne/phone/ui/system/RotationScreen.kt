@@ -15,16 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,7 +30,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.nocturne.phone.data.AppContainer
 
 /**
- * Quick task 260428-7zc — Rotation / smart-buckets dashboard. Mirrors
+ * Quick task 260428-ja8 — Rotation / smart-buckets dashboard, now an inline
+ * utility-mode content slot (no Scaffold / TopAppBar / back-button — the
+ * BrowserRoot shell owns chrome). Mirrors
  * /tmp/nocturne-design/nocturne/project/screens-system.jsx lines 11-80.
  *
  * Renders bucket-bar (proportional fill) + per-bucket rows + an honest
@@ -46,93 +40,70 @@ import io.nocturne.phone.data.AppContainer
  * surfaced on-device by design (CROSS-03 forbids hitting the daemon REST
  * from the phone), so we don't fake one.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RotationScreen(container: AppContainer, onBack: () -> Unit) {
+fun RotationScreen(container: AppContainer) {
     val vm: SystemViewModel = viewModel(factory = SystemViewModel.Factory(container))
     LaunchedEffect(Unit) { vm.refreshRotation() }
     val view by vm.rotation.collectAsStateWithLifecycle()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Rotation", style = MaterialTheme.typography.titleMedium) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-            )
-        },
-    ) { padding ->
-        Column(
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 80.dp)
+            .verticalScroll(rememberScrollState()),
+    ) {
+        TerminalPrompt("~/rotation", modifier = Modifier.padding(top = 16.dp))
+        ScreenHero("smart buckets")
+        Text(
+            text = view.generatedAt?.let { "last rotation $it" } ?: "no manifest yet",
+            style = monoStyle(12),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+
+        // Bucket bar — proportional widths.
+        BucketBar(view, modifier = Modifier.padding(top = 20.dp))
+
+        // Cap summary line.
+        val usedGb = view.totalUsedBytes / 1e9
+        val capGb = view.capBytes / 1e9
+        val pct = if (view.capBytes > 0) (view.totalUsedBytes.toDouble() / view.capBytes) else 0.0
+        Row(
+            horizontalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(padding)
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 80.dp)
-                .verticalScroll(rememberScrollState()),
+                .fillMaxWidth()
+                .padding(top = 8.dp),
         ) {
-            TerminalPrompt("~/rotation", modifier = Modifier.padding(top = 16.dp))
-            ScreenHero("smart buckets")
             Text(
-                text = view.generatedAt?.let { "last rotation $it" } ?: "no manifest yet",
-                style = monoStyle(12),
+                text = "%.1f GB resident".format(usedGb),
+                style = monoStyle(11),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp),
             )
-
-            // Bucket bar — proportional widths.
-            BucketBar(view, modifier = Modifier.padding(top = 20.dp))
-
-            // Cap summary line.
-            val usedGb = view.totalUsedBytes / 1e9
-            val capGb = view.capBytes / 1e9
-            val pct = if (view.capBytes > 0) (view.totalUsedBytes.toDouble() / view.capBytes) else 0.0
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-            ) {
-                Text(
-                    text = "%.1f GB resident".format(usedGb),
-                    style = monoStyle(11),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = "${(pct * 100).toInt()}% of %.0f GB cap".format(capGb),
-                    style = monoStyle(11),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            SectionHeader("buckets")
-            view.buckets.forEachIndexed { i, b ->
-                BucketRowView(
-                    index = i,
-                    row = b,
-                    totalBytes = view.totalUsedBytes.coerceAtLeast(1L),
-                )
-            }
-
-            SectionHeader("recent rotations")
             Text(
-                text = "rotation log not surfaced on phone",
-                style = monoStyle(12),
+                text = "${(pct * 100).toInt()}% of %.0f GB cap".format(capGb),
+                style = monoStyle(11),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
             )
         }
+
+        SectionHeader("buckets")
+        view.buckets.forEachIndexed { i, b ->
+            BucketRowView(
+                index = i,
+                row = b,
+                totalBytes = view.totalUsedBytes.coerceAtLeast(1L),
+            )
+        }
+
+        SectionHeader("recent rotations")
+        Text(
+            text = "rotation log not surfaced on phone",
+            style = monoStyle(12),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
     }
 }
 

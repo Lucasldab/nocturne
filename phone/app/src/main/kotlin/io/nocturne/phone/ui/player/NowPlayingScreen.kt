@@ -155,7 +155,7 @@ private fun NowPlayingBody(
                     color = MaterialTheme.colorScheme.onBackground,
                     modifier = Modifier
                         .clickable(onClick = onBack)
-                        .padding(end = 6.dp),
+                        .padding(end = 24.dp),
                 )
                 Text(
                     text = "~/now-playing",
@@ -243,12 +243,14 @@ private fun NowPlayingBody(
 
         // 5. Sticky bottom transport block.
         //    Top hairline divider only — no side / bottom border, so the block
-        //    bleeds into the system gesture inset cleanly.
+        //    bleeds into the system gesture inset cleanly. #837A6C matches the
+        //    bottom-nav top hairline for a consistent ruled-boundary accent
+        //    across the two transport surfaces (260428-ja8 polish pass).
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(androidx.compose.ui.graphics.Color(0xFF837A6C)),
         )
         Column(
             modifier = Modifier
@@ -342,12 +344,15 @@ private fun NowPlayingProgressBar(controller: MediaController) {
                     .height(2.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             )
-            // Primary fill 0..progress
+            // Primary fill 0..progress — literal #703490 to match the 56dp
+            // PlayPauseButton circle exactly (NocturnePrimary 0xFF7E3AA0
+            // resolves close but not identical; the design pins #703490 as
+            // the load-bearing accent across the now-playing surface).
             Box(
                 modifier = Modifier
                     .fillMaxWidth(progress)
                     .height(2.dp)
-                    .background(MaterialTheme.colorScheme.primary),
+                    .background(androidx.compose.ui.graphics.Color(0xFF703490)),
             )
             // 10dp circular thumb sitting on the seam
             Box(
@@ -355,7 +360,7 @@ private fun NowPlayingProgressBar(controller: MediaController) {
                     .offset(x = thumbOffsetDp)
                     .size(10.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary),
+                    .background(androidx.compose.ui.graphics.Color(0xFF703490)),
             )
         }
     }

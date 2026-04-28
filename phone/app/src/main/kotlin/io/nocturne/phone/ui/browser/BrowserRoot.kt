@@ -54,7 +54,7 @@ import io.nocturne.phone.ui.system.RotationScreen
 import io.nocturne.phone.ui.system.StatsScreen
 import io.nocturne.phone.ui.system.StorageScreen
 import io.nocturne.phone.ui.system.SyncScreen
-import io.nocturne.phone.ui.system.SystemHubScreen
+import io.nocturne.phone.ui.system.UtilityBar
 
 /**
  * Top-level browser surface. Hosts the four-tab NavigationBar plus detail
@@ -79,21 +79,22 @@ fun BrowserRoot(
     }
     val nav = rememberNavController()
     var showSearch by remember { mutableStateOf(false) }
+    // Quick task 260428-ja8: the System affordance is now an in-place utility
+    // mode toggle (◇ → ◆) instead of a routed hub. `inUtility` flips the shell
+    // to render UtilityBar + inline rotation/sync/storage/stats content; the
+    // bottom nav + mini-player hide while in utility. plain `remember` (not
+    // Saveable) is intentional — utility mode is an ephemeral focus state and
+    // process death / rotation should reset to browse for predictability.
+    var inUtility by remember { mutableStateOf(false) }
+    var activeUtility by remember { mutableStateOf("rotation") }
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Track the active route so we can hide the bottom-bar (nav + mini-player)
         // on the NowPlaying / detail screens that own their own bottom chrome.
-        // Quick task 260428-7zc: the four System sub-screens (Rotation / Sync /
-        // Storage / Stats) also hide both the top-bar AND the bottom-bar so they
-        // can render their own back-button TopAppBar without doubled chrome.
-        // The System hub is INTENTIONALLY excluded — it keeps the bottom-bar so
-        // the user can flip back to a music tab without going through Back.
+        // Utility mode is hosted in-place (no route change) — its chrome is
+        // gated separately via `inUtility` below.
         val currentRoute = nav.currentBackStackEntryAsState().value?.destination?.route
-        val isFullscreen = currentRoute == Routes.NOW_PLAYING ||
-            currentRoute == Routes.SYSTEM_ROTATION ||
-            currentRoute == Routes.SYSTEM_SYNC ||
-            currentRoute == Routes.SYSTEM_STORAGE ||
-            currentRoute == Routes.SYSTEM_STATS
+        val isFullscreen = currentRoute == Routes.NOW_PLAYING
 
         // Live mini-player visibility — drives both the inclusion of the
         // mini-row in the bottom-bar slot AND its content.
@@ -129,20 +130,24 @@ fun BrowserRoot(
                         TopAppBar(
                             title = { BrandWordmark() },
                             actions = {
-                                // Quick task 260428-7zc: ◇ entry-point to the
-                                // System hub. Text-as-glyph (JetBrains Mono is
-                                // bundled — see Typography.kt) avoids adding a
-                                // material-icons-extended dependency for one
-                                // monogram. Positioned BEFORE Search so the
-                                // glyph sits to the left of the magnifier.
-                                IconButton(onClick = { nav.navigate(Routes.SYSTEM_HUB) }) {
+                                // Quick task 260428-ja8: ◇ toggles the shell
+                                // into utility mode in place (no nav, no
+                                // back-stack). Active mode swaps the glyph to
+                                // ◆ + primary tint so the affordance reads
+                                // engaged. Text-as-glyph (JetBrains Mono is
+                                // bundled — see Typography.kt) avoids adding
+                                // a material-icons-extended dependency for
+                                // one monogram. Positioned BEFORE Search so
+                                // the glyph sits to the left of the magnifier.
+                                IconButton(onClick = { inUtility = !inUtility }) {
                                     Text(
-                                        text = "◇",
+                                        text = if (inUtility) "◆" else "◇",
                                         style = MaterialTheme.typography.titleMedium.copy(
                                             fontFamily = JetBrainsMono,
                                             fontWeight = FontWeight.Normal,
                                         ),
-                                        color = MaterialTheme.colorScheme.onSurface,
+                                        color = if (inUtility) MaterialTheme.colorScheme.primary
+                                                else MaterialTheme.colorScheme.onSurface,
                                     )
                                 }
                                 IconButton(onClick = { showSearch = true }) {
@@ -166,12 +171,25 @@ fun BrowserRoot(
                                 .height(1.dp)
                                 .background(androidx.compose.ui.graphics.Color(0xFFC5C0B9)),
                         )
+                        // Quick task 260428-ja8: when in utility mode, render
+                        // the 4-tab UtilityBar directly below the brand row so
+                        // Scaffold lays content out below it without manual
+                        // offset math.
+                        if (inUtility) {
+                            UtilityBar(
+                                active = activeUtility,
+                                onChange = { activeUtility = it },
+                            )
+                        }
                     }
                 }
             },
             bottomBar = {
-                if (isFullscreen) {
-                    // NowPlaying owns its own bottom transport block — no mini, no nav.
+                if (isFullscreen || inUtility) {
+                    // NowPlaying owns its own bottom transport block — no mini,
+                    // no nav. Utility mode hides both so the inline rotation/
+                    // sync/storage/stats content occupies the full slot below
+                    // the UtilityBar (260428-ja8).
                     return@Scaffold
                 }
                 // Bottom slot is mini-player (when present) stacked on top of the
@@ -184,6 +202,16 @@ fun BrowserRoot(
                             onTap = { nav.navigate(Routes.NOW_PLAYING) },
                         )
                     }
+                    // 1px top hairline above the NavigationBar — #837A6C
+                    // (260428-ja8 polish pass). Matches the NowPlaying bottom
+                    // transport hairline so the two ruled-boundary accents
+                    // share one tone across the chrome.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(androidx.compose.ui.graphics.Color(0xFF837A6C)),
+                    )
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                         // Settings tab dropped 2026-04-28 — music-folder picker
                         // moved to first-run, so the only durable use of the
@@ -212,13 +240,15 @@ fun BrowserRoot(
                             NavigationBarItem(
                                 selected = activeTabRoute == route,
                                 colors = androidx.compose.material3.NavigationBarItemDefaults.colors(
-                                    // Indicator carries 50% alpha so the pill reads as a
-                                    // tint; selected icon + label render in opaque #703490
-                                    // on top (260428-981 polish pass).
+                                    // Indicator carries 50% alpha; selected icon + label
+                                    // render in solid #E0E0E0 over the tint so the letter
+                                    // pops against the dark bg + translucent purple stack
+                                    // (260428-ja8 contrast pass — #703490-on-translucent-
+                                    // #703490 was unreadable in the previous iteration).
                                     indicatorColor = androidx.compose.ui.graphics.Color(0x80703490),
-                                    selectedIconColor = androidx.compose.ui.graphics.Color(0xFF703490),
+                                    selectedIconColor = androidx.compose.ui.graphics.Color(0xFFE0E0E0),
                                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    selectedTextColor = androidx.compose.ui.graphics.Color(0xFF703490),
+                                    selectedTextColor = androidx.compose.ui.graphics.Color(0xFFE0E0E0),
                                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 ),
                                 onClick = {
@@ -245,6 +275,21 @@ fun BrowserRoot(
                 }
             },
         ) { padding ->
+            if (inUtility) {
+                // Quick task 260428-ja8: utility mode is hosted in-place
+                // (no nav transition, no back-stack). The 4 sub-screens are
+                // selected by activeUtility and render as inline content
+                // composables below the UtilityBar slot owned by the topBar.
+                Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+                    when (activeUtility) {
+                        "rotation" -> RotationScreen(container = container)
+                        "sync"     -> SyncScreen(container = container)
+                        "storage"  -> StorageScreen(container = container)
+                        "stats"    -> StatsScreen(container = container)
+                    }
+                }
+                return@Scaffold
+            }
             NavHost(
                 navController = nav,
                 startDestination = Routes.ALBUMS,
@@ -270,28 +315,6 @@ fun BrowserRoot(
                 composable(Routes.GENRES) { GenresScreen(vm) }
                 composable(Routes.SETTINGS) {
                     SettingsScreen(container = container)
-                }
-                // Quick task 260428-7zc: System hub + four sub-screens.
-                composable(Routes.SYSTEM_HUB) {
-                    SystemHubScreen(
-                        onRotation = { nav.navigate(Routes.SYSTEM_ROTATION) },
-                        onSync     = { nav.navigate(Routes.SYSTEM_SYNC) },
-                        onStorage  = { nav.navigate(Routes.SYSTEM_STORAGE) },
-                        onStats    = { nav.navigate(Routes.SYSTEM_STATS) },
-                        onBack     = { nav.popBackStack() },
-                    )
-                }
-                composable(Routes.SYSTEM_ROTATION) {
-                    RotationScreen(container = container, onBack = { nav.popBackStack() })
-                }
-                composable(Routes.SYSTEM_SYNC) {
-                    SyncScreen(container = container, onBack = { nav.popBackStack() })
-                }
-                composable(Routes.SYSTEM_STORAGE) {
-                    StorageScreen(container = container, onBack = { nav.popBackStack() })
-                }
-                composable(Routes.SYSTEM_STATS) {
-                    StatsScreen(container = container, onBack = { nav.popBackStack() })
                 }
                 composable(
                     route = Routes.ALBUM_DETAIL_PATTERN,

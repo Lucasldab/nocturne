@@ -129,22 +129,3 @@ fun FirstPlayNotifGate(
     }
 }
 
-/**
- * @deprecated Replaced by [FirstPlayNotifGate] hosted at AppRoot via the
- * `requestPlay` lambda. Kept temporarily so AlbumDetailScreen.kt continues to
- * compile between Task 2 and Task 3 of quick task 260428-8i6 — Task 3 removes
- * the only remaining call site and this shim.
- */
-@Deprecated(
-    "Use FirstPlayNotifGate via requestPlay (quick task 260428-8i6).",
-    level = DeprecationLevel.WARNING,
-)
-@Composable
-fun rememberNotificationPermissionPrompt(
-    @Suppress("UNUSED_PARAMETER") onProceed: () -> Unit,
-): () -> Unit = {
-    error(
-        "rememberNotificationPermissionPrompt is removed; route playback through " +
-            "the requestPlay lambda hosted at AppRoot (quick task 260428-8i6).",
-    )
-}

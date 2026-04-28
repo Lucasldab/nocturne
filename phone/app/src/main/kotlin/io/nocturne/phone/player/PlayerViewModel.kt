@@ -99,22 +99,40 @@ class PlayerViewModel(
 
     fun playSingleTrack(track: TrackEntity) {
         val c = _controller.value ?: return  // not yet connected
+        if (!track.isResident) {
+            toastNotDownloaded()
+            return
+        }
         viewModelScope.launch {
             val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
             if (musicUri == null) {
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    android.widget.Toast.makeText(
-                        context,
-                        "Pick the music folder in Settings (5th tab) before playing.",
-                        android.widget.Toast.LENGTH_LONG,
-                    ).show()
-                }
+                toastPickMusicFolder()
                 return@launch
             }
             val item = track.toMediaItem(musicTreeUri = musicUri)
             c.setMediaItems(listOf(item), 0, /* startPositionMs = */ 0L)
             c.prepare()
             c.play()
+        }
+    }
+
+    private fun toastNotDownloaded() {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            android.widget.Toast.makeText(
+                context,
+                "Track not downloaded yet — wait for sync to complete.",
+                android.widget.Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    private fun toastPickMusicFolder() {
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            android.widget.Toast.makeText(
+                context,
+                "Pick the music folder in Settings (5th tab) before playing.",
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
         }
     }
 
@@ -125,29 +143,21 @@ class PlayerViewModel(
      */
     fun playFromList(allTracks: List<TrackEntity>, startTrack: TrackEntity) {
         val c = _controller.value ?: return
+        if (!startTrack.isResident) {
+            toastNotDownloaded()
+            return
+        }
         viewModelScope.launch {
             val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
             if (musicUri == null) {
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    android.widget.Toast.makeText(
-                        context,
-                        "Pick the music folder in Settings (5th tab) before playing.",
-                        android.widget.Toast.LENGTH_LONG,
-                    ).show()
-                }
+                toastPickMusicFolder()
                 return@launch
             }
-            // Resident-only queue — non-resident files would error + auto-skip
-            // anyway, but pre-filtering keeps "next track" predictable as the
-            // next downloaded track in list order (user's giant-playlist intent).
+            // Resident-only queue. Non-resident tracks never reach ExoPlayer;
+            // "next track" is the next downloaded track in list order.
             val resident = allTracks.filter { it.isResident }
             if (resident.isEmpty()) {
-                // Fallback: tapped track is the only candidate; let it play even
-                // if not yet resident (Syncthing may have just landed it).
-                val item = startTrack.toMediaItem(musicTreeUri = musicUri)
-                c.setMediaItems(listOf(item), 0, 0L)
-                c.prepare()
-                c.play()
+                toastNotDownloaded()
                 return@launch
             }
             val startIdx = resident.indexOfFirst { it.id == startTrack.id }
@@ -166,16 +176,14 @@ class PlayerViewModel(
      */
     fun enqueueTrack(track: TrackEntity) {
         val c = _controller.value ?: return
+        if (!track.isResident) {
+            toastNotDownloaded()
+            return
+        }
         viewModelScope.launch {
             val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
             if (musicUri == null) {
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    android.widget.Toast.makeText(
-                        context,
-                        "Pick the music folder in Settings (5th tab) before playing.",
-                        android.widget.Toast.LENGTH_LONG,
-                    ).show()
-                }
+                toastPickMusicFolder()
                 return@launch
             }
             val item = track.toMediaItem(musicTreeUri = musicUri)
@@ -194,22 +202,27 @@ class PlayerViewModel(
 
     fun playAlbumFromTrack(tracks: List<TrackEntity>, startTrack: TrackEntity) {
         val c = _controller.value ?: return  // not yet connected
+        if (!startTrack.isResident) {
+            toastNotDownloaded()
+            return
+        }
         viewModelScope.launch {
             val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
             if (musicUri == null) {
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    android.widget.Toast.makeText(
-                        context,
-                        "Pick the music folder in Settings (5th tab) before playing.",
-                        android.widget.Toast.LENGTH_LONG,
-                    ).show()
-                }
+                toastPickMusicFolder()
                 return@launch
             }
-            val (items, startIndex) = AlbumQueueBuilder.buildFromTrack(tracks, startTrack, musicUri)
+            // Resident-only album queue. Non-resident tracks never reach
+            // ExoPlayer, so playback flows through downloaded tracks only.
+            val resident = tracks.filter { it.isResident }
+            if (resident.isEmpty()) {
+                toastNotDownloaded()
+                return@launch
+            }
+            val (items, startIndex) = AlbumQueueBuilder.buildFromTrack(resident, startTrack, musicUri)
             android.util.Log.d(
                 "nocturne",
-                "playAlbumFromTrack: tracks=${tracks.size} startIdx=$startIndex first.uri=${items.firstOrNull()?.localConfiguration?.uri} musicTree=$musicUri trackPath=${startTrack.path}",
+                "playAlbumFromTrack: tracks=${tracks.size} resident=${resident.size} startIdx=$startIndex first.uri=${items.firstOrNull()?.localConfiguration?.uri} musicTree=$musicUri trackPath=${startTrack.path}",
             )
             c.setMediaItems(items, startIndex, /* startPositionMs = */ 0L)
             c.prepare()
@@ -244,12 +257,17 @@ class PlayerViewModel(
         seed: Long = System.currentTimeMillis(),
     ) {
         val c = _controller.value ?: return
-        val flat = albumGroups.flatten()
+        // Drop non-resident tracks; drop now-empty groups so shuffle doesn't
+        // pick a phantom album.
+        val residentGroups = albumGroups
+            .map { g -> g.filter { it.isResident } }
+            .filter { it.isNotEmpty() }
+        val flat = residentGroups.flatten()
         if (flat.isEmpty()) return
 
         // Build album-unit shuffled index permutation, then reorder the flat
         // list according to that permutation.
-        val indices = AlbumUnitShuffle.buildShuffledIndices(albumGroups, seed)
+        val indices = AlbumUnitShuffle.buildShuffledIndices(residentGroups, seed)
         viewModelScope.launch {
             val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
             val shuffledItems = indices.map { flat[it].toMediaItem(musicTreeUri = musicUri) }

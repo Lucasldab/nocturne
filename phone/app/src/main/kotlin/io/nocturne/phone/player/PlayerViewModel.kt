@@ -84,6 +84,35 @@ class PlayerViewModel(
      * forward. Pure delegation to AlbumQueueBuilder; the controller call is
      * the only side effect.
      */
+    /**
+     * Play a single track without queueing siblings (Tracks / Artist Detail tap).
+     *
+     * Tracks tab + Artist Detail use Paging 3, so the full peer list isn't
+     * available in-memory at tap time. Simplest sensible behaviour: queue
+     * exactly the tapped track and start playback. The user can build an
+     * album-context queue by going via Albums → Album Detail.
+     */
+    fun playSingleTrack(track: TrackEntity) {
+        val c = _controller.value ?: return  // not yet connected
+        viewModelScope.launch {
+            val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
+            if (musicUri == null) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Pick the music folder in Settings (5th tab) before playing.",
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
+                return@launch
+            }
+            val item = track.toMediaItem(musicTreeUri = musicUri)
+            c.setMediaItems(listOf(item), 0, /* startPositionMs = */ 0L)
+            c.prepare()
+            c.play()
+        }
+    }
+
     fun playAlbumFromTrack(tracks: List<TrackEntity>, startTrack: TrackEntity) {
         val c = _controller.value ?: return  // not yet connected
         viewModelScope.launch {

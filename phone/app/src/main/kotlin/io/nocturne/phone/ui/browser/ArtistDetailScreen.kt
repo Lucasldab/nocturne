@@ -37,6 +37,7 @@ fun ArtistDetailScreen(
     vm: BrowserViewModel,
     onBack: () -> Unit,
     onAlbumTap: (String) -> Unit = {},
+    onTrackTap: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
 ) {
     var artist by remember { mutableStateOf<ArtistEntity?>(null) }
     LaunchedEffect(artistId) { artist = vm.artistById(artistId) }
@@ -113,7 +114,7 @@ fun ArtistDetailScreen(
                 TrackRow(
                     track = t,
                     isPinned = pinnedIds.contains(t.id),
-                    onTap = {},
+                    onTap = { onTrackTap(t) },
                     onPinClick = { vm.togglePinTrack(t.id) },
                 )
             }

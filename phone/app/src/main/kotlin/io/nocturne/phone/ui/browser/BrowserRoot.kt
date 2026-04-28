@@ -130,7 +130,15 @@ fun BrowserRoot(container: AppContainer) {
                 composable(Routes.ARTISTS) {
                     ArtistsScreen(vm, onNavigate = { id -> nav.navigate(Routes.artistDetail(id)) })
                 }
-                composable(Routes.TRACKS) { TracksScreen(vm) }
+                composable(Routes.TRACKS) {
+                    TracksScreen(
+                        vm = vm,
+                        onTrackTap = { track ->
+                            playerVm.playSingleTrack(track)
+                            nav.navigate(Routes.NOW_PLAYING)
+                        },
+                    )
+                }
                 composable(Routes.GENRES) { GenresScreen(vm) }
                 composable(Routes.SETTINGS) {
                     SettingsScreen(container = container)
@@ -158,6 +166,10 @@ fun BrowserRoot(container: AppContainer) {
                         vm = vm,
                         onBack = { nav.popBackStack() },
                         onAlbumTap = { albumId -> nav.navigate(Routes.albumDetail(albumId)) },
+                        onTrackTap = { track ->
+                            playerVm.playSingleTrack(track)
+                            nav.navigate(Routes.NOW_PLAYING)
+                        },
                     )
                 }
                 composable(Routes.NOW_PLAYING) {

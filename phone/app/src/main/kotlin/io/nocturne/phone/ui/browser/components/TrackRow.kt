@@ -45,47 +45,67 @@ fun TrackRow(
     onLongPress: () -> Unit = {},
 ) {
     val rowAlpha = if (track.isResident) 1f else NON_RESIDENT_ALPHA
+    // Click hierarchy: the PinChip OWNS its own click target (via internal
+    // `Surface(onClick = ...)`) and must always win over the row's tap. Earlier
+    // versions wrapped the entire Row in `combinedClickable`; the chip's
+    // onClick stopped firing under some gesture timings because Compose's
+    // pointer dispatch sometimes hands the event to the parent click first.
+    // Fix: only the LEFT region (track number + title + artist) is clickable
+    // for play/long-press. The chip sits as a sibling at the row's edge with
+    // its own dedicated tap target. No more click conflict.
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .combinedClickable(
-                onClick = if (track.isResident) onTap else onPinClick,
-                onLongClick = if (track.isResident) onLongPress else null,
-            )
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .alpha(rowAlpha),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = track.trackNumber?.toString()?.padStart(2, '0') ?: "  ",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(28.dp),
-        )
-        Spacer(Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .combinedClickable(
+                    onClick = if (track.isResident) onTap else onPinClick,
+                    onLongClick = if (track.isResident) onLongPress else null,
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
-                text = track.title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = track.artist.firstOrNull().orEmpty(),
+                text = track.trackNumber?.toString()?.padStart(2, '0') ?: "  ",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.width(28.dp),
             )
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = track.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                // Subtitle = "artist · album" so the Tracks tab disambiguates
+                // multi-album tracks (live/studio/compilation versions of the
+                // same title). When album is blank, falls back to just artist.
+                val subtitle = buildString {
+                    append(track.artist.firstOrNull().orEmpty())
+                    if (track.album.isNotBlank()) {
+                        if (isNotEmpty()) append(" · ")
+                        append(track.album)
+                    }
+                }
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
-        // Four-state PinChip (260428 pin-as-download contract — chip ALWAYS
-        // visible so the user can pin/unpin from any row):
-        //  - non-resident + not pinned → offer-to-pin chip (NotPinned)
-        //  - non-resident + pinned     → "pulling..." chip (PinnedPulling)
-        //  - resident + pinned         → solid filled chip (PinnedReady)
-        //  - resident + not pinned     → offer-to-pin chip (NotPinned) — lets
-        //    the user mark a residency that survives rotation eviction
+        // PinChip — always visible, four states. Sibling of the clickable row
+        // region above, NOT inside it. Tapping the chip fires the chip's own
+        // Surface(onClick) cleanly without any nested-clickable conflict.
         val pinState = when {
             isPinned && !track.isResident -> PinState.PinnedPulling
             isPinned && track.isResident -> PinState.PinnedReady

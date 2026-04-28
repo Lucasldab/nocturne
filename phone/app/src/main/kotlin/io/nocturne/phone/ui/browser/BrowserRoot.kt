@@ -57,7 +57,15 @@ import io.nocturne.phone.ui.search.SearchOverlay
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BrowserRoot(container: AppContainer) {
+fun BrowserRoot(
+    container: AppContainer,
+    @Suppress("UNUSED_PARAMETER") requestPlay: (() -> Unit) -> Unit,
+) {
+    // Quick task 260428-8i6: requestPlay is the AppRoot-hosted gate's submission
+    // lambda. Tap-to-play sites wrap their playback action inside requestPlay { ... }
+    // so the FirstPlayNotifGate decides whether to show the rationale (first time)
+    // or run immediately. Task 3 wires the four tap-to-play call sites; this Task 2
+    // commit only adds the parameter so AppRoot compiles.
     val vm: BrowserViewModel = viewModel(factory = BrowserVMFactory(container))
     val playerVm: PlayerViewModel = viewModel(factory = PlayerVMFactory(container))
     DisposableEffect(playerVm) {

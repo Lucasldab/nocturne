@@ -143,7 +143,15 @@ fun StorageScreen(container: AppContainer) {
             }
         }
 
-        SectionHeader("cap · drag to set")
+        // Slider design spec (locked 2026-04-28 storage-cap-slider):
+        //   accent (thumb + active track) — #8C41B4 (deeper purple than primary
+        //   #7E3AA0; matches the reference accent-color)
+        //   labels (section header + 4/32 GB endpoints) — #8A8A8A literal
+        //   (NOT NocturneOnSurfaceMuted #9E9689 which is warmer beige used for
+        //   the rest of the muted-text surface)
+        val sliderAccent = androidx.compose.ui.graphics.Color(0xFF8C41B4)
+        val sliderMuted = androidx.compose.ui.graphics.Color(0xFF8A8A8A)
+        SectionHeader("cap · drag to set", color = sliderMuted)
         Slider(
             value = localBudget,
             onValueChange = { localBudget = it },
@@ -153,24 +161,16 @@ fun StorageScreen(container: AppContainer) {
             valueRange = 4f..32f,
             steps = (32 - 4 - 1),
             colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary,
+                thumbColor = sliderAccent,
+                activeTrackColor = sliderAccent,
             ),
         )
         Row(
             horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
         ) {
-            Text(
-                text = "4 GB",
-                style = monoStyle(11),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = "32 GB",
-                style = monoStyle(11),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Text(text = "4 GB", style = monoStyle(11), color = sliderMuted)
+            Text(text = "32 GB", style = monoStyle(11), color = sliderMuted)
         }
 
         SectionHeader("by bucket")

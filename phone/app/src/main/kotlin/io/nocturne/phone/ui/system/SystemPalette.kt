@@ -47,7 +47,11 @@ object BucketColors {
  * onSurfaceVariant. Matches the JSX SectionHeader component.
  */
 @Composable
-fun SectionHeader(text: String, modifier: Modifier = Modifier) {
+fun SectionHeader(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+) {
     Text(
         text = "── $text ──",
         style = TextStyle(
@@ -56,7 +60,7 @@ fun SectionHeader(text: String, modifier: Modifier = Modifier) {
             fontWeight = FontWeight.Normal,
             letterSpacing = 1.5.sp,
         ),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = color,
         modifier = modifier.padding(top = 24.dp, bottom = 8.dp),
     )
 }

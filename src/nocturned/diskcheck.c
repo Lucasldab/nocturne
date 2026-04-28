@@ -7,8 +7,9 @@
  * minHomeDiskFree. The two `_print_` functions render that struct as
  * text or single-line JSON.
  *
- * No outbound network surface here — the libcurl call lives in
- * syncthing_api.c (CROSS-03 invariant: only that file links libcurl).
+ * No outbound network surface here — the REST-client machinery lives
+ * in syncthing_api.c (CROSS-03 invariant: only that file links the
+ * loopback request library).
  * No DB connection; no lock acquisition; no manifest writes.
  *
  * Unit conversion follows Syncthing's own SI base-1000 multipliers as

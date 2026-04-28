@@ -26,7 +26,8 @@ enum nocturned_subcommand {
     CMD_ROTATE,
     CMD_SYNC_CONFIG,
     CMD_CYCLE,
-    CMD_WHY
+    CMD_WHY,
+    CMD_DISKCHECK
 };
 
 /* Parsed argv for the daemon. Strings are pointers into argv (no ownership). */

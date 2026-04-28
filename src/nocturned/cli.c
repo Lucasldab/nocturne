@@ -38,6 +38,8 @@ void cli_print_usage(FILE *f)
         "  why <track-id>    Explain why a track is on the phone (read-only)\n"
         "                    <track-id>: full 64-char sha256 hex OR unique >=8-char prefix\n"
         "  doctor            Print library + DB health report\n"
+        "  diskcheck         Verify resident-set has >=1 GiB margin against cap AND\n"
+        "                    Syncthing minHomeDiskFree (TUNE-02; read-only, no lock)\n"
         "\n"
         "Options:\n"
         "  -h, --help              Print this help and exit\n"
@@ -80,6 +82,7 @@ static enum nocturned_subcommand subcommand_from_string(const char *s)
     if (!strcmp(s, "publish")) return CMD_PUBLISH;
     if (!strcmp(s, "ingest"))  return CMD_INGEST;
     if (!strcmp(s, "doctor"))  return CMD_DOCTOR;
+    if (!strcmp(s, "diskcheck")) return CMD_DISKCHECK;
     if (!strcmp(s, "migrate")) return CMD_MIGRATE;
     if (!strcmp(s, "rotate"))  return CMD_ROTATE;
     if (!strcmp(s, "sync-config")) return CMD_SYNC_CONFIG;

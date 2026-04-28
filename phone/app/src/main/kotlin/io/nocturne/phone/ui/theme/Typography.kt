@@ -2,12 +2,26 @@ package io.nocturne.phone.ui.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import io.nocturne.phone.R
+
+// Inter sans-serif — bundled OFL TTFs (Inter v4 static, optical size 18pt).
+// Adopted per design pass2026-04-27 pass; system Sans replaced for the
+// headline / title text styles. Body / label slots stay on monospace
+// (FontFamily.Monospace = Roboto Mono on Android) to preserve the
+// terminal-feel established in earlier phases.
+private val Inter = FontFamily(
+    Font(R.font.inter_regular,  FontWeight.Normal),
+    Font(R.font.inter_medium,   FontWeight.Medium),
+    Font(R.font.inter_semibold, FontWeight.SemiBold),
+    Font(R.font.inter_bold,     FontWeight.Bold),
+)
 
 private val Mono = FontFamily.Monospace
-private val Sans = FontFamily.SansSerif
+private val Sans = Inter
 
 internal val NocturneTypography = Typography(
     headlineLarge  = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Bold,   fontSize = 24.sp),

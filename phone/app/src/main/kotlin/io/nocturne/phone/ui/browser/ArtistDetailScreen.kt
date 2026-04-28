@@ -38,6 +38,7 @@ fun ArtistDetailScreen(
     onBack: () -> Unit,
     onAlbumTap: (String) -> Unit = {},
     onTrackTap: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
+    onTrackLongPress: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
     container: io.nocturne.phone.data.AppContainer? = null,
 ) {
     var artist by remember { mutableStateOf<ArtistEntity?>(null) }
@@ -117,6 +118,7 @@ fun ArtistDetailScreen(
                     isPinned = pinnedIds.contains(t.id),
                     onTap = { onTrackTap(t) },
                     onPinClick = { vm.togglePinTrack(t.id) },
+                    onLongPress = { onTrackLongPress(t) },
                 )
             }
         }

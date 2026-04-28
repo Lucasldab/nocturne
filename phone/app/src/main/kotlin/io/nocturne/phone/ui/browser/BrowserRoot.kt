@@ -206,14 +206,14 @@ fun BrowserRoot(
                             onTap = { nav.navigate(Routes.NOW_PLAYING) },
                         )
                     }
-                    // 1dp top hairline #1A1A1A (matches surfaceVariant per
-                    // bottom-nav design spec — softer separator than the
-                    // previous warm-tan #837A6C).
+                    // 1dp top hairline #837A6C above the bottom nav. Warmer
+                    // tan tone separates nav from mini-player / content above
+                    // (revert from the dark #1A1A1A pass — user spec update).
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(1.dp)
-                            .background(androidx.compose.ui.graphics.Color(0xFF1A1A1A)),
+                            .background(androidx.compose.ui.graphics.Color(0xFF837A6C)),
                     )
                     // Map active route to its tab so the selected state survives
                     // navigation into detail screens (album / artist detail).
@@ -325,6 +325,7 @@ fun BrowserRoot(
                                 nav.navigate(Routes.NOW_PLAYING)
                             }
                         },
+                        onTrackLongPress = { track -> playerVm.enqueueTrack(track) },
                         container = container,
                     )
                 }

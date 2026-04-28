@@ -159,15 +159,12 @@ fun StorageScreen(container: AppContainer) {
                 scope.launch { container.syncPrefs.setStorageBudgetGb(localBudget.toInt().coerceIn(4, 32)) }
             },
             valueRange = 4f..32f,
-            steps = (32 - 4 - 1),
+            // steps=0 → continuous slider, no tick dots drawn at all. Snap-to-
+            // int still happens via toInt().coerceIn on commit.
             colors = SliderDefaults.colors(
                 thumbColor = sliderAccent,
                 activeTrackColor = sliderAccent,
-                // Inactive track: design spec is the browser-native ~#3A3A3A
-                // unfilled track. Material3's default surfaceVariant (#161616)
-                // is too dark to read against the page bg. Override.
                 inactiveTrackColor = androidx.compose.ui.graphics.Color(0xFF3A3A3A),
-                inactiveTickColor = androidx.compose.ui.graphics.Color(0xFF3A3A3A),
             ),
         )
         Row(

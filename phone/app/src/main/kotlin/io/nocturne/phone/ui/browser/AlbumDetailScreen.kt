@@ -45,6 +45,7 @@ fun AlbumDetailScreen(
     LaunchedEffect(albumId) { album = vm.albumById(albumId) }
     val tracks = vm.tracksByAlbum(albumId).collectAsLazyPagingItems()
     val scope = rememberCoroutineScope()
+    val ctx = androidx.compose.ui.platform.LocalContext.current
 
     // PLAY-10: collect pinnedIdSet once per screen; each TrackRow reads its
     // isPinned state from this shared set (more efficient than per-row flows).
@@ -118,6 +119,14 @@ fun AlbumDetailScreen(
                         }
                     },
                     onPinClick = { vm.togglePinTrack(t.id) },
+                    onLongPress = {
+                        playerVm.enqueueTrack(t)
+                        android.widget.Toast.makeText(
+                            ctx,
+                            "Added to queue",
+                            android.widget.Toast.LENGTH_SHORT,
+                        ).show()
+                    },
                 )
             }
         }

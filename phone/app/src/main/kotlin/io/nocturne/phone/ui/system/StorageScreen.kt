@@ -74,11 +74,16 @@ fun StorageScreen(container: AppContainer) {
         deviceTotalGb = total
     }
 
-    var localBudget by remember(budgetGb) { mutableIntStateOf(budgetGb) }
+    // Float-backed slider state. Material3 Slider's onValueChange fires with
+    // continuous floats; rounding to Int per-callback froze the thumb until the
+    // drag crossed a whole-GB boundary (sluggish-feeling slider). We hold the
+    // float live, snap-to-int via `steps`, and only persist the int on release.
+    var localBudget by remember(budgetGb) { mutableFloatStateOf(budgetGb.toFloat()) }
+    val localBudgetInt = localBudget.toInt().coerceIn(4, 32)
 
     val usedBytes = view.totalUsedBytes
     val usedGb = (usedBytes / 1e9).toFloat()
-    val capGbActual = localBudget.toFloat()
+    val capGbActual = localBudgetInt.toFloat()
     val pct = if (capGbActual > 0f) (usedGb / capGbActual).coerceAtLeast(0f) else 0f
 
     Column(
@@ -128,7 +133,7 @@ fun StorageScreen(container: AppContainer) {
                     .padding(start = 16.dp),
             ) {
                 KvLine("used   ", "%.1f GB".format(usedGb))
-                KvLine("cap    ", "%d GB".format(localBudget))
+                KvLine("cap    ", "%d GB".format(localBudgetInt))
                 KvLine(
                     "free   ",
                     "%.1f GB".format((capGbActual - usedGb).coerceAtLeast(0f)),
@@ -140,10 +145,10 @@ fun StorageScreen(container: AppContainer) {
 
         SectionHeader("cap · drag to set")
         Slider(
-            value = localBudget.toFloat(),
-            onValueChange = { localBudget = it.toInt().coerceIn(4, 32) },
+            value = localBudget,
+            onValueChange = { localBudget = it },
             onValueChangeFinished = {
-                scope.launch { container.syncPrefs.setStorageBudgetGb(localBudget) }
+                scope.launch { container.syncPrefs.setStorageBudgetGb(localBudget.toInt().coerceIn(4, 32)) }
             },
             valueRange = 4f..32f,
             steps = (32 - 4 - 1),

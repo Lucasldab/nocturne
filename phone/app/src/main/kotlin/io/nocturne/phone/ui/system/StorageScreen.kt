@@ -15,18 +15,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -49,7 +41,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Quick task 260428-7zc — Storage / budget screen. Mirrors
+ * Quick task 260428-ja8 — Storage / budget screen, now an inline utility-mode
+ * content slot (no Scaffold / TopAppBar / back-button — the BrowserRoot shell
+ * owns chrome). Mirrors
  * /tmp/nocturne-design/nocturne/project/screens-system.jsx lines 199-263.
  *
  * Donut-fill summary + per-bucket bytes breakdown + 4..32 GB cap slider
@@ -60,9 +54,8 @@ import kotlinx.coroutines.withContext
  * Device free / total reads StatFs(filesDir) — app private dir, no
  * permission required.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StorageScreen(container: AppContainer, onBack: () -> Unit) {
+fun StorageScreen(container: AppContainer) {
     val vm: SystemViewModel = viewModel(factory = SystemViewModel.Factory(container))
     LaunchedEffect(Unit) { vm.refreshRotation() }
     val view by vm.rotation.collectAsStateWithLifecycle()
@@ -88,119 +81,97 @@ fun StorageScreen(container: AppContainer, onBack: () -> Unit) {
     val capGbActual = localBudget.toFloat()
     val pct = if (capGbActual > 0f) (usedGb / capGbActual).coerceAtLeast(0f) else 0f
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Storage", style = MaterialTheme.typography.titleMedium) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-            )
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(padding)
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 80.dp)
-                .verticalScroll(rememberScrollState()),
-        ) {
-            TerminalPrompt("~/storage", modifier = Modifier.padding(top = 16.dp))
-            ScreenHero("budget")
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 16.dp)
+            .padding(bottom = 80.dp)
+            .verticalScroll(rememberScrollState()),
+    ) {
+        TerminalPrompt("~/storage", modifier = Modifier.padding(top = 16.dp))
+        ScreenHero("budget")
 
-            // Donut-ish vertical fill row.
-            Row(
-                verticalAlignment = Alignment.Bottom,
-                modifier = Modifier.padding(top = 24.dp),
+        // Donut-ish vertical fill row.
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            modifier = Modifier.padding(top = 24.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(width = 96.dp, height = 140.dp)
+                    .border(1.dp, MaterialTheme.colorScheme.surfaceVariant),
             ) {
+                val fillFraction = pct.coerceAtMost(1f)
+                val fillColor = if (pct > 0.92f) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.primary
+                }
                 Box(
                     modifier = Modifier
-                        .size(width = 96.dp, height = 140.dp)
-                        .border(1.dp, MaterialTheme.colorScheme.surfaceVariant),
-                ) {
-                    val fillFraction = pct.coerceAtMost(1f)
-                    val fillColor = if (pct > 0.92f) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .fillMaxHeight(fillFraction)
-                            .align(Alignment.BottomCenter)
-                            .background(fillColor.copy(alpha = 0.85f)),
-                    )
-                    Text(
-                        text = "${(pct * 100).toInt().coerceAtLeast(0)}%",
-                        style = monoStyle(22).copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 16.dp),
-                ) {
-                    KvLine("used   ", "%.1f GB".format(usedGb))
-                    KvLine("cap    ", "%d GB".format(localBudget))
-                    KvLine(
-                        "free   ",
-                        "%.1f GB".format((capGbActual - usedGb).coerceAtLeast(0f)),
-                    )
-                    KvLine("device ", "%.0f GB total".format(deviceTotalGb))
-                    KvLine("avail  ", "%.1f GB free".format(deviceFreeGb))
-                }
+                        .fillMaxWidth()
+                        .fillMaxHeight(fillFraction)
+                        .align(Alignment.BottomCenter)
+                        .background(fillColor.copy(alpha = 0.85f)),
+                )
+                Text(
+                    text = "${(pct * 100).toInt().coerceAtLeast(0)}%",
+                    style = monoStyle(22).copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.align(Alignment.Center),
+                )
             }
-
-            SectionHeader("cap · drag to set")
-            Slider(
-                value = localBudget.toFloat(),
-                onValueChange = { localBudget = it.toInt().coerceIn(4, 32) },
-                onValueChangeFinished = {
-                    scope.launch { container.syncPrefs.setStorageBudgetGb(localBudget) }
-                },
-                valueRange = 4f..32f,
-                steps = (32 - 4 - 1),
-                colors = SliderDefaults.colors(
-                    thumbColor = MaterialTheme.colorScheme.primary,
-                    activeTrackColor = MaterialTheme.colorScheme.primary,
-                ),
-            )
-            Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth(),
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 16.dp),
             ) {
-                Text(
-                    text = "4 GB",
-                    style = monoStyle(11),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                KvLine("used   ", "%.1f GB".format(usedGb))
+                KvLine("cap    ", "%d GB".format(localBudget))
+                KvLine(
+                    "free   ",
+                    "%.1f GB".format((capGbActual - usedGb).coerceAtLeast(0f)),
                 )
-                Text(
-                    text = "32 GB",
-                    style = monoStyle(11),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                KvLine("device ", "%.0f GB total".format(deviceTotalGb))
+                KvLine("avail  ", "%.1f GB free".format(deviceFreeGb))
             }
+        }
 
-            SectionHeader("by bucket")
-            val nonZeroUsed = usedBytes.coerceAtLeast(1L)
-            view.buckets.forEachIndexed { i, b ->
-                BucketStorageRow(index = i, row = b, totalBytes = nonZeroUsed)
-            }
+        SectionHeader("cap · drag to set")
+        Slider(
+            value = localBudget.toFloat(),
+            onValueChange = { localBudget = it.toInt().coerceIn(4, 32) },
+            onValueChangeFinished = {
+                scope.launch { container.syncPrefs.setStorageBudgetGb(localBudget) }
+            },
+            valueRange = 4f..32f,
+            steps = (32 - 4 - 1),
+            colors = SliderDefaults.colors(
+                thumbColor = MaterialTheme.colorScheme.primary,
+                activeTrackColor = MaterialTheme.colorScheme.primary,
+            ),
+        )
+        Row(
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = "4 GB",
+                style = monoStyle(11),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "32 GB",
+                style = monoStyle(11),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        SectionHeader("by bucket")
+        val nonZeroUsed = usedBytes.coerceAtLeast(1L)
+        view.buckets.forEachIndexed { i, b ->
+            BucketStorageRow(index = i, row = b, totalBytes = nonZeroUsed)
         }
     }
 }

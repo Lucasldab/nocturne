@@ -79,6 +79,13 @@ class BrowserViewModel(private val container: AppContainer) : ViewModel() {
     suspend fun tracksByAlbumList(albumId: String): List<TrackEntity> =
         container.db.trackDao().listByAlbum(albumId)
 
+    /**
+     * Non-paged full library list — used to queue the entire Tracks tab as
+     * one continuous playlist when the user taps a row.
+     */
+    suspend fun tracksAllList(): List<TrackEntity> =
+        container.db.trackDao().listAll()
+
     // -------------------------------------------------------------------------
     // Phase 5 (plan 05-06) — PLAY-10: pin write from the catalog browser
     // -------------------------------------------------------------------------

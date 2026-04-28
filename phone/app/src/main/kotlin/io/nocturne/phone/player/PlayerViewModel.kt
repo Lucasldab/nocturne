@@ -113,6 +113,80 @@ class PlayerViewModel(
         }
     }
 
+    /**
+     * Play [startTrack] in the context of [allTracks], preserving list order
+     * (no album-cohesion reorder). Anything after the start track plays next,
+     * making the Tracks tab behave like one continuous playlist when tapped.
+     */
+    fun playFromList(allTracks: List<TrackEntity>, startTrack: TrackEntity) {
+        val c = _controller.value ?: return
+        viewModelScope.launch {
+            val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
+            if (musicUri == null) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Pick the music folder in Settings (5th tab) before playing.",
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
+                return@launch
+            }
+            // Resident-only queue — non-resident files would error + auto-skip
+            // anyway, but pre-filtering keeps "next track" predictable as the
+            // next downloaded track in list order (user's giant-playlist intent).
+            val resident = allTracks.filter { it.isResident }
+            if (resident.isEmpty()) {
+                // Fallback: tapped track is the only candidate; let it play even
+                // if not yet resident (Syncthing may have just landed it).
+                val item = startTrack.toMediaItem(musicTreeUri = musicUri)
+                c.setMediaItems(listOf(item), 0, 0L)
+                c.prepare()
+                c.play()
+                return@launch
+            }
+            val startIdx = resident.indexOfFirst { it.id == startTrack.id }
+                .takeIf { it >= 0 } ?: 0
+            val items = resident.map { it.toMediaItem(musicTreeUri = musicUri) }
+            c.setMediaItems(items, startIdx, /* startPositionMs = */ 0L)
+            c.prepare()
+            c.play()
+        }
+    }
+
+    /**
+     * Append a single track to the end of the current queue without disturbing
+     * playback. If the queue is empty, falls through to playSingleTrack so the
+     * user gets the expected "tap → it plays" behaviour.
+     */
+    fun enqueueTrack(track: TrackEntity) {
+        val c = _controller.value ?: return
+        viewModelScope.launch {
+            val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
+            if (musicUri == null) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Pick the music folder in Settings (5th tab) before playing.",
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
+                return@launch
+            }
+            val item = track.toMediaItem(musicTreeUri = musicUri)
+            if (c.mediaItemCount == 0) {
+                c.setMediaItems(listOf(item), 0, /* startPositionMs = */ 0L)
+                c.prepare()
+                c.play()
+            } else {
+                c.addMediaItem(item)
+                if (!c.isPlaying && c.playbackState == androidx.media3.common.Player.STATE_IDLE) {
+                    c.prepare()
+                }
+            }
+        }
+    }
+
     fun playAlbumFromTrack(tracks: List<TrackEntity>, startTrack: TrackEntity) {
         val c = _controller.value ?: return  // not yet connected
         viewModelScope.launch {

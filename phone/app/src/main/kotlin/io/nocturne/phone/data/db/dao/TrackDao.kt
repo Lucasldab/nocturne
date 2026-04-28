@@ -52,4 +52,12 @@ interface TrackDao {
      */
     @Query("SELECT * FROM tracks WHERE albumId = :albumId ORDER BY discNumber, trackNumber")
     suspend fun listByAlbum(albumId: String): List<TrackEntity>
+
+    /**
+     * Non-paged full library list, same ordering as [pagedAll]. Used when
+     * tapping a row in the Tracks tab queues the entire library from that
+     * track forward, so playback flows like one giant playlist.
+     */
+    @Query("SELECT * FROM tracks ORDER BY title COLLATE NOCASE")
+    suspend fun listAll(): List<TrackEntity>
 }

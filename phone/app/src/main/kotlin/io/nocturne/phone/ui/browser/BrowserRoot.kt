@@ -1,5 +1,6 @@
 package io.nocturne.phone.ui.browser
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import io.nocturne.phone.ui.player.MiniPlayer
 import io.nocturne.phone.ui.player.NowPlayingScreen
 import io.nocturne.phone.ui.settings.SettingsScreen
@@ -87,6 +89,9 @@ fun BrowserRoot(
     // process death / rotation should reset to browse for predictability.
     var inUtility by remember { mutableStateOf(false) }
     var activeUtility by remember { mutableStateOf("rotation") }
+    // System back exits utility mode rather than the app — utility is an
+    // overlay state, not a navigation destination.
+    BackHandler(enabled = inUtility) { inUtility = false }
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Track the active route so we can hide the bottom-bar (nav + mini-player)
@@ -202,19 +207,15 @@ fun BrowserRoot(
                             onTap = { nav.navigate(Routes.NOW_PLAYING) },
                         )
                     }
-                    // 1px top hairline above the NavigationBar — #837A6C.
-                    // Skipped when the mini-player sits above: the mini already
-                    // owns the upper boundary, and an extra rule directly under
-                    // its 44dp row reads as a bottom border on the mini's
-                    // progress strip (260428 user feedback).
-                    if (!(hasMediaItem && activeController != null)) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(1.dp)
-                                .background(androidx.compose.ui.graphics.Color(0xFF837A6C)),
-                        )
-                    }
+                    // 1px top hairline above the NavigationBar — always
+                    // present so the boundary between mini-player and nav (or
+                    // content and nav, when mini absent) reads consistently.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(androidx.compose.ui.graphics.Color(0xFF837A6C)),
+                    )
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                         // Settings tab dropped 2026-04-28 — music-folder picker
                         // moved to first-run, so the only durable use of the
@@ -243,15 +244,13 @@ fun BrowserRoot(
                             NavigationBarItem(
                                 selected = activeTabRoute == route,
                                 colors = androidx.compose.material3.NavigationBarItemDefaults.colors(
-                                    // Indicator carries 50% alpha; selected icon + label
-                                    // render in solid #E0E0E0 over the tint so the letter
-                                    // pops against the dark bg + translucent purple stack
-                                    // (260428-ja8 contrast pass — #703490-on-translucent-
-                                    // #703490 was unreadable in the previous iteration).
-                                    indicatorColor = androidx.compose.ui.graphics.Color(0x80703490),
-                                    selectedIconColor = androidx.compose.ui.graphics.Color(0xFFE0E0E0),
+                                    // Selected = solid purple letter (no pill). Indicator
+                                    // pill rendered transparent so the letter alone carries
+                                    // the active state.
+                                    indicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                                    selectedIconColor = androidx.compose.ui.graphics.Color(0xFF703490),
                                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    selectedTextColor = androidx.compose.ui.graphics.Color(0xFFE0E0E0),
+                                    selectedTextColor = androidx.compose.ui.graphics.Color(0xFF703490),
                                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 ),
                                 onClick = {
@@ -305,12 +304,16 @@ fun BrowserRoot(
                     ArtistsScreen(vm, onNavigate = { id -> nav.navigate(Routes.artistDetail(id)) })
                 }
                 composable(Routes.TRACKS) {
+                    val scope = androidx.compose.runtime.rememberCoroutineScope()
                     TracksScreen(
                         vm = vm,
                         onTrackTap = { track ->
                             requestPlay {
-                                playerVm.playSingleTrack(track)
-                                nav.navigate(Routes.NOW_PLAYING)
+                                scope.launch {
+                                    val all = vm.tracksAllList()
+                                    playerVm.playFromList(all, track)
+                                    nav.navigate(Routes.NOW_PLAYING)
+                                }
                             }
                         },
                     )

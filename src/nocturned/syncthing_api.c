@@ -384,3 +384,91 @@ int syncthing_put_folder_config(const char *folder_id,
         "syncthing_api: PUT folder config returned HTTP %ld\n", status);
     return -1;
 }
+
+/* === GET /rest/config/options ============================================
+ *
+ * Used by `nocturned diskcheck` (Plan 08-03) to read Syncthing's
+ * `minHomeDiskFree` so the TUNE-02 probe can compute margin_above_floor.
+ * Same loopback gate / API-key / timeout shape as syncthing_rescan.
+ */
+
+/* Body sink: bounded write into the caller's buffer; tracks actual
+ * length even past cap so callers can detect truncation. */
+struct write_to_buf {
+    char  *out;
+    size_t cap;
+    size_t len;
+};
+
+static size_t append_to_buf(void *ptr, size_t size, size_t nmemb, void *ud)
+{
+    struct write_to_buf *w = ud;
+    size_t n = size * nmemb;
+    if (w->cap > 1 && w->len < w->cap - 1) {
+        size_t copy = n;
+        if (copy > w->cap - 1 - w->len) copy = w->cap - 1 - w->len;
+        memcpy(w->out + w->len, ptr, copy);
+    }
+    w->len += n;            /* track ACTUAL length even past cap */
+    return n;
+}
+
+int syncthing_get_options(char *out, size_t out_cap, size_t *out_len_out)
+{
+    if (!g_config_loaded) return 1;
+    if (!out || out_cap < 2) return -1;
+    if (syncthing_api_init() != 0) return -1;
+
+    out[0] = '\0';
+    struct write_to_buf wbuf = { .out = out, .cap = out_cap, .len = 0 };
+
+    CURL *easy = curl_easy_init();
+    if (!easy) return -1;
+
+    char *url = build_url("/rest/config/options", NULL);
+    if (!url) { curl_easy_cleanup(easy); return -1; }
+
+    char hdr[256];
+    snprintf(hdr, sizeof(hdr), "X-API-Key: %s", g_api_key);
+    struct curl_slist *hdrs = NULL;
+    hdrs = curl_slist_append(hdrs, hdr);
+
+    curl_easy_setopt(easy, CURLOPT_URL, url);
+    curl_easy_setopt(easy, CURLOPT_HTTPHEADER, hdrs);
+    curl_easy_setopt(easy, CURLOPT_HTTPGET, 1L);
+    curl_easy_setopt(easy, CURLOPT_TIMEOUT, 5L);
+    curl_easy_setopt(easy, CURLOPT_CONNECTTIMEOUT, 3L);
+    curl_easy_setopt(easy, CURLOPT_SSL_VERIFYPEER, 0L);
+    curl_easy_setopt(easy, CURLOPT_SSL_VERIFYHOST, 0L);
+    curl_easy_setopt(easy, CURLOPT_HTTP_VERSION, (long) CURL_HTTP_VERSION_1_1);
+    curl_easy_setopt(easy, CURLOPT_WRITEFUNCTION, append_to_buf);
+    curl_easy_setopt(easy, CURLOPT_WRITEDATA, &wbuf);
+
+    CURLcode rc = curl_easy_perform(easy);
+    long status = 0;
+    if (rc == CURLE_OK) {
+        curl_easy_getinfo(easy, CURLINFO_RESPONSE_CODE, &status);
+    } else {
+        fprintf(stderr,
+            "syncthing_api: GET options transport error: %s\n",
+            curl_easy_strerror(rc));
+    }
+
+    curl_slist_free_all(hdrs);
+    curl_easy_cleanup(easy);
+    free(url);
+
+    /* Always NUL-terminate within out[]; truncate gracefully if body
+     * exceeded out_cap-1. */
+    size_t actual = wbuf.len;
+    size_t copied = (actual < out_cap - 1) ? actual : out_cap - 1;
+    out[copied] = '\0';
+    if (out_len_out) *out_len_out = actual;
+
+    if (rc != CURLE_OK) return -1;
+    if (status == 200) return 0;
+    fprintf(stderr,
+        "syncthing_api: GET /rest/config/options returned HTTP %ld\n",
+        status);
+    return -1;
+}

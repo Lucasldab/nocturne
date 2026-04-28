@@ -56,6 +56,7 @@ fun SearchOverlay(
     onDismiss: () -> Unit,
     pinnedIds: Set<String> = emptySet(),
     onPinTrack: (String) -> Unit = {},
+    onTrackTap: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
 ) {
     val vm: SearchViewModel = viewModel(factory = SearchVMFactory(container))
     val query by vm.query.collectAsStateWithLifecycle()
@@ -68,6 +69,7 @@ fun SearchOverlay(
         onDismiss = onDismiss,
         pinnedIds = pinnedIds,
         onPinTrack = onPinTrack,
+        onTrackTap = onTrackTap,
     )
 }
 
@@ -81,6 +83,7 @@ private fun SearchOverlayBody(
     onDismiss: () -> Unit,
     pinnedIds: Set<String> = emptySet(),
     onPinTrack: (String) -> Unit = {},
+    onTrackTap: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
 ) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
@@ -137,7 +140,7 @@ private fun SearchOverlayBody(
                 },
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
-            ResultsBody(state, pinnedIds = pinnedIds, onPinTrack = onPinTrack)
+            ResultsBody(state, pinnedIds = pinnedIds, onPinTrack = onPinTrack, onTrackTap = onTrackTap)
         }
     }
 }
@@ -147,6 +150,7 @@ private fun ResultsBody(
     state: SearchResult,
     pinnedIds: Set<String> = emptySet(),
     onPinTrack: (String) -> Unit = {},
+    onTrackTap: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
 ) {
     when (state) {
         SearchResult.Idle -> EmptyHint("type to search by title, artist, album, genre")
@@ -159,7 +163,7 @@ private fun ResultsBody(
                 TrackRow(
                     track = track,
                     isPinned = pinnedIds.contains(track.id),
-                    onTap = { /* P5 wires player for resident tracks */ },
+                    onTap = { onTrackTap(track) },
                     onPinClick = { onPinTrack(track.id) },
                 )
             }

@@ -135,12 +135,16 @@ fun BrowserRoot(container: AppContainer) {
                         )
                     }
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                        // Settings tab dropped 2026-04-28 — music-folder picker
+                        // moved to first-run, so the only durable use of the
+                        // Settings page is gone. The composable still exists
+                        // for the STATS SYNC affordance but is no longer in
+                        // the bottom nav.
                         listOf(
                             Routes.ALBUMS to "Albums",
                             Routes.ARTISTS to "Artists",
                             Routes.TRACKS to "Tracks",
                             Routes.GENRES to "Genres",
-                            Routes.SETTINGS to "Settings",
                         ).forEach { (route, label) ->
                             NavigationBarItem(
                                 selected = currentRoute == route,
@@ -263,14 +267,12 @@ fun BrowserRoot(container: AppContainer) {
  */
 @Composable
 private fun BrandWordmark() {
-    val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
     val nameColor = MaterialTheme.colorScheme.onSurface
-    val cursorColor = MaterialTheme.colorScheme.primary
+    val accent = MaterialTheme.colorScheme.primary
     Text(
         text = buildAnnotatedString {
-            withStyle(SpanStyle(color = mutedColor)) { append("$ ") }
+            withStyle(SpanStyle(color = accent)) { append("$ ") }
             withStyle(SpanStyle(color = nameColor)) { append("nocturne") }
-            withStyle(SpanStyle(color = cursorColor)) { append("▌") }
         },
         style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
     )

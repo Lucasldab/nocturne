@@ -161,19 +161,9 @@ private fun NowPlayingBody(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.weight(1f))
-                if (currentTrackId != null) {
-                    IconButton(onClick = onToggleLike) {
-                        Icon(
-                            imageVector = if (isLiked) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                            contentDescription = if (isLiked) "Unlike track" else "Like track",
-                            tint = if (isLiked) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
-                        )
-                    }
-                }
+                // Heart icon intentionally hidden 2026-04-28 — like-toggle UX
+                // deferred until the design pass settles. Underlying toggleLike
+                // wiring on PlayerViewModel is preserved for a future round.
             }
 
             Spacer(Modifier.height(12.dp))
@@ -249,21 +239,25 @@ private fun NowPlayingBody(
             )
         }
 
-        // 5. Sticky bottom transport block — borderTop + custom progress bar +
-        //    elapsed/duration row + inline transport. Per design: 2dp track,
-        //    primary fill, 10dp circular thumb on the seam, mono 11sp times.
+        // 5. Sticky bottom transport block.
+        //    Top hairline divider only — no side / bottom border, so the block
+        //    bleeds into the system gesture inset cleanly.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(
-                    width = 1.dp,
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                )
                 .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
         ) {
             NowPlayingProgressBar(controller = controller)
             Spacer(Modifier.height(12.dp))
             // Inline transport — shuffle / prev / play / next / repeat in one row.
+            // Center play/pause is wrapped in a 56dp circle so it reads as the
+            // primary action, per design.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -271,7 +265,15 @@ private fun NowPlayingBody(
             ) {
                 ShuffleButton(player = controller)
                 PreviousButton(player = controller)
-                PlayPauseButton(player = controller)
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PlayPauseButton(player = controller)
+                }
                 NextButton(player = controller)
                 RepeatButton(player = controller)
             }

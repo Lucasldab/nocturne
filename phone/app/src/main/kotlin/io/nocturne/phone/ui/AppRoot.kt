@@ -46,6 +46,8 @@ fun AppRoot(app: NocturneApp) {
     val container = app.container
     val metaTreeUri by container.syncPrefs.metaTreeUri
         .collectAsStateWithLifecycle(initialValue = LOADING_SENTINEL)
+    val musicTreeUri by container.syncPrefs.musicTreeUri
+        .collectAsStateWithLifecycle(initialValue = LOADING_SENTINEL)
     var trackCount by remember { mutableIntStateOf(-1) }
 
     LaunchedEffect(metaTreeUri) {
@@ -56,7 +58,7 @@ fun AppRoot(app: NocturneApp) {
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         when {
-            metaTreeUri == LOADING_SENTINEL || trackCount == -1 -> {
+            metaTreeUri == LOADING_SENTINEL || musicTreeUri == LOADING_SENTINEL || trackCount == -1 -> {
                 Box(Modifier.fillMaxSize().padding(24.dp)) {
                     Text(
                         "nocturne",
@@ -69,6 +71,19 @@ fun AppRoot(app: NocturneApp) {
                 FirstRunRoute(container) { result ->
                     trackCount = result.tracksImported
                 }
+            }
+            // Metadata + import done, but the music folder hasn't been picked
+            // yet — render the same first-run picker style for the music dir
+            // (design pass2026-04-28 setup contract: pick metadata then
+            // music in sequence, no Settings detour).
+            musicTreeUri == null -> {
+                io.nocturne.phone.ui.firstrun.MusicFolderPickerScreen(
+                    onFolderPicked = { uri ->
+                        // Caller side-effects: persist URI to SyncPrefs. Done
+                        // inside the picker via SyncPrefs.setMusicTreeUri.
+                    },
+                    syncPrefs = container.syncPrefs,
+                )
             }
             else -> {
                 BrowserRoot(container)

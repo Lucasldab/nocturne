@@ -13,6 +13,8 @@ private val NocturneColorScheme = darkColorScheme(
     onSurfaceVariant = NocturneOnSurfaceMuted,
     primary          = NocturnePrimary,
     onPrimary        = NocturneOnPrimary,
+    secondaryContainer = NocturneSecondaryContainer,  // NavigationBarItem selected indicator
+    onSecondaryContainer = NocturneOnBackground,
     error            = NocturneError,
 )
 

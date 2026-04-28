@@ -11,6 +11,7 @@ internal val NocturneOnSurface  = Color(0xFFC8C8C8)
 internal val NocturneOnSurfaceMuted = Color(0xFF8A8A8A)
 internal val NocturnePrimary    = Color(0xFF8C41B4)  // deep purple accent — design-pass (design pass2026-04-27)
 internal val NocturneOnPrimary  = Color(0xFF000000)
+internal val NocturneSecondaryContainer = Color(0xFF703490)  // selected nav-pill — slightly deeper than primary, picked 2026-04-28
 internal val NocturneError      = Color(0xFFCF6679)
 
 // Visual conventions for resident vs catalog distinction (CAT-05).

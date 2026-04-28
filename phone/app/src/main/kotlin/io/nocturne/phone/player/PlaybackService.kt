@@ -87,17 +87,43 @@ class PlaybackService : MediaSessionService() {
             // Gapless: ExoPlayer default-on satisfies PLAY-02.
             .build()
 
-        // Surface playback errors via Toast — without this the player silently
-        // transitions to STATE_ENDED on URI failure / format failure / permission
-        // failure and the user sees nothing but a play→pause flicker.
+        // Surface playback errors via Toast AND auto-skip on missing file.
+        // Without this the player silently transitions to STATE_ENDED on URI
+        // failure / format failure / permission failure and the user sees
+        // nothing but a play→pause flicker. With auto-skip, queueing a track
+        // whose audio file isn't synced to the phone yet (Syncthing-Fork
+        // still pulling) jumps to the next loadable item instead of stalling.
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 val item = player.currentMediaItem
                 val uri = item?.localConfiguration?.uri?.toString() ?: "<no item>"
-                val msg = "Player error ${error.errorCodeName}: ${error.message}\nURI: $uri"
-                android.util.Log.e("nocturne", msg, error)
+                val title = item?.mediaMetadata?.title?.toString() ?: "?"
+                android.util.Log.e("nocturne", "Player error ${error.errorCodeName}: ${error.message} | URI: $uri", error)
+
+                val isMissingFile =
+                    error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
+                    error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+                val hasNext = player.hasNextMediaItem()
+
+                val toast = if (isMissingFile && hasNext) {
+                    "Skipping '$title' — file not on phone yet. Trying next…"
+                } else if (isMissingFile) {
+                    "'$title' is not on the phone yet. Wait for Syncthing to finish."
+                } else {
+                    "Player error ${error.errorCodeName}: ${error.message}"
+                }
                 android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    android.widget.Toast.makeText(applicationContext, msg, android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(applicationContext, toast, android.widget.Toast.LENGTH_LONG).show()
+                    // Recover playback by jumping to the next item if one exists.
+                    if (isMissingFile && hasNext) {
+                        try {
+                            player.seekToNextMediaItem()
+                            player.prepare()
+                            player.play()
+                        } catch (e: Exception) {
+                            android.util.Log.e("nocturne", "auto-skip failed: ${e.message}", e)
+                        }
+                    }
                 }
             }
         })

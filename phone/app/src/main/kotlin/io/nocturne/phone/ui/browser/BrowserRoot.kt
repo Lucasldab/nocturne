@@ -42,6 +42,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import io.nocturne.phone.ui.theme.JetBrainsMono
 import androidx.compose.ui.text.withStyle
 import androidx.navigation.navArgument
@@ -49,6 +50,11 @@ import io.nocturne.phone.data.AppContainer
 import io.nocturne.phone.player.PlayerVMFactory
 import io.nocturne.phone.player.PlayerViewModel
 import io.nocturne.phone.ui.search.SearchOverlay
+import io.nocturne.phone.ui.system.RotationScreen
+import io.nocturne.phone.ui.system.StatsScreen
+import io.nocturne.phone.ui.system.StorageScreen
+import io.nocturne.phone.ui.system.SyncScreen
+import io.nocturne.phone.ui.system.SystemHubScreen
 
 /**
  * Top-level browser surface. Hosts the four-tab NavigationBar plus detail
@@ -77,8 +83,17 @@ fun BrowserRoot(
     Box(modifier = Modifier.fillMaxSize()) {
         // Track the active route so we can hide the bottom-bar (nav + mini-player)
         // on the NowPlaying / detail screens that own their own bottom chrome.
+        // Quick task 260428-7zc: the four System sub-screens (Rotation / Sync /
+        // Storage / Stats) also hide both the top-bar AND the bottom-bar so they
+        // can render their own back-button TopAppBar without doubled chrome.
+        // The System hub is INTENTIONALLY excluded — it keeps the bottom-bar so
+        // the user can flip back to a music tab without going through Back.
         val currentRoute = nav.currentBackStackEntryAsState().value?.destination?.route
-        val isFullscreen = currentRoute == Routes.NOW_PLAYING
+        val isFullscreen = currentRoute == Routes.NOW_PLAYING ||
+            currentRoute == Routes.SYSTEM_ROTATION ||
+            currentRoute == Routes.SYSTEM_SYNC ||
+            currentRoute == Routes.SYSTEM_STORAGE ||
+            currentRoute == Routes.SYSTEM_STATS
 
         // Live mini-player visibility — drives both the inclusion of the
         // mini-row in the bottom-bar slot AND its content.
@@ -114,6 +129,22 @@ fun BrowserRoot(
                         TopAppBar(
                             title = { BrandWordmark() },
                             actions = {
+                                // Quick task 260428-7zc: ◇ entry-point to the
+                                // System hub. Text-as-glyph (JetBrains Mono is
+                                // bundled — see Typography.kt) avoids adding a
+                                // material-icons-extended dependency for one
+                                // monogram. Positioned BEFORE Search so the
+                                // glyph sits to the left of the magnifier.
+                                IconButton(onClick = { nav.navigate(Routes.SYSTEM_HUB) }) {
+                                    Text(
+                                        text = "◇",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontFamily = JetBrainsMono,
+                                            fontWeight = FontWeight.Normal,
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
                                 IconButton(onClick = { showSearch = true }) {
                                     Icon(
                                         imageVector = Icons.Default.Search,
@@ -236,6 +267,28 @@ fun BrowserRoot(
                 composable(Routes.GENRES) { GenresScreen(vm) }
                 composable(Routes.SETTINGS) {
                     SettingsScreen(container = container)
+                }
+                // Quick task 260428-7zc: System hub + four sub-screens.
+                composable(Routes.SYSTEM_HUB) {
+                    SystemHubScreen(
+                        onRotation = { nav.navigate(Routes.SYSTEM_ROTATION) },
+                        onSync     = { nav.navigate(Routes.SYSTEM_SYNC) },
+                        onStorage  = { nav.navigate(Routes.SYSTEM_STORAGE) },
+                        onStats    = { nav.navigate(Routes.SYSTEM_STATS) },
+                        onBack     = { nav.popBackStack() },
+                    )
+                }
+                composable(Routes.SYSTEM_ROTATION) {
+                    RotationScreen(container = container, onBack = { nav.popBackStack() })
+                }
+                composable(Routes.SYSTEM_SYNC) {
+                    SyncScreen(container = container, onBack = { nav.popBackStack() })
+                }
+                composable(Routes.SYSTEM_STORAGE) {
+                    StorageScreen(container = container, onBack = { nav.popBackStack() })
+                }
+                composable(Routes.SYSTEM_STATS) {
+                    StatsScreen(container = container, onBack = { nav.popBackStack() })
                 }
                 composable(
                     route = Routes.ALBUM_DETAIL_PATTERN,

@@ -88,7 +88,21 @@ class PlayerViewModel(
         val c = _controller.value ?: return  // not yet connected
         viewModelScope.launch {
             val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
+            if (musicUri == null) {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    android.widget.Toast.makeText(
+                        context,
+                        "Pick the music folder in Settings (5th tab) before playing.",
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
+                return@launch
+            }
             val (items, startIndex) = AlbumQueueBuilder.buildFromTrack(tracks, startTrack, musicUri)
+            android.util.Log.d(
+                "nocturne",
+                "playAlbumFromTrack: tracks=${tracks.size} startIdx=$startIndex first.uri=${items.firstOrNull()?.localConfiguration?.uri} musicTree=$musicUri trackPath=${startTrack.path}",
+            )
             c.setMediaItems(items, startIndex, /* startPositionMs = */ 0L)
             c.prepare()
             c.play()

@@ -87,6 +87,21 @@ class PlaybackService : MediaSessionService() {
             // Gapless: ExoPlayer default-on satisfies PLAY-02.
             .build()
 
+        // Surface playback errors via Toast — without this the player silently
+        // transitions to STATE_ENDED on URI failure / format failure / permission
+        // failure and the user sees nothing but a play→pause flicker.
+        player.addListener(object : Player.Listener {
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                val item = player.currentMediaItem
+                val uri = item?.localConfiguration?.uri?.toString() ?: "<no item>"
+                val msg = "Player error ${error.errorCodeName}: ${error.message}\nURI: $uri"
+                android.util.Log.e("nocturne", msg, error)
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    android.widget.Toast.makeText(applicationContext, msg, android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+        })
+
         mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(buildSessionActivityIntent())
             .setCallback(ResumptionCallback(queueRepository, trackDao, container.syncPrefs))

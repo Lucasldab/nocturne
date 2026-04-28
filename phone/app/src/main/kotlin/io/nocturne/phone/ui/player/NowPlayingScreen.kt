@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -121,13 +119,11 @@ private fun NowPlayingBody(
     onToggleLike: () -> Unit,
     onBack: () -> Unit,
 ) {
-    val scrollState = rememberScrollState()
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 16.dp, vertical = 32.dp)
-            .verticalScroll(scrollState),
+            .padding(horizontal = 16.dp, vertical = 32.dp),
     ) {
         // 1. Back row (Phase 6: trailing-edge heart icon per UI-SPEC Surface 1).
         // Plain `if` show/hide and `if/else` icon swap — both are explicit
@@ -246,8 +242,12 @@ private fun NowPlayingBody(
 
         Spacer(Modifier.height(24.dp))
 
-        // 9. Queue section
-        QueueSection(controller = controller, currentIndex = currentIndex)
+        // 9. Queue section — takes remaining vertical space; LazyColumn scrolls inside.
+        QueueSection(
+            controller = controller,
+            currentIndex = currentIndex,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

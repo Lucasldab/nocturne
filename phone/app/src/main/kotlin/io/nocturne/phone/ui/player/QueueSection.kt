@@ -38,7 +38,11 @@ import io.nocturne.phone.ui.theme.NocturnePrimary
  */
 @OptIn(UnstableApi::class)
 @Composable
-fun QueueSection(controller: MediaController, currentIndex: Int) {
+fun QueueSection(
+    controller: MediaController,
+    currentIndex: Int,
+    modifier: Modifier = Modifier,
+) {
     val items = remember { mutableStateOf<List<MediaItem>>(emptyList()) }
 
     DisposableEffect(controller) {
@@ -55,7 +59,7 @@ fun QueueSection(controller: MediaController, currentIndex: Int) {
         onDispose { controller.removeListener(listener) }
     }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(modifier = modifier.fillMaxWidth()) {
         Text(
             "QUEUE",
             style = MaterialTheme.typography.labelMedium,

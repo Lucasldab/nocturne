@@ -250,6 +250,11 @@ fun BrowserRoot(container: AppContainer) {
                 onDismiss = { showSearch = false },
                 pinnedIds = pinnedIds,
                 onPinTrack = { vm.togglePinTrack(it) },
+                onTrackTap = { track ->
+                    showSearch = false
+                    playerVm.playSingleTrack(track)
+                    nav.navigate(Routes.NOW_PLAYING)
+                },
             )
         }
         // Mini-player + nav-bar are now stacked in the Scaffold bottomBar slot
@@ -269,10 +274,12 @@ fun BrowserRoot(container: AppContainer) {
 private fun BrandWordmark() {
     val nameColor = MaterialTheme.colorScheme.onSurface
     val accent = MaterialTheme.colorScheme.primary
+    val cursorColor = accent
     Text(
         text = buildAnnotatedString {
             withStyle(SpanStyle(color = accent)) { append("$ ") }
             withStyle(SpanStyle(color = nameColor)) { append("nocturne") }
+            withStyle(SpanStyle(color = cursorColor)) { append(" ▌") }
         },
         style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
     )

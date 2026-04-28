@@ -62,10 +62,20 @@ class SyncPrefs(private val ctx: Context) {
     }
 
     /**
-     * Phase 6 (D-21, D-22): privacy-preserving 8-hex-char device identifier.
-     * Generated exactly once on first access via SecureRandom (NOT IMEI / Android
-     * ID / hostname / serial). Persisted to DataStore so reinstall + DataStore
-     * restore preserves the same id; otherwise a fresh id is minted.
+     * Phase 6 (D-21, D-22) + 260428 reinstall persistence: privacy-preserving
+     * 8-hex-char device identifier. NOT IMEI / Android ID / hostname / serial.
+     *
+     * Lookup priority (first hit wins, all subsequent levels propagate up):
+     *   1. DataStore `device_id` key — fastest, no SAF I/O.
+     *   2. `<metaTreeUri>/.nocturne-deviceid` (SAF) — survives reinstall as
+     *      long as the user re-picks the same meta tree. Avoids the
+     *      "every Obtainium upgrade gets a fresh device-id" problem caused by
+     *      `android:allowBackup="false"` wiping DataStore on app data clear.
+     *   3. Mint a fresh SecureRandom 4-byte hex.
+     *
+     * On levels 2/3, also write back to DataStore so subsequent calls hit
+     * level 1. On level 3, also try to write to the SAF tree so the next
+     * reinstall finds it at level 2.
      *
      * The returned value is used to name JSONL files per docs/jsonl-spec.md §3:
      *   stats/phone-<deviceid>.jsonl
@@ -73,13 +83,50 @@ class SyncPrefs(private val ctx: Context) {
      *   pins-phone-<deviceid>.jsonl
      */
     suspend fun deviceId(): String {
-        val existing = ctx.syncDataStore.data.first()[DEVICE_ID]
-        if (existing != null) return existing
+        // Level 1 — DataStore.
+        val cached = ctx.syncDataStore.data.first()[DEVICE_ID]
+        if (cached != null) return cached
+
+        // Level 2 — SAF tree's `.nocturne-deviceid` file.
+        val safId = readDeviceIdFromSaf()
+        if (safId != null) {
+            ctx.syncDataStore.edit { it[DEVICE_ID] = safId }
+            return safId
+        }
+
+        // Level 3 — mint fresh + persist to both places.
         val bytes = ByteArray(4)
         SecureRandom().nextBytes(bytes)
         val newId = bytes.joinToString(separator = "") { "%02x".format(it.toInt() and 0xff) }
         ctx.syncDataStore.edit { it[DEVICE_ID] = newId }
+        runCatching { writeDeviceIdToSaf(newId) }
         return newId
+    }
+
+    private suspend fun readDeviceIdFromSaf(): String? {
+        val treeStr = metaTreeUri.first() ?: return null
+        val tree = androidx.documentfile.provider.DocumentFile.fromTreeUri(
+            ctx, android.net.Uri.parse(treeStr),
+        ) ?: return null
+        val file = tree.findFile(".nocturne-deviceid") ?: return null
+        return runCatching {
+            ctx.contentResolver.openInputStream(file.uri)?.use { it.readBytes() }
+                ?.toString(Charsets.UTF_8)
+                ?.trim()
+                ?.takeIf { it.matches(Regex("^[0-9a-f]{8}$")) }
+        }.getOrNull()
+    }
+
+    private suspend fun writeDeviceIdToSaf(id: String) {
+        val treeStr = metaTreeUri.first() ?: return
+        val tree = androidx.documentfile.provider.DocumentFile.fromTreeUri(
+            ctx, android.net.Uri.parse(treeStr),
+        ) ?: return
+        val existing = tree.findFile(".nocturne-deviceid")
+        val target = existing ?: tree.createFile("application/octet-stream", ".nocturne-deviceid") ?: return
+        ctx.contentResolver.openOutputStream(target.uri, "wt")?.use {
+            it.write(id.toByteArray(Charsets.UTF_8))
+        }
     }
 
     /**

@@ -36,6 +36,10 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.withStyle
 import androidx.navigation.navArgument
 import io.nocturne.phone.data.AppContainer
 import io.nocturne.phone.player.PlayerVMFactory
@@ -63,9 +67,7 @@ fun BrowserRoot(container: AppContainer) {
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = {
-                        Text("nocturne", style = MaterialTheme.typography.titleMedium)
-                    },
+                    title = { BrandWordmark() },
                     actions = {
                         IconButton(onClick = { showSearch = true }) {
                             Icon(
@@ -199,4 +201,26 @@ fun BrowserRoot(container: AppContainer) {
             )
         }
     }
+}
+
+/**
+ * Top-bar wordmark — `$ nocturne▌` prompt-style per the design pass2026-04-27
+ * design pass (ratified default `brandMode: 'lower'`). Monospace family with the
+ * cursor block in the primary accent color, leaning into the project's terminal
+ * aesthetic without adding a font dependency (system mono is sufficient on
+ * GrapheneOS + Pixel; F-Droid reproducible-build path stays clean).
+ */
+@Composable
+private fun BrandWordmark() {
+    val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val nameColor = MaterialTheme.colorScheme.onSurface
+    val cursorColor = MaterialTheme.colorScheme.primary
+    Text(
+        text = buildAnnotatedString {
+            withStyle(SpanStyle(color = mutedColor)) { append("$ ") }
+            withStyle(SpanStyle(color = nameColor)) { append("nocturne") }
+            withStyle(SpanStyle(color = cursorColor)) { append("▌") }
+        },
+        style = MaterialTheme.typography.titleMedium.copy(fontFamily = FontFamily.Monospace),
+    )
 }

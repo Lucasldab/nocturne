@@ -1,20 +1,18 @@
 package io.nocturne.phone.ui.player
 
-import android.graphics.BitmapFactory
 import androidx.annotation.OptIn
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,9 +23,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.MediaMetadata
@@ -38,14 +39,19 @@ import androidx.media3.ui.compose.material3.buttons.PlayPauseButton
 import io.nocturne.phone.ui.theme.NocturneTheme
 
 /**
- * UI-SPEC Surface 2. Slim 56dp bar mounted above NavigationBar in BrowserRoot.
+ * Minimal mini-player per design pass2026-04-27 pass (ratified
+ * `miniVariant: 'minimal'`). Single 44dp line above the NavigationBar:
+ *
+ *   • title · artist                                        ⏵
+ *
+ * - 6dp purple dot prefix (primary accent)
+ * - JetBrains-style mono single line: `title · artist` ellipsised
+ * - Trailing PlayPauseButton (36dp)
+ * - 1dp top hairline (surfaceVariant) — replaces the bigger 56dp art thumb
  *
  * Visibility is gated by the caller:
  *   `if (controller != null && controller.currentMediaItem != null) { MiniPlayer(...) }`
- * -- no AnimatedVisibility (UI-SPEC Animation Gate).
- *
- * PlayPauseButton size exception: 40dp (documented in UI-SPEC Spacing Scale
- * "Mini-player bar height" note -- tight chrome, caller's intent).
+ * — no AnimatedVisibility (UI-SPEC Animation Gate).
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -66,52 +72,38 @@ fun MiniPlayer(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(44.dp)
             .background(MaterialTheme.colorScheme.surface)
+            .border(1.dp, MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onTap)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Art thumbnail 36dp -- surfaceVariant placeholder when art is null
+        // 6dp purple dot — accent indicator, replaces the 36dp art thumb.
         Box(
             modifier = Modifier
-                .size(36.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        ) {
-            val artworkBytes = metadata.artworkData
-            if (artworkBytes != null) {
-                val bitmap = remember(artworkBytes) {
-                    BitmapFactory.decodeByteArray(artworkBytes, 0, artworkBytes.size)
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary),
+        )
+        Spacer(Modifier.width(10.dp))
+        // Single mono line: title · artist (artist muted)
+        Text(
+            text = buildAnnotatedString {
+                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface)) {
+                    append(metadata.title?.toString().orEmpty())
                 }
-                if (bitmap != null) {
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
+                    append(" · ")
+                    append(metadata.artist?.toString().orEmpty())
                 }
-            }
-        }
-        Spacer(Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = metadata.title?.toString().orEmpty(),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = metadata.artist?.toString().orEmpty(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        // PlayPauseButton: 40dp per UI-SPEC documented exception
-        PlayPauseButton(player = controller, modifier = Modifier.size(40.dp))
+            },
+            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        PlayPauseButton(player = controller, modifier = Modifier.size(36.dp))
     }
 }
 

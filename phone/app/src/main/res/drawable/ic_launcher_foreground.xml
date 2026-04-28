@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sound Hole — moon over a horizon of audio bars.
+  Source: design pass2026-04-27 logos.jsx (option 8 "Sound Hole").
+
+  Design coords are 100x100; adaptive icon canvas is 108x108 with the
+  safe zone the inner 72x72. The <group> translates +18 and scales 0.72
+  so the design lives entirely within the safe zone.
+
+  Bar geometry derived from JSX:
+    x_i = 22 + i * 4.7,  y = 64, w = 2,
+    h_i = max(2, 14 - |i-6| * 2.2)  for i in 0..12
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="18"
+        android:translateY="18"
+        android:scaleX="0.72"
+        android:scaleY="0.72">
+
+        <!-- horizon line -->
+        <path
+            android:strokeColor="#8C41B4"
+            android:strokeAlpha="0.4"
+            android:strokeWidth="0.6"
+            android:pathData="M14,58 L86,58" />
+
+        <!-- moon (crescent) -->
+        <path
+            android:fillColor="#8C41B4"
+            android:pathData="M64,30 a18,18 0 1 0 0,36 a14,14 0 1 1 0,-36 z" />
+
+        <!-- waveform reflection — 13 tapered bars centered on i=6 -->
+        <path android:fillColor="#8C41B4" android:fillAlpha="0.55" android:pathData="M22,64 h2 v2 h-2 z" />
+        <path android:fillColor="#8C41B4" android:fillAlpha="0.62" android:pathData="M26.7,64 h2 v3 h-2 z" />
+        <path android:fillColor="#8C41B4" android:fillAlpha="0.68" android:pathData="M31.4,64 h2 v5.2 h-2 z" />
+        <path android:fillColor="#8C41B4" android:fillAlpha="0.74" android:pathData="M36.1,64 h2 v7.4 h-2 z" />
+        <path android:fillColor="#8C41B4" android:fillAlpha="0.81" android:pathData="M40.8,64 h2 v9.6 h-2 z" />
+        <path android:fillColor="#8C41B4" android:fillAlpha="0.87" android:pathData="M45.5,64 h2 v11.8 h-2 z" />
+        <path android:fillColor="#8C41B4" android:fillAlpha="0.90" android:pathData="M50.2,64 h2 v14 h-2 z" />
+        <path android:fillColor="#8C41B4" android:fillAlpha="0.87" android:pathData="M54.9,64 h2 v11.8 h-2 z" />
+        <path android:fillColor="#8C41B4" android:fillAlpha="0.81" android:pathData="M59.6,64 h2 v9.6 h-2 z" />
+        <path android:fillColor="#8C41B4" android:fillAlpha="0.74" android:pathData="M64.3,64 h2 v7.4 h-2 z" />
+        <path android:fillColor="#8C41B4" android:fillAlpha="0.68" android:pathData="M69,64 h2 v5.2 h-2 z" />
+        <path android:fillColor="#8C41B4" android:fillAlpha="0.62" android:pathData="M73.7,64 h2 v3 h-2 z" />
+        <path android:fillColor="#8C41B4" android:fillAlpha="0.55" android:pathData="M78.4,64 h2 v2 h-2 z" />
+    </group>
+</vector>

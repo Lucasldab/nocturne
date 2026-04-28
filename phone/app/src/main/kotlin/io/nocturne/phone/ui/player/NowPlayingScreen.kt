@@ -217,26 +217,19 @@ private fun NowPlayingBody(
 
         Spacer(Modifier.height(24.dp))
 
-        // 7. Transport controls -- SpaceEvenly
+        // 7. Transport controls (design pass2026-04-27 ratified
+        //    `secondaryMode: 'inline'`): shuffle and repeat flank prev/next/play
+        //    in the same row so the dedicated secondary row is gone. They
+        //    render smaller / muted by default since they're rarely tapped.
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            ShuffleButton(player = controller)
             PreviousButton(player = controller)
             PlayPauseButton(player = controller)
             NextButton(player = controller)
-        }
-
-        // 8. Secondary controls (Shuffle / Repeat)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ShuffleButton(player = controller)
             RepeatButton(player = controller)
         }
 

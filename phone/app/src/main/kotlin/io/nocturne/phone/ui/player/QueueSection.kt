@@ -32,6 +32,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
+import io.nocturne.phone.player.PlayerViewModel
 import io.nocturne.phone.ui.theme.NocturnePrimary
 
 /**

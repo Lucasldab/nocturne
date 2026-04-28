@@ -325,6 +325,7 @@ fun BrowserRoot(
                                 nav.navigate(Routes.NOW_PLAYING)
                             }
                         },
+                        container = container,
                     )
                 }
                 composable(Routes.NOW_PLAYING) {

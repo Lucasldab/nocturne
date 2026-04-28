@@ -48,6 +48,7 @@ import io.nocturne.phone.ui.theme.JetBrainsMono
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -424,14 +425,19 @@ private fun FileInfoCard(
     currentIndex: Int,
     track: io.nocturne.phone.data.db.entity.TrackEntity?,
 ) {
-    // design pass2026-04-28: explicit FileInfoCard palette.
-    // Border #837a6c, all glyphs #9e9689, JetBrains Mono — falling back to
-    // JetBrainsMono (Roboto Mono) until the OFL JetBrains Mono TTFs
-    // are bundled in res/font/ alongside Inter.
-    val mono = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMono)
-    val mutedColor = androidx.compose.ui.graphics.Color(0xFF9E9689)
-    val onSurface = androidx.compose.ui.graphics.Color(0xFF9E9689)
-    val borderColor = androidx.compose.ui.graphics.Color(0xFF837A6C)
+    // FileInfoCard locked spec (design pass2026-04-28 NowPlaying terminal):
+    //   border 1px #1A1A1A · padding 10dp all sides · sharp corners
+    //   font JetBrains Mono 11sp / lineHeight 1.7em · color #8A8A8A everywhere
+    //   (NO label/value contrast — entire card is muted)
+    //   5 rows in order: format · size · track · resident · genre
+    //   all values lowercase
+    val mono = androidx.compose.ui.text.TextStyle(
+        fontFamily = JetBrainsMono,
+        fontSize = 11.sp,
+        lineHeight = (11 * 1.7f).sp,
+    )
+    val cardColor = androidx.compose.ui.graphics.Color(0xFF8A8A8A)
+    val borderColor = androidx.compose.ui.graphics.Color(0xFF1A1A1A)
 
     // Poll the controller for fields that aren't State-backed: duration is
     // -1 until ExoPlayer prepares the timeline, then settles to the real ms
@@ -463,12 +469,19 @@ private fun FileInfoCard(
         "—"
     }
 
-    val durationLine = if (durationMs > 0L) {
-        val total = (durationMs / 1000L).toInt()
-        val mm = total / 60
-        val ss = total % 60
-        "%02d:%02d".format(mm, ss)
-    } else "—"
+    // "size" line — human-readable file size from the Room row.
+    val sizeLine = run {
+        val bytes = track?.sizeBytes ?: 0L
+        when {
+            bytes <= 0L -> "—"
+            bytes < 1_000_000L -> "%d kb".format(bytes / 1000L)
+            bytes < 1_000_000_000L -> "%d mb".format(bytes / 1_000_000L)
+            else -> "%.1f gb".format(bytes / 1e9)
+        }
+    }
+
+    // "genre" line — first genre tag, lowercased.
+    val genreLine = track?.genre?.firstOrNull()?.lowercase()?.takeIf { it.isNotBlank() } ?: "—"
 
     // "format" line — codec + computed bitrate. Codec source priority:
     //   1. track.format (Room — populated from catalog.json)
@@ -507,12 +520,13 @@ private fun FileInfoCard(
         modifier = Modifier
             .fillMaxWidth()
             .border(1.dp, borderColor)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(10.dp),
     ) {
-        FileInfoRow("format", formatLine, mono, mutedColor, onSurface)
-        FileInfoRow("track", trackLine, mono, mutedColor, onSurface)
-        FileInfoRow("duration", durationLine, mono, mutedColor, onSurface)
-        FileInfoRow("resident", residentLine, mono, mutedColor, onSurface)
+        FileInfoRow("format", formatLine, mono, cardColor, cardColor)
+        FileInfoRow("size", sizeLine, mono, cardColor, cardColor)
+        FileInfoRow("track", trackLine, mono, cardColor, cardColor)
+        FileInfoRow("resident", residentLine, mono, cardColor, cardColor)
+        FileInfoRow("genre", genreLine, mono, cardColor, cardColor)
     }
 }
 

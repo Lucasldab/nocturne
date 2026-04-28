@@ -38,6 +38,7 @@ fun ArtistDetailScreen(
     onBack: () -> Unit,
     onAlbumTap: (String) -> Unit = {},
     onTrackTap: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
+    container: io.nocturne.phone.data.AppContainer? = null,
 ) {
     var artist by remember { mutableStateOf<ArtistEntity?>(null) }
     LaunchedEffect(artistId) { artist = vm.artistById(artistId) }
@@ -92,7 +93,7 @@ fun ArtistDetailScreen(
                     )
                 }
                 items(items = albums, key = { it.id }, contentType = { "album" }) { album ->
-                    AlbumRow(album = album, onTap = { onAlbumTap(album.id) })
+                    AlbumRow(album = album, onTap = { onAlbumTap(album.id) }, container = container)
                 }
                 item { HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant) }
             }

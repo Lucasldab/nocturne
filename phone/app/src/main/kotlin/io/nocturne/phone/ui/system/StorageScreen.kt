@@ -163,6 +163,11 @@ fun StorageScreen(container: AppContainer) {
             colors = SliderDefaults.colors(
                 thumbColor = sliderAccent,
                 activeTrackColor = sliderAccent,
+                // Inactive track: design spec is the browser-native ~#3A3A3A
+                // unfilled track. Material3's default surfaceVariant (#161616)
+                // is too dark to read against the page bg. Override.
+                inactiveTrackColor = androidx.compose.ui.graphics.Color(0xFF3A3A3A),
+                inactiveTickColor = androidx.compose.ui.graphics.Color(0xFF3A3A3A),
             ),
         )
         Row(

@@ -113,7 +113,6 @@ class PlaybackService : MediaSessionService() {
                 val isMissingFile =
                     error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND ||
                     error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_UNSPECIFIED
-                val hasNext = player.hasNextMediaItem()
 
                 if (!isMissingFile) {
                     val toast = "Player error ${error.errorCodeName}: ${error.message}"
@@ -124,16 +123,25 @@ class PlaybackService : MediaSessionService() {
                 }
 
                 // Missing file — auto-skip first, then suppress repeat toasts
-                // within the rolling 5s window. The first failure of a cascade
-                // toasts immediately ('Skipping <title>'), subsequent failures
-                // accumulate silently into skippedCount, and the LAST failure
-                // (when the cascade settles) emits a summary toast 'Skipped N
-                // tracks'. The summary is posted on a delayed runnable that
-                // gets re-armed on every new failure inside the window.
+                // within the rolling 5s window. Robustness for shuffle mode:
+                // hasNextMediaItem() can return false in shuffle order even
+                // when other queue items are loadable. If we have >1 items in
+                // queue total, prefer seekToNextMediaItem (Media3 handles
+                // shuffle ordering); fall back to a manual jump-to-index for
+                // the wrap case so a 'random' run never dead-ends on a single
+                // missing file.
+                val queueSize = player.mediaItemCount
+                val canRecover = queueSize > 1
                 mainHandler.post {
-                    if (hasNext) {
+                    if (canRecover) {
                         try {
-                            player.seekToNextMediaItem()
+                            if (player.hasNextMediaItem()) {
+                                player.seekToNextMediaItem()
+                            } else {
+                                // End of queue under current order — wrap to start.
+                                val target = (player.currentMediaItemIndex + 1) % queueSize
+                                player.seekTo(target, 0L)
+                            }
                             player.prepare()
                             player.play()
                         } catch (e: Exception) {
@@ -144,8 +152,8 @@ class PlaybackService : MediaSessionService() {
                     val now = System.currentTimeMillis()
                     val withinWindow = now - lastMissingToastMs < toastWindowMs
 
-                    if (!hasNext) {
-                        // Last item in queue — explicit terminal toast, no debounce.
+                    if (!canRecover) {
+                        // Single-item queue — nothing else to skip to.
                         val toast = "'$title' is not on the phone yet. Wait for Syncthing to finish."
                         android.widget.Toast.makeText(applicationContext, toast, android.widget.Toast.LENGTH_LONG).show()
                         skippedCount = 0

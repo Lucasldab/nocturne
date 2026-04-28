@@ -84,11 +84,17 @@ fun MiniPlayer(
     androidx.compose.foundation.layout.Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.surfaceVariant),
+            .background(MaterialTheme.colorScheme.surface),
     ) {
-        // 2dp progress strip pinned to the top of the row — purple fill on
-        // surfaceVariant track. Per design pass2026-04-27 MiniPlayerMinimal.
+        // 1px top hairline #837a6c per design pass2026-04-28 hand-tuning —
+        // sits ABOVE the 2dp progress strip so the progress fill never crosses it.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(androidx.compose.ui.graphics.Color(0xFF837A6C)),
+        )
+        // 2dp progress strip — purple fill on surfaceVariant track.
         val progress = if (durationMs > 0L) {
             (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
         } else 0f

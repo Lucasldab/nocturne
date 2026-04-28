@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
@@ -101,22 +102,32 @@ fun BrowserRoot(container: AppContainer) {
         Scaffold(
             topBar = {
                 if (!isFullscreen) {
-                    TopAppBar(
-                        title = { BrandWordmark() },
-                        actions = {
-                            IconButton(onClick = { showSearch = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Search,
-                                    contentDescription = "Search",
-                                )
-                            }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            titleContentColor = MaterialTheme.colorScheme.onSurface,
-                            actionIconContentColor = MaterialTheme.colorScheme.onSurface,
-                        ),
-                    )
+                    Column {
+                        TopAppBar(
+                            title = { BrandWordmark() },
+                            actions = {
+                                IconButton(onClick = { showSearch = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Search,
+                                        contentDescription = "Search",
+                                    )
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                titleContentColor = MaterialTheme.colorScheme.onSurface,
+                                actionIconContentColor = MaterialTheme.colorScheme.onSurface,
+                            ),
+                        )
+                        // 1px hairline under the brand row, color #c5c0b9 per
+                        // design pass2026-04-28 hand-tuning.
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(androidx.compose.ui.graphics.Color(0xFFC5C0B9)),
+                        )
+                    }
                 }
             },
             bottomBar = {
@@ -140,6 +151,19 @@ fun BrowserRoot(container: AppContainer) {
                         // Settings page is gone. The composable still exists
                         // for the STATS SYNC affordance but is no longer in
                         // the bottom nav.
+                        // Map the active route to the tab it lives under so the
+                        // selected pill survives navigation into detail screens
+                        // (album / artist detail). Without this the pill would
+                        // un-highlight as soon as the user drilled into a list.
+                        val activeTabRoute: String? = when {
+                            currentRoute == Routes.ALBUMS -> Routes.ALBUMS
+                            currentRoute == Routes.ARTISTS -> Routes.ARTISTS
+                            currentRoute == Routes.TRACKS -> Routes.TRACKS
+                            currentRoute == Routes.GENRES -> Routes.GENRES
+                            currentRoute == Routes.ALBUM_DETAIL_PATTERN -> Routes.ALBUMS
+                            currentRoute == Routes.ARTIST_DETAIL_PATTERN -> Routes.ARTISTS
+                            else -> null
+                        }
                         listOf(
                             Routes.ALBUMS to "Albums",
                             Routes.ARTISTS to "Artists",
@@ -147,7 +171,14 @@ fun BrowserRoot(container: AppContainer) {
                             Routes.GENRES to "Genres",
                         ).forEach { (route, label) ->
                             NavigationBarItem(
-                                selected = currentRoute == route,
+                                selected = activeTabRoute == route,
+                                colors = androidx.compose.material3.NavigationBarItemDefaults.colors(
+                                    indicatorColor = androidx.compose.ui.graphics.Color(0xFF703490),
+                                    selectedIconColor = androidx.compose.ui.graphics.Color(0xFFE0E0E0),
+                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                ),
                                 onClick = {
                                     nav.navigate(route) {
                                         popUpTo(nav.graph.findStartDestination().id) {

@@ -269,7 +269,7 @@ private fun NowPlayingBody(
                     modifier = Modifier
                         .size(56.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                        .background(androidx.compose.ui.graphics.Color(0xFF703490)),
                     contentAlignment = Alignment.Center,
                 ) {
                     PlayPauseButton(player = controller)
@@ -399,9 +399,14 @@ private fun formatMs(ms: Long): String {
 @OptIn(UnstableApi::class)
 @Composable
 private fun FileInfoCard(controller: MediaController, currentIndex: Int) {
+    // design pass2026-04-28: explicit FileInfoCard palette.
+    // Border #837a6c, all glyphs #9e9689, JetBrains Mono — falling back to
+    // FontFamily.Monospace (Roboto Mono) until the OFL JetBrains Mono TTFs
+    // are bundled in res/font/ alongside Inter.
     val mono = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace)
-    val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val onSurface = MaterialTheme.colorScheme.onSurface
+    val mutedColor = androidx.compose.ui.graphics.Color(0xFF9E9689)
+    val onSurface = androidx.compose.ui.graphics.Color(0xFF9E9689)
+    val borderColor = androidx.compose.ui.graphics.Color(0xFF837A6C)
 
     // Poll the controller for fields that aren't State-backed: duration is
     // -1 until ExoPlayer prepares the timeline, then settles to the real ms
@@ -443,7 +448,7 @@ private fun FileInfoCard(controller: MediaController, currentIndex: Int) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, borderColor)
             .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
         FileInfoRow("format", "audio", mono, mutedColor, onSurface)

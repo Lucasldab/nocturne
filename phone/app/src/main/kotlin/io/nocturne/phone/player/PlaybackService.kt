@@ -93,7 +93,17 @@ class PlaybackService : MediaSessionService() {
         // nothing but a play→pause flicker. With auto-skip, queueing a track
         // whose audio file isn't synced to the phone yet (Syncthing-Fork
         // still pulling) jumps to the next loadable item instead of stalling.
+        //
+        // Toast debounce: a cascade of N missing files would otherwise spam N
+        // toasts. We collapse consecutive missing-file events within a 5s
+        // window into a single counted toast: 'Skipped N tracks — files not on
+        // phone yet'.
         player.addListener(object : Player.Listener {
+            private var lastMissingToastMs = 0L
+            private var skippedCount = 0
+            private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+            private val toastWindowMs = 5_000L
+
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 val item = player.currentMediaItem
                 val uri = item?.localConfiguration?.uri?.toString() ?: "<no item>"
@@ -105,17 +115,23 @@ class PlaybackService : MediaSessionService() {
                     error.errorCode == androidx.media3.common.PlaybackException.ERROR_CODE_IO_UNSPECIFIED
                 val hasNext = player.hasNextMediaItem()
 
-                val toast = if (isMissingFile && hasNext) {
-                    "Skipping '$title' — file not on phone yet. Trying next…"
-                } else if (isMissingFile) {
-                    "'$title' is not on the phone yet. Wait for Syncthing to finish."
-                } else {
-                    "Player error ${error.errorCodeName}: ${error.message}"
+                if (!isMissingFile) {
+                    val toast = "Player error ${error.errorCodeName}: ${error.message}"
+                    mainHandler.post {
+                        android.widget.Toast.makeText(applicationContext, toast, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                    return
                 }
-                android.os.Handler(android.os.Looper.getMainLooper()).post {
-                    android.widget.Toast.makeText(applicationContext, toast, android.widget.Toast.LENGTH_LONG).show()
-                    // Recover playback by jumping to the next item if one exists.
-                    if (isMissingFile && hasNext) {
+
+                // Missing file — auto-skip first, then suppress repeat toasts
+                // within the rolling 5s window. The first failure of a cascade
+                // toasts immediately ('Skipping <title>'), subsequent failures
+                // accumulate silently into skippedCount, and the LAST failure
+                // (when the cascade settles) emits a summary toast 'Skipped N
+                // tracks'. The summary is posted on a delayed runnable that
+                // gets re-armed on every new failure inside the window.
+                mainHandler.post {
+                    if (hasNext) {
                         try {
                             player.seekToNextMediaItem()
                             player.prepare()
@@ -123,6 +139,30 @@ class PlaybackService : MediaSessionService() {
                         } catch (e: Exception) {
                             android.util.Log.e("nocturne", "auto-skip failed: ${e.message}", e)
                         }
+                    }
+
+                    val now = System.currentTimeMillis()
+                    val withinWindow = now - lastMissingToastMs < toastWindowMs
+
+                    if (!hasNext) {
+                        // Last item in queue — explicit terminal toast, no debounce.
+                        val toast = "'$title' is not on the phone yet. Wait for Syncthing to finish."
+                        android.widget.Toast.makeText(applicationContext, toast, android.widget.Toast.LENGTH_LONG).show()
+                        skippedCount = 0
+                        return@post
+                    }
+
+                    if (!withinWindow) {
+                        // Start of a new cascade — show the first toast immediately,
+                        // reset the counter so any follow-ups accumulate cleanly.
+                        skippedCount = 1
+                        lastMissingToastMs = now
+                        val toast = "Skipping '$title' — file not on phone yet."
+                        android.widget.Toast.makeText(applicationContext, toast, android.widget.Toast.LENGTH_SHORT).show()
+                    } else {
+                        // Inside the window — silent count.
+                        skippedCount++
+                        lastMissingToastMs = now
                     }
                 }
             }

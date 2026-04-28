@@ -202,15 +202,44 @@ fun BrowserRoot(container: AppContainer) {
         // MiniPlayer: persistent footer above NavigationBar when a MediaItem is loaded.
         // Plain `if` -- no AnimatedVisibility (UI-SPEC Animation Gate).
         // padding(bottom = 80.dp) offsets above Material3 NavigationBar (~80dp tall).
+        //
+        // currentMediaItem isn't a Compose State — reading it once at composition
+        // time means the mini-player never appears if a track started playing
+        // while the user was already on a browse screen. We track an explicit
+        // hasItem state and update it from a Player.Listener so the row pops in
+        // as soon as Media3 transitions to a real item.
         val miniController = playerVm.controller.collectAsStateWithLifecycle().value
-        if (miniController != null && miniController.currentMediaItem != null) {
-            MiniPlayer(
-                controller = miniController,
-                onTap = { nav.navigate(Routes.NOW_PLAYING) },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 80.dp),
-            )
+        if (miniController != null) {
+            var hasItem by remember(miniController) {
+                mutableStateOf(miniController.currentMediaItem != null)
+            }
+            DisposableEffect(miniController) {
+                val listener = object : androidx.media3.common.Player.Listener {
+                    override fun onMediaItemTransition(
+                        mediaItem: androidx.media3.common.MediaItem?,
+                        reason: Int,
+                    ) {
+                        hasItem = mediaItem != null
+                    }
+                    override fun onTimelineChanged(
+                        timeline: androidx.media3.common.Timeline,
+                        reason: Int,
+                    ) {
+                        hasItem = miniController.currentMediaItem != null
+                    }
+                }
+                miniController.addListener(listener)
+                onDispose { miniController.removeListener(listener) }
+            }
+            if (hasItem) {
+                MiniPlayer(
+                    controller = miniController,
+                    onTap = { nav.navigate(Routes.NOW_PLAYING) },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 80.dp),
+                )
+            }
         }
     }
 }

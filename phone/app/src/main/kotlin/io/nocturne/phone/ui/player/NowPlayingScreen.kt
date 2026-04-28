@@ -294,18 +294,36 @@ private fun FileInfoCard(controller: MediaController, currentIndex: Int) {
     val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
     val onSurface = MaterialTheme.colorScheme.onSurface
 
+    // Poll the controller for fields that aren't State-backed: duration is
+    // -1 until ExoPlayer prepares the timeline, then settles to the real ms
+    // value. mediaItemCount can also lag a transition by a frame.
+    var durationMs by remember(currentIndex) { mutableStateOf(controller.duration) }
+    var mediaItemCount by remember(currentIndex) { mutableStateOf(controller.mediaItemCount) }
+    androidx.compose.runtime.LaunchedEffect(controller, currentIndex) {
+        // Tick every 500ms until duration becomes known (then stop polling).
+        // Also refresh on first composition so the value isn't stale.
+        repeat(20) {
+            durationMs = controller.duration
+            mediaItemCount = controller.mediaItemCount
+            if (durationMs > 0L) return@LaunchedEffect
+            kotlinx.coroutines.delay(500)
+        }
+    }
+
     val md = controller.mediaMetadata
-    val totalCount = controller.mediaItemCount
     val trackNumber = md.trackNumber
+    // Show "N" only when we have a track number but no full album track count
+    // to compare against. Showing "9/1" (where 1 = mediaItemCount of a single-
+    // item queue) is misleading — drop the denominator unless it's plausibly
+    // the album track count.
     val trackLine = if (trackNumber != null && trackNumber > 0) {
-        if (totalCount > 0) "${trackNumber}/${totalCount}" else "${trackNumber}"
-    } else if (totalCount > 0) {
-        "${currentIndex + 1}/${totalCount}"
+        "$trackNumber"
+    } else if (mediaItemCount > 1) {
+        "${currentIndex + 1}/${mediaItemCount}"
     } else {
         "—"
     }
 
-    val durationMs = controller.duration
     val durationLine = if (durationMs > 0L) {
         val total = (durationMs / 1000L).toInt()
         val mm = total / 60

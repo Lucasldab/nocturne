@@ -58,41 +58,37 @@ fun AppRoot(app: NocturneApp) {
         }
     }
 
-    // Manifest reconciliation on every app launch. CatalogImporter only ever
-    // ran on first install; without this, `track.isResident` stays frozen at
-    // the original import even though the daemon's manifest.json keeps
-    // changing as new pins land. Re-read the latest manifest, clear+set the
-    // resident flag for every track id in `manifest.resident[]`. Cheap (~18 KB
-    // JSON, ~125 ids) and idempotent.
+    // v0.4.6: cold-start reconcile flips isResident for newly-pinned tracks.
+    // v0.4.7: poll loop below closes the warm-start case (kill+reopen
+    // workaround) by re-running when the daemon rewrites manifest.json.
+    var lastReconciledMtime by remember { mutableStateOf(0L) }
     LaunchedEffect(metaTreeUri, trackCount) {
         if (metaTreeUri == LOADING_SENTINEL || metaTreeUri == null) return@LaunchedEffect
         if (trackCount <= 0) return@LaunchedEffect
-        runCatching {
-            val tree = androidx.documentfile.provider.DocumentFile
-                .fromTreeUri(container.appContext, Uri.parse(metaTreeUri))
-                ?: return@runCatching
-            val manifestFile = tree.findFile("manifest.json") ?: return@runCatching
-            val text = container.appContext.contentResolver
-                .openInputStream(manifestFile.uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
-                ?: return@runCatching
-            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-            val manifest = json.decodeFromString(
-                io.nocturne.phone.data.catalog.ManifestJson.serializer(), text,
+        val mtime = io.nocturne.phone.data.catalog.ManifestReconciler.reconcile(
+            container.appContext, metaTreeUri!!, container.db,
+        )
+        if (mtime != null) lastReconciledMtime = mtime
+    }
+
+    // Foreground poll: every 45s while AppRoot is composed, probe manifest
+    // mtime and re-reconcile on change. collectAsStateWithLifecycle pauses
+    // the metaTreeUri/musicTreeUri flows when the screen is off, so this
+    // LaunchedEffect re-keys naturally and the loop body only runs while
+    // visible. Probe is a cheap SAF lastModified() call — no JSON parse
+    // unless mtime advanced.
+    LaunchedEffect(metaTreeUri, trackCount) {
+        if (metaTreeUri == LOADING_SENTINEL || metaTreeUri == null) return@LaunchedEffect
+        if (trackCount <= 0) return@LaunchedEffect
+        while (true) {
+            kotlinx.coroutines.delay(45_000L)
+            val current = io.nocturne.phone.data.catalog.ManifestReconciler
+                .manifestMtime(container.appContext, metaTreeUri!!) ?: continue
+            if (current == lastReconciledMtime) continue
+            val mtime = io.nocturne.phone.data.catalog.ManifestReconciler.reconcile(
+                container.appContext, metaTreeUri!!, container.db,
             )
-            val residentIds = manifest.resident.map { it.id }
-            container.db.trackDao().clearAllResident()
-            if (residentIds.isNotEmpty()) {
-                // Room IN-clause has SQLite parameter limits. Chunk to be safe.
-                residentIds.chunked(500).forEach { batch ->
-                    container.db.trackDao().setResidentFor(batch, true)
-                }
-            }
-            android.util.Log.i(
-                "AppRoot",
-                "manifest reconciled: ${residentIds.size} resident tracks",
-            )
-        }.onFailure {
-            android.util.Log.w("AppRoot", "manifest reconcile failed: ${it.message}")
+            if (mtime != null) lastReconciledMtime = mtime
         }
     }
 

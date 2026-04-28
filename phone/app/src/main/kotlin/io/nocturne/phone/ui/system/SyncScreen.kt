@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,6 +24,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,7 +33,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.nocturne.phone.data.AppContainer
+import io.nocturne.phone.data.catalog.ManifestReconciler
 import io.nocturne.phone.ui.settings.RelativeTimeFormatter
+import kotlinx.coroutines.launch
 
 /**
  * Quick task 260428-ja8 — Sync / syncthing screen, now an inline utility-mode
@@ -57,6 +61,10 @@ fun SyncScreen(container: AppContainer) {
     LaunchedEffect(Unit) {
         deviceId = container.syncPrefs.deviceId()
     }
+
+    val scope = rememberCoroutineScope()
+    var refreshing by remember { mutableStateOf(false) }
+    var lastRefreshLabel by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = Modifier
@@ -127,6 +135,47 @@ fun SyncScreen(container: AppContainer) {
             lastImport?.let { iso ->
                 Activity(time = "—", text = "imported catalog at $iso")
             }
+        }
+
+        // Manual reconcile fallback. AppRoot already polls manifest.json
+        // mtime every 45s while foregrounded — this button covers the case
+        // where the user wants instant feedback after pinning. Tapping
+        // re-runs the same reconciler the poll loop calls.
+        SectionHeader("manifest")
+        val ctx = androidx.compose.ui.platform.LocalContext.current.applicationContext
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 4.dp)
+                .clickable(enabled = metaUri != null && !refreshing) {
+                    val uri = metaUri ?: return@clickable
+                    refreshing = true
+                    scope.launch {
+                        ManifestReconciler.reconcile(ctx, uri, container.db)
+                        refreshing = false
+                        lastRefreshLabel = "refreshed just now"
+                    }
+                }
+                .padding(vertical = 8.dp),
+        ) {
+            Text(
+                text = if (refreshing) "$ refreshing…" else "$ refresh now",
+                style = monoStyle(13),
+                color = if (metaUri == null) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+            )
+        }
+        lastRefreshLabel?.let {
+            Text(
+                text = it,
+                style = monoStyle(11),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
         }
 
         SectionHeader("note")

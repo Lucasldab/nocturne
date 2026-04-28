@@ -12,52 +12,64 @@ import androidx.compose.ui.unit.dp
 import io.nocturne.phone.ui.theme.NocturneTheme
 
 /**
- * Visual-only chip rendered next to non-resident TrackRow / AlbumRow entries.
+ * Pin chip rendered next to TrackRow / AlbumRow entries that the user
+ * has pinned, OR next to non-resident rows so the user can pin them.
  *
- * Two visual states (UI-SPEC Surface 2):
+ * Three visual states (260428-mit pin-as-download contract):
  *
- *   [isPinned = false]            not-pinned:
+ *   [PinState.NotPinned]            offer-to-pin (only shown on non-resident rows):
  *     border  = onSurfaceVariant
  *     fill    = surfaceVariant
  *     label   = onSurface
  *
- *   [isPinned = true]             pinned-awaiting-sync:
+ *   [PinState.PinnedPulling]        pinned, file not on phone yet (Syncthing en-route):
  *     border  = primary
  *     fill    = surfaceVariant
  *     label   = primary
  *
- * Phase 6 introduces toggle behavior: tap-once when isPinned=false pins,
- * tap-again when isPinned=true unpins (emits a `pinned: false` JSONL
- * tombstone). The PinChip API is unchanged — call sites route their
- * onClick lambda through `BrowserViewModel.togglePinTrack` /
- * `togglePinAlbum` (the toggle dispatcher).
+ *   [PinState.PinnedReady]          pinned, file resident on phone (terminal state):
+ *     border  = primary
+ *     fill    = primary
+ *     label   = onPrimary
  *
- * The `pinned-resident` third state from Phase 5's docstring (fill = primary,
- * label = onPrimary) remains a future feature — Phase 6 explicitly defers it.
+ * State derivation lives at the call-site:
+ *   isPinned && !isResident → PinnedPulling
+ *   isPinned && isResident  → PinnedReady
+ *  !isPinned && !isResident → NotPinned (offer-to-pin)
+ *  !isPinned && isResident  → don't render the chip at all
+ *
+ * Tap toggles pin state via the call-site's `onClick` lambda which routes
+ * through `BrowserViewModel.togglePinTrack` / `togglePinAlbum`. On a
+ * pinned row, tap-again unpins (emits a `pinned: false` JSONL tombstone).
  *
  * Compose strong-skipping: this composable is skippable because all params
  * are stable primitives + `() -> Unit`.
  */
+enum class PinState { NotPinned, PinnedPulling, PinnedReady }
+
 @Composable
 fun PinChip(
     onClick: () -> Unit = {},
-    isPinned: Boolean = false,
+    state: PinState = PinState.NotPinned,
 ) {
-    val borderColor = if (isPinned) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
+    val borderColor = when (state) {
+        PinState.NotPinned -> MaterialTheme.colorScheme.onSurfaceVariant
+        PinState.PinnedPulling, PinState.PinnedReady -> MaterialTheme.colorScheme.primary
     }
-    val labelColor = if (isPinned) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.onSurface
+    val fillColor = when (state) {
+        PinState.NotPinned, PinState.PinnedPulling -> MaterialTheme.colorScheme.surfaceVariant
+        PinState.PinnedReady -> MaterialTheme.colorScheme.primary
+    }
+    val labelColor = when (state) {
+        PinState.NotPinned -> MaterialTheme.colorScheme.onSurface
+        PinState.PinnedPulling -> MaterialTheme.colorScheme.primary
+        PinState.PinnedReady -> MaterialTheme.colorScheme.onPrimary
     }
 
     Surface(
         modifier = Modifier.padding(start = 8.dp),
         border = BorderStroke(1.dp, borderColor),
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        color = fillColor,
         onClick = onClick,
     ) {
         Text(
@@ -72,11 +84,17 @@ fun PinChip(
 @Preview(showBackground = true, backgroundColor = 0xFF0A0A0A)
 @Composable
 private fun PinChipNotPinnedPreview() {
-    NocturneTheme { PinChip(isPinned = false) }
+    NocturneTheme { PinChip(state = PinState.NotPinned) }
 }
 
 @Preview(showBackground = true, backgroundColor = 0xFF0A0A0A)
 @Composable
-private fun PinChipPinnedAwaitingSyncPreview() {
-    NocturneTheme { PinChip(isPinned = true) }
+private fun PinChipPullingPreview() {
+    NocturneTheme { PinChip(state = PinState.PinnedPulling) }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF0A0A0A)
+@Composable
+private fun PinChipReadyPreview() {
+    NocturneTheme { PinChip(state = PinState.PinnedReady) }
 }

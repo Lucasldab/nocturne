@@ -73,8 +73,19 @@ fun TrackRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        if (!track.isResident) {
-            PinChip(onClick = onPinClick, isPinned = isPinned)
+        // Three-state PinChip (260428-mit pin-as-download contract):
+        //  - non-resident + not pinned → offer-to-pin chip (NotPinned)
+        //  - pinned + not yet on phone  → "pulling..." chip (PinnedPulling)
+        //  - pinned + already on phone  → solid filled chip (PinnedReady)
+        //  - resident + not pinned      → no chip (clean row)
+        val pinState = when {
+            isPinned && !track.isResident -> PinState.PinnedPulling
+            isPinned && track.isResident -> PinState.PinnedReady
+            !isPinned && !track.isResident -> PinState.NotPinned
+            else -> null
+        }
+        if (pinState != null) {
+            PinChip(onClick = onPinClick, state = pinState)
         }
     }
 }

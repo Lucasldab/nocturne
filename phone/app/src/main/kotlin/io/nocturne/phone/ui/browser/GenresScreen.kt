@@ -10,6 +10,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
 import io.nocturne.phone.ui.browser.components.GenreRow
+import io.nocturne.phone.ui.browser.components.SectionLabel
 
 /**
  * Genre detail (per-genre track list) is deferred to v1.x — Phase 4 only
@@ -23,6 +24,9 @@ fun GenresScreen(vm: BrowserViewModel, modifier: Modifier = Modifier) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
+        item(key = "section-label", contentType = "label") {
+            SectionLabel("${pagingItems.itemCount} genres")
+        }
         items(
             count = pagingItems.itemCount,
             key = pagingItems.itemKey { it.id },

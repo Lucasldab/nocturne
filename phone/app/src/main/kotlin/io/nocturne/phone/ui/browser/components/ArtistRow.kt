@@ -34,14 +34,18 @@ fun ArtistRow(artist: ArtistEntity, onTap: () -> Unit) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = "${artist.albumCount} album${if (artist.albumCount == 1) "" else "s"}",
+                text = "${artist.albumCount} album${if (artist.albumCount == 1) "" else "s"} · ${artist.trackCount} tracks",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        // design pass2026-04-27: artist row trailing pill shows resident
+        // / total track ratio. Empty here at the row level (we don't know
+        // residency without an extra DAO query); the overall trackCount is
+        // still useful as a tertiary at-a-glance metric.
         Text(
             text = "${artist.trackCount}",
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }

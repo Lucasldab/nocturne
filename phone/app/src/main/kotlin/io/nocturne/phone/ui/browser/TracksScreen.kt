@@ -12,6 +12,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
 import io.nocturne.phone.data.db.entity.TrackEntity
+import io.nocturne.phone.ui.browser.components.SectionLabel
 import io.nocturne.phone.ui.browser.components.TrackRow
 
 @Composable
@@ -30,6 +31,9 @@ fun TracksScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
+        item(key = "section-label", contentType = "label") {
+            SectionLabel("${pagingItems.itemCount} tracks")
+        }
         items(
             count = pagingItems.itemCount,
             key = pagingItems.itemKey { it.id },

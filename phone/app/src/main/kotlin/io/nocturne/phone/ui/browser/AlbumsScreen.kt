@@ -10,6 +10,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemContentType
 import androidx.paging.compose.itemKey
 import io.nocturne.phone.ui.browser.components.AlbumRow
+import io.nocturne.phone.ui.browser.components.SectionLabel
 
 @Composable
 fun AlbumsScreen(
@@ -23,6 +24,9 @@ fun AlbumsScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
+        item(key = "section-label", contentType = "label") {
+            SectionLabel("${pagingItems.itemCount} albums")
+        }
         items(
             count = pagingItems.itemCount,
             key = pagingItems.itemKey { it.id },

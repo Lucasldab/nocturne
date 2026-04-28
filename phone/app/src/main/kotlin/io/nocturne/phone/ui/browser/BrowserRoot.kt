@@ -2,7 +2,9 @@ package io.nocturne.phone.ui.browser
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
@@ -64,57 +66,104 @@ fun BrowserRoot(container: AppContainer) {
     var showSearch by remember { mutableStateOf(false) }
 
     Box(modifier = Modifier.fillMaxSize()) {
+        // Track the active route so we can hide the bottom-bar (nav + mini-player)
+        // on the NowPlaying / detail screens that own their own bottom chrome.
+        val currentRoute = nav.currentBackStackEntryAsState().value?.destination?.route
+        val isFullscreen = currentRoute == Routes.NOW_PLAYING
+
+        // Live mini-player visibility — drives both the inclusion of the
+        // mini-row in the bottom-bar slot AND its content.
+        val activeController = playerVm.controller.collectAsStateWithLifecycle().value
+        var hasMediaItem by remember(activeController) {
+            mutableStateOf(activeController?.currentMediaItem != null)
+        }
+        if (activeController != null) {
+            DisposableEffect(activeController) {
+                val listener = object : androidx.media3.common.Player.Listener {
+                    override fun onMediaItemTransition(
+                        mediaItem: androidx.media3.common.MediaItem?,
+                        reason: Int,
+                    ) {
+                        hasMediaItem = mediaItem != null
+                    }
+                    override fun onTimelineChanged(
+                        timeline: androidx.media3.common.Timeline,
+                        reason: Int,
+                    ) {
+                        hasMediaItem = activeController.currentMediaItem != null
+                    }
+                }
+                activeController.addListener(listener)
+                onDispose { activeController.removeListener(listener) }
+            }
+        }
+
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = { BrandWordmark() },
-                    actions = {
-                        IconButton(onClick = { showSearch = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search",
+                if (!isFullscreen) {
+                    TopAppBar(
+                        title = { BrandWordmark() },
+                        actions = {
+                            IconButton(onClick = { showSearch = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "Search",
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            titleContentColor = MaterialTheme.colorScheme.onSurface,
+                            actionIconContentColor = MaterialTheme.colorScheme.onSurface,
+                        ),
+                    )
+                }
+            },
+            bottomBar = {
+                if (isFullscreen) {
+                    // NowPlaying owns its own bottom transport block — no mini, no nav.
+                    return@Scaffold
+                }
+                // Bottom slot is mini-player (when present) stacked on top of the
+                // navigation bar. Stacked in one slot so they don't overlap and
+                // the mini stays anchored above the system gesture inset.
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    if (hasMediaItem && activeController != null) {
+                        MiniPlayer(
+                            controller = activeController,
+                            onTap = { nav.navigate(Routes.NOW_PLAYING) },
+                        )
+                    }
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                        listOf(
+                            Routes.ALBUMS to "Albums",
+                            Routes.ARTISTS to "Artists",
+                            Routes.TRACKS to "Tracks",
+                            Routes.GENRES to "Genres",
+                            Routes.SETTINGS to "Settings",
+                        ).forEach { (route, label) ->
+                            NavigationBarItem(
+                                selected = currentRoute == route,
+                                onClick = {
+                                    nav.navigate(route) {
+                                        popUpTo(nav.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                },
+                                icon = {
+                                    Text(
+                                        text = label.first().toString(),
+                                        style = MaterialTheme.typography.labelMedium,
+                                    )
+                                },
+                                label = {
+                                    Text(text = label, style = MaterialTheme.typography.labelMedium)
+                                },
                             )
                         }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        titleContentColor = MaterialTheme.colorScheme.onSurface,
-                        actionIconContentColor = MaterialTheme.colorScheme.onSurface,
-                    ),
-                )
-            },
-                bottomBar = {
-                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                    val current by nav.currentBackStackEntryAsState()
-                    val currentRoute = current?.destination?.route
-                    listOf(
-                        Routes.ALBUMS to "Albums",
-                        Routes.ARTISTS to "Artists",
-                        Routes.TRACKS to "Tracks",
-                        Routes.GENRES to "Genres",
-                        Routes.SETTINGS to "Settings",
-                    ).forEach { (route, label) ->
-                        NavigationBarItem(
-                            selected = currentRoute == route,
-                            onClick = {
-                                nav.navigate(route) {
-                                    popUpTo(nav.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = {
-                                Text(
-                                    text = label.first().toString(),
-                                    style = MaterialTheme.typography.labelMedium,
-                                )
-                            },
-                            label = {
-                                Text(text = label, style = MaterialTheme.typography.labelMedium)
-                            },
-                        )
                     }
                 }
             },
@@ -199,48 +248,9 @@ fun BrowserRoot(container: AppContainer) {
                 onPinTrack = { vm.togglePinTrack(it) },
             )
         }
-        // MiniPlayer: persistent footer above NavigationBar when a MediaItem is loaded.
-        // Plain `if` -- no AnimatedVisibility (UI-SPEC Animation Gate).
-        // padding(bottom = 80.dp) offsets above Material3 NavigationBar (~80dp tall).
-        //
-        // currentMediaItem isn't a Compose State — reading it once at composition
-        // time means the mini-player never appears if a track started playing
-        // while the user was already on a browse screen. We track an explicit
-        // hasItem state and update it from a Player.Listener so the row pops in
-        // as soon as Media3 transitions to a real item.
-        val miniController = playerVm.controller.collectAsStateWithLifecycle().value
-        if (miniController != null) {
-            var hasItem by remember(miniController) {
-                mutableStateOf(miniController.currentMediaItem != null)
-            }
-            DisposableEffect(miniController) {
-                val listener = object : androidx.media3.common.Player.Listener {
-                    override fun onMediaItemTransition(
-                        mediaItem: androidx.media3.common.MediaItem?,
-                        reason: Int,
-                    ) {
-                        hasItem = mediaItem != null
-                    }
-                    override fun onTimelineChanged(
-                        timeline: androidx.media3.common.Timeline,
-                        reason: Int,
-                    ) {
-                        hasItem = miniController.currentMediaItem != null
-                    }
-                }
-                miniController.addListener(listener)
-                onDispose { miniController.removeListener(listener) }
-            }
-            if (hasItem) {
-                MiniPlayer(
-                    controller = miniController,
-                    onTap = { nav.navigate(Routes.NOW_PLAYING) },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 80.dp),
-                )
-            }
-        }
+        // Mini-player + nav-bar are now stacked in the Scaffold bottomBar slot
+        // above (no longer overlaid via Box.align so they can't visually clash
+        // with the NavigationBar or the gesture inset).
     }
 }
 

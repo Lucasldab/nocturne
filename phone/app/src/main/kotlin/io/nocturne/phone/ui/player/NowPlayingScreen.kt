@@ -6,17 +6,24 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -242,7 +249,9 @@ private fun NowPlayingBody(
             )
         }
 
-        // 5. Sticky bottom transport block — borderTop + slider + inline transport.
+        // 5. Sticky bottom transport block — borderTop + custom progress bar +
+        //    elapsed/duration row + inline transport. Per design: 2dp track,
+        //    primary fill, 10dp circular thumb on the seam, mono 11sp times.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -252,11 +261,8 @@ private fun NowPlayingBody(
                 )
                 .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp),
         ) {
-            ProgressSlider(player = controller, modifier = Modifier.fillMaxWidth())
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                PositionAndDurationText(player = controller)
-            }
-            Spacer(Modifier.height(8.dp))
+            NowPlayingProgressBar(controller = controller)
+            Spacer(Modifier.height(12.dp))
             // Inline transport — shuffle / prev / play / next / repeat in one row.
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -271,6 +277,107 @@ private fun NowPlayingBody(
             }
         }
     }
+}
+
+/**
+ * Custom progress bar for the terminal Now Playing layout.
+ *
+ *   ┄┄┄┄┄┄■━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┄┄┄┄┄┄┄┄┄┄┄┄
+ *   00:34                                                  04:19
+ *
+ * - 2dp track on surfaceVariant.
+ * - primary-colored fill from 0 to progress.
+ * - 10dp circular thumb sitting on the seam.
+ * - mono 11sp elapsed (left) and duration (right) below the bar.
+ *
+ * Seekable via drag — pointerInput-translates the local x offset to a position
+ * fraction and calls controller.seekTo on release.
+ */
+@OptIn(UnstableApi::class)
+@Composable
+private fun NowPlayingProgressBar(controller: MediaController) {
+    var positionMs by remember { mutableStateOf(controller.currentPosition) }
+    var durationMs by remember { mutableStateOf(controller.duration) }
+    androidx.compose.runtime.LaunchedEffect(controller) {
+        while (true) {
+            positionMs = controller.currentPosition
+            durationMs = controller.duration
+            kotlinx.coroutines.delay(500)
+        }
+    }
+    val progress = if (durationMs > 0L) {
+        (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val barWidthPx = constraints.maxWidth.toFloat()
+        val density = LocalDensity.current
+        val thumbOffsetDp = with(density) {
+            ((barWidthPx * progress) - 10f /* half thumb size in px is approx; px→dp via density */).coerceAtLeast(0f).toDp()
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(20.dp)
+                .pointerInput(durationMs) {
+                    detectTapGestures(
+                        onTap = { offset ->
+                            if (durationMs > 0L) {
+                                val frac = (offset.x / barWidthPx).coerceIn(0f, 1f)
+                                controller.seekTo((frac * durationMs).toLong())
+                            }
+                        },
+                    )
+                },
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            // 2dp surfaceVariant track
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            )
+            // Primary fill 0..progress
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress)
+                    .height(2.dp)
+                    .background(MaterialTheme.colorScheme.primary),
+            )
+            // 10dp circular thumb sitting on the seam
+            Box(
+                modifier = Modifier
+                    .offset(x = thumbOffsetDp)
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+            )
+        }
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = formatMs(positionMs),
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = formatMs(durationMs),
+            style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun formatMs(ms: Long): String {
+    if (ms <= 0L) return "—"
+    val total = (ms / 1000L).toInt()
+    val mm = total / 60
+    val ss = total % 60
+    return "%02d:%02d".format(mm, ss)
 }
 
 /**

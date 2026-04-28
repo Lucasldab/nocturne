@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -61,6 +62,8 @@ fun MiniPlayer(
     modifier: Modifier = Modifier,
 ) {
     var metadata by remember { mutableStateOf(controller.mediaMetadata) }
+    var positionMs by remember { mutableStateOf(controller.currentPosition) }
+    var durationMs by remember { mutableStateOf(controller.duration) }
     DisposableEffect(controller) {
         val listener = object : Player.Listener {
             override fun onMediaMetadataChanged(m: MediaMetadata) { metadata = m }
@@ -68,42 +71,74 @@ fun MiniPlayer(
         controller.addListener(listener)
         onDispose { controller.removeListener(listener) }
     }
+    // Poll position every 500ms so the 2dp top-strip moves smoothly while the
+    // mini-player is mounted. ExoPlayer doesn't fire a callback per frame.
+    androidx.compose.runtime.LaunchedEffect(controller) {
+        while (true) {
+            positionMs = controller.currentPosition
+            durationMs = controller.duration
+            kotlinx.coroutines.delay(500)
+        }
+    }
 
-    Row(
+    androidx.compose.foundation.layout.Column(
         modifier = modifier
             .fillMaxWidth()
-            .height(44.dp)
             .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onTap)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .border(1.dp, MaterialTheme.colorScheme.surfaceVariant),
     ) {
-        // 6dp purple dot — accent indicator, replaces the 36dp art thumb.
+        // 2dp progress strip pinned to the top of the row — purple fill on
+        // surfaceVariant track. Per design pass2026-04-27 MiniPlayerMinimal.
+        val progress = if (durationMs > 0L) {
+            (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+        } else 0f
         Box(
             modifier = Modifier
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary),
-        )
-        Spacer(Modifier.width(10.dp))
-        // Single mono line: title · artist (artist muted)
-        Text(
-            text = buildAnnotatedString {
-                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface)) {
-                    append(metadata.title?.toString().orEmpty())
-                }
-                withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
-                    append(" · ")
-                    append(metadata.artist?.toString().orEmpty())
-                }
-            },
-            style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        PlayPauseButton(player = controller, modifier = Modifier.size(36.dp))
+                .fillMaxWidth()
+                .height(2.dp)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(progress)
+                    .background(MaterialTheme.colorScheme.primary),
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(44.dp)
+                .clickable(onClick = onTap)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            // 6dp purple dot — accent indicator, replaces the 36dp art thumb.
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = buildAnnotatedString {
+                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurface)) {
+                        append(metadata.title?.toString().orEmpty())
+                    }
+                    withStyle(SpanStyle(color = MaterialTheme.colorScheme.onSurfaceVariant)) {
+                        append(" · ")
+                        append(metadata.artist?.toString().orEmpty())
+                    }
+                },
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            PlayPauseButton(player = controller, modifier = Modifier.size(36.dp))
+        }
     }
 }
 

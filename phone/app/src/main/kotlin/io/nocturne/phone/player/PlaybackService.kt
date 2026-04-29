@@ -195,7 +195,6 @@ class PlaybackService : MediaSessionService() {
         // notification surface receives Binder-IPC-safe bytes.
         player.addListener(object : Player.Listener {
             override fun onMediaMetadataChanged(metadata: MediaMetadata) {
-                val raw = metadata.artworkData ?: return
                 // Snapshot mediaId at listener entry. The artwork-scaling
                 // coroutine below may resume AFTER an auto-skip (missing-file
                 // → seekToNextMediaItem) has advanced the player. Without this
@@ -204,27 +203,37 @@ class PlaybackService : MediaSessionService() {
                 // — visible as the queue row showing the past song's name.
                 val capturedMediaId = player.currentMediaItem?.mediaId ?: return
                 val capturedIndex = player.currentMediaItemIndex
+                val raw = metadata.artworkData
                 serviceScope.launch {
-                    val scaled = ArtworkLoader.scaleTo300(raw) ?: return@launch
-                    // Guard: if the bytes didn't actually change (already scaled),
-                    // skip the replaceMediaItem to avoid a redundant listener cycle.
-                    if (scaled.contentEquals(raw)) return@launch
+                    val finalBytes: ByteArray? = if (raw != null) {
+                        val scaled = ArtworkLoader.scaleTo300(raw) ?: return@launch
+                        // Guard: if the bytes didn't actually change (already scaled),
+                        // skip the replaceMediaItem to avoid a redundant listener cycle.
+                        if (scaled.contentEquals(raw)) return@launch
+                        scaled
+                    } else {
+                        // Opus residents have no embedded art — fall back to the
+                        // cover.jpg sidecar the daemon hardlinks alongside each
+                        // album. Without this branch the lock-screen / media
+                        // notification surface stays blank for transcoded tracks.
+                        val albumId = trackDao.byId(capturedMediaId)?.albumId ?: return@launch
+                        val bytes = container.albumArt.loadSidecarBytes(albumId) ?: return@launch
+                        ArtworkLoader.scaleTo300(bytes) ?: bytes
+                    }
                     withContext(Dispatchers.Main) {
-                        // Bail if the player moved on while we were scaling.
+                        // Bail if the player moved on while we were loading.
                         if (player.currentMediaItem?.mediaId != capturedMediaId) return@withContext
                         val current = player.currentMediaItem ?: return@withContext
                         val updated = current.buildUpon()
                             .setMediaMetadata(
                                 metadata.buildUpon()
                                     .setArtworkData(
-                                        scaled,
+                                        finalBytes,
                                         MediaMetadata.PICTURE_TYPE_FRONT_COVER,
                                     )
                                     .build(),
                             )
                             .build()
-                        // Use captured index (still valid since mediaId matches)
-                        // — never re-read currentMediaItemIndex inside the post.
                         player.replaceMediaItem(capturedIndex, updated)
                     }
                 }

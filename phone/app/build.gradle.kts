@@ -17,8 +17,8 @@ android {
         applicationId = "io.nocturne.phone"
         minSdk = 26
         targetSdk = 35
-        versionCode = 26
-        versionName = "0.4.19-dev"
+        versionCode = 27
+        versionName = "0.4.20-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Reproducibility: pin the resource configurations we ship.
         resourceConfigurations += listOf("en")

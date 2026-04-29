@@ -64,6 +64,37 @@ class AlbumArtRepository(
         }
     }
 
+    /**
+     * Returns the raw bytes of the album's sidecar cover (JPEG/PNG) so the
+     * caller can hand them to MediaMetadata.setArtworkData for the lock-
+     * screen notification, which can't take a Bitmap. Embedded picture is
+     * NOT used here — that path already runs in PlaybackService directly
+     * via MediaMetadata.artworkData; this is the sidecar-only fallback.
+     */
+    suspend fun loadSidecarBytes(albumId: String): ByteArray? = withContext(Dispatchers.IO) {
+        val track = db.trackDao().firstResidentByAlbum(albumId) ?: return@withContext null
+        val musicTreeStr = syncPrefs.musicTreeUri.first() ?: return@withContext null
+        val musicTreeUri = musicTreeStr.toUri()
+        val phoneRelativePath = track.path
+            .removePrefix("resident/")
+            .removePrefix("archive/")
+        val albumDirRelative = phoneRelativePath.substringBeforeLast('/', "")
+        val treeDocId = DocumentsContract.getTreeDocumentId(musicTreeUri)
+        for (name in listOf("cover.jpg", "cover.png", "folder.jpg", "folder.png")) {
+            val sidecarDocId = if (albumDirRelative.isEmpty()) {
+                "$treeDocId/$name"
+            } else {
+                "$treeDocId/$albumDirRelative/$name"
+            }
+            val sidecarUri = DocumentsContract.buildDocumentUriUsingTree(musicTreeUri, sidecarDocId)
+            val bytes = try {
+                appContext.contentResolver.openInputStream(sidecarUri)?.use { it.readBytes() }
+            } catch (e: Throwable) { null }
+            if (bytes != null) return@withContext bytes
+        }
+        null
+    }
+
     private suspend fun readArt(albumId: String): Bitmap? {
         val track = db.trackDao().firstResidentByAlbum(albumId) ?: return null
         val musicTreeStr = syncPrefs.musicTreeUri.first() ?: return null

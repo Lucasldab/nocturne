@@ -155,6 +155,7 @@ fun SyncScreen(container: AppContainer) {
                     scope.launch {
                         val catalog = CatalogReconciler.reconcile(
                             ctx, uri, container.db, container.importer, container.syncPrefs,
+                            container.queueRepository,
                         )
                         if (catalog == null) {
                             ManifestReconciler.reconcile(ctx, uri, container.db)

@@ -5,6 +5,8 @@ import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import io.nocturne.phone.data.db.NocturneDatabase
 import io.nocturne.phone.data.prefs.SyncPrefs
+import io.nocturne.phone.player.QueueRepository
+import io.nocturne.phone.player.SavedQueue
 import java.time.Instant
 
 /**
@@ -34,6 +36,7 @@ object CatalogReconciler {
         db: NocturneDatabase,
         importer: CatalogImporter,
         syncPrefs: SyncPrefs,
+        queueRepository: QueueRepository? = null,
     ): Long? = runCatching {
         val tree = DocumentFile.fromTreeUri(ctx, metaTreeUri.toUri())
             ?: return@runCatching null
@@ -52,6 +55,20 @@ object CatalogReconciler {
         } ?: return@runCatching null
 
         syncPrefs.setLastImportAt(Instant.now().toString())
+
+        // Catalog re-import wipes + re-inserts every tracks row. The persisted
+        // queue (QueueRepository) holds mediaIds (sha256s) that ExoPlayer
+        // re-resolves to MediaItems via trackDao on PlaybackResumption — and
+        // the resolved path/format may have shifted (e.g. transcode flipped
+        // resident FLAC → opus, deleting the old file). If the queue still
+        // points at the old paths, ExoPlayer hits ERROR_CODE_IO_FILE_NOT_FOUND
+        // and the auto-skip listener trips an infinite "skip skip skip" loop.
+        // Clearing here trades a one-time queue-resumption loss for permanent
+        // immunity from the trap.
+        queueRepository?.runCatching { saveQueue(SavedQueue.EMPTY) }?.onFailure {
+            android.util.Log.w("CatalogReconciler", "queue clear failed: ${it.message}")
+        }
+
         android.util.Log.i(
             "CatalogReconciler",
             "reimported: tracks=${result.tracksImported} albums=${result.albumsImported} " +

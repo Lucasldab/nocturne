@@ -85,6 +85,7 @@ fun AppRoot(app: NocturneApp) {
             val cat = io.nocturne.phone.data.catalog.CatalogReconciler.reconcile(
                 container.appContext, uri, container.db,
                 container.importer, container.syncPrefs,
+                container.queueRepository,
             )
             if (cat != null) {
                 lastReconciledCatalogMtime = cat

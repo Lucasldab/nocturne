@@ -73,6 +73,16 @@ source = "manual_pins"
 weight = 1.0
 window_days = 0
 
+# Weekly Discovery — 20 tracks/week the user owns but hasn't heard recently.
+# Picks are computed by `nocturned discover` (Mondays 00:00 systemd timer)
+# and stored in weekly_discovery_picks. This bucket consumes them. Reduce
+# count to 10 for a tighter list, or raise to 40 for more variety.
+[buckets.weekly_discovery]
+count = 20
+source = "weekly_discovery_picks"
+weight = 0.95
+window_days = 0
+
 # [transcode] — when enabled, rotate's promote step transcodes archive FLAC
 # into a lossy resident copy (Opus or AAC) instead of hardlinking. The
 # archive FLAC is preserved as the canonical source — track id (sha256 of

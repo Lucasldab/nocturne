@@ -36,6 +36,7 @@ int why_cmd_main(struct cli_args *args);
 int diskcheck_cmd_main(struct cli_args *args);
 int transcode_cmd_main(struct cli_args *args);
 int transcode_migrate_cmd_main(struct cli_args *args);
+int discover_cmd_main(struct cli_args *args);
 
 /* Each subcommand handler owns its own lock acquisition (scan_cmd.c,
  * watch_cmd.c, resolve_cmd.c, publish_cmd.c). main.c is now pure dispatch. */
@@ -76,6 +77,7 @@ int main(int argc, char **argv)
     case CMD_DISKCHECK: return diskcheck_cmd_main(&args);
     case CMD_TRANSCODE: return transcode_cmd_main(&args);
     case CMD_TRANSCODE_MIGRATE: return transcode_migrate_cmd_main(&args);
+    case CMD_DISCOVER: return discover_cmd_main(&args);
     case CMD_NONE:
     default:
         cli_print_usage(stderr);

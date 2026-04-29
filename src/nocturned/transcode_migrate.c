@@ -149,10 +149,11 @@ static int migrate_one(struct nocturne_db *db, const char *sha,
                        const struct transcode_cfg *tc, int apply,
                        const char *iso, struct migrate_stats *out)
 {
-    if (strcmp(location, "resident") != 0) {
-        out->skipped_archived++;
-        return 0;
-    }
+    /* The WHERE clause already restricted us to tracks with /resident/ in
+     * tracks.path. residency_state may say otherwise (drift, partial prior
+     * runs, never-rotated rows) — but if the FLAC physically lives under
+     * resident/, it needs migrating. Trust the path, not the row. */
+    (void) location;
 
     /* Compute the archive twin of the resident path. */
     char *archive_path = swap_segment_simple(cur_path, "resident", "archive");
@@ -358,11 +359,15 @@ int transcode_migrate_cmd_main(struct cli_args *args)
     iso_now_buf(iso);
     struct migrate_stats stats = {0};
 
-    /* Walk every tracks row joined to its residency state. */
+    /* Only walk tracks whose tracks.path is still at /resident/ — those are
+     * the un-migrated rows. After a successful migration, tracks.path lives
+     * at archive/<rel> and re-running this command should be a no-op for
+     * them (the WHERE filter excludes them entirely). */
     sqlite3_stmt *st = NULL;
     if (sqlite3_prepare_v2(db_handle(db),
             "SELECT t.sha256, t.path, COALESCE(r.location,'archive') "
             "FROM tracks t LEFT JOIN residency_state r ON r.sha256=t.sha256 "
+            "WHERE t.path LIKE '%/resident/%' "
             "ORDER BY t.sha256",
             -1, &st, NULL) != SQLITE_OK) {
         fprintf(stderr, "transcode-migrate: prepare failed\n");

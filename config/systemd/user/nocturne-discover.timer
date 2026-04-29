@@ -1,0 +1,15 @@
+[Unit]
+Description=Run nocturne discover every Monday at 00:00 (Weekly Discovery)
+
+[Timer]
+# Mondays at midnight local time. RandomizedDelaySec spreads load if the
+# user runs multiple nocturne instances; a single-host setup will fire at
+# 00:00 sharp.
+OnCalendar=Mon *-*-* 00:00:00
+RandomizedDelaySec=5min
+# Persistent: if the machine was off at 00:00 Monday, fire on next boot
+# rather than waiting until the following Monday.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -37,12 +37,13 @@ struct bucket_seed {
 };
 
 static const struct bucket_seed DEFAULT_BUCKETS[] = {
-    { "recent_adds",  80, "recent_adds_by_mtime", 1.00, 14  },
-    { "top_played",   80, "top_played_phone",     0.90, 90  },
-    { "recent_plays", 60, "recent_plays_phone",   0.85, 30  },
-    { "loved",       100, "loved",                1.00, 0   },
-    { "exploration",  40, "exploration_random",   0.50, 0   },
-    { "manual_pins", 200, "manual_pins",          1.00, 0   },
+    { "recent_adds",       80, "recent_adds_by_mtime",   1.00, 14 },
+    { "top_played",        80, "top_played_phone",       0.90, 90 },
+    { "recent_plays",      60, "recent_plays_phone",     0.85, 30 },
+    { "loved",            100, "loved",                  1.00, 0  },
+    { "exploration",       40, "exploration_random",     0.50, 0  },
+    { "manual_pins",      200, "manual_pins",            1.00, 0  },
+    { "weekly_discovery",  20, "weekly_discovery_picks", 0.95, 0  },
 };
 
 static const size_t DEFAULT_BUCKETS_N =

@@ -1,0 +1,20 @@
+[Unit]
+Description=nocturne — weekly discovery picker (Mondays 00:00)
+Documentation=man:nocturned(1)
+After=default.target
+
+[Service]
+Type=oneshot
+# Same lock-handover dance as cycle: stop watch first, restart it after.
+# discover takes the single-writer lock while computing + writing the
+# weekly_discovery_picks rows; watch must yield. `-` makes both calls
+# non-fatal (watch may already be stopped).
+ExecStartPre=-/usr/bin/systemctl --user stop nocturne-watch.service
+ExecStart=/usr/local/bin/nocturned discover
+# Trigger a cycle right after so the new picks land in the manifest and on
+# the phone immediately rather than waiting up to 15min for the next cycle
+# tick. cycle has its own ExecStartPre/Post for watch handover.
+ExecStartPost=-/usr/bin/systemctl --user start nocturne-cycle.service
+ExecStartPost=-/usr/bin/systemctl --user start --no-block nocturne-watch.service
+StandardOutput=journal
+StandardError=journal

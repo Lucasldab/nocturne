@@ -218,6 +218,18 @@ static const char *SQL_PINS_TRACKS =
     "JOIN pins p ON p.unit='track' AND p.id = t.sha256 "
     "WHERE p.pinned = 1 LIMIT ?";
 
+/* Weekly Discovery — 20 picks for the current week, written by
+ * `nocturned discover` once a week (Monday 00:00 systemd timer). The picker
+ * is responsible for the rules (never_played > aged_out > adjacent_to_loved
+ * > random + per-album cap of 2); the resolver just consumes the picks.
+ * We pull only the most recent week_start so old weeks don't accumulate
+ * resident slots. */
+static const char *SQL_WEEKLY_DISCOVERY_PICKS =
+    "SELECT t.sha256, t.size_bytes FROM tracks t "
+    "JOIN weekly_discovery_picks w ON w.sha256 = t.sha256 "
+    "WHERE w.week_start = (SELECT MAX(week_start) FROM weekly_discovery_picks) "
+    "LIMIT ?";
+
 /* For exploration we want all candidate sha256s (tracks with no phone
  * plays) ordered by sha256 ASC, then deterministic-shuffle in C. */
 static const char *SQL_EXPLORATION_CANDIDATES =
@@ -409,6 +421,16 @@ int resolver_run(struct nocturne_db *db,
         } else if (!strcmp(bc->source, "manual_pins")) {
             sqlite3_stmt *st = NULL;
             sqlite3_prepare_v2(raw, SQL_PINS_TRACKS, -1, &st, NULL);
+            sqlite3_bind_int(st, 1, bc->count);
+            while (sqlite3_step(st) == SQLITE_ROW) {
+                const unsigned char *sha = sqlite3_column_text(st, 0);
+                long long sz = sqlite3_column_int64(st, 1);
+                if (sha) cand_add(&s, (const char *) sha, sz, bc->name);
+            }
+            sqlite3_finalize(st);
+        } else if (!strcmp(bc->source, "weekly_discovery_picks")) {
+            sqlite3_stmt *st = NULL;
+            sqlite3_prepare_v2(raw, SQL_WEEKLY_DISCOVERY_PICKS, -1, &st, NULL);
             sqlite3_bind_int(st, 1, bc->count);
             while (sqlite3_step(st) == SQLITE_ROW) {
                 const unsigned char *sha = sqlite3_column_text(st, 0);

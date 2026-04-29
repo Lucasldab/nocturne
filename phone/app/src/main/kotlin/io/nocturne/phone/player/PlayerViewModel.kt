@@ -200,6 +200,38 @@ class PlayerViewModel(
         }
     }
 
+    /**
+     * Insert a track immediately after the currently-playing item so it plays
+     * next without disturbing the rest of the queue. Empty queue → falls
+     * through to playSingleTrack.
+     */
+    fun playNextTrack(track: TrackEntity) {
+        val c = _controller.value ?: return
+        if (!track.isResident) {
+            toastNotDownloaded()
+            return
+        }
+        viewModelScope.launch {
+            val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
+            if (musicUri == null) {
+                toastPickMusicFolder()
+                return@launch
+            }
+            val item = track.toMediaItem(musicTreeUri = musicUri)
+            if (c.mediaItemCount == 0) {
+                c.setMediaItems(listOf(item), 0, /* startPositionMs = */ 0L)
+                c.prepare()
+                c.play()
+            } else {
+                val insertAt = (c.currentMediaItemIndex + 1).coerceAtMost(c.mediaItemCount)
+                c.addMediaItem(insertAt, item)
+                if (!c.isPlaying && c.playbackState == androidx.media3.common.Player.STATE_IDLE) {
+                    c.prepare()
+                }
+            }
+        }
+    }
+
     fun playAlbumFromTrack(tracks: List<TrackEntity>, startTrack: TrackEntity) {
         val c = _controller.value ?: return  // not yet connected
         if (!startTrack.isResident) {

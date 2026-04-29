@@ -18,9 +18,10 @@ import io.nocturne.phone.ui.browser.components.TrackRow
 @Composable
 fun TracksScreen(
     vm: BrowserViewModel,
-    onTrackTap: (TrackEntity) -> Unit = {},
-    onTrackLongPress: (TrackEntity) -> Unit = {},
     modifier: Modifier = Modifier,
+    onTrackTap: (TrackEntity) -> Unit = {},
+    onPlayNext: (TrackEntity) -> Unit = {},
+    onAddToQueue: (TrackEntity) -> Unit = {},
 ) {
     val pagingItems = vm.tracks.collectAsLazyPagingItems()
 
@@ -46,7 +47,8 @@ fun TracksScreen(
                 isPinned = pinnedIds.contains(track.id),
                 onTap = { onTrackTap(track) },
                 onPinClick = { vm.togglePinTrack(track.id) },
-                onLongPress = { onTrackLongPress(track) },
+                onPlayNext = { onPlayNext(track) },
+                onAddToQueue = { onAddToQueue(track) },
             )
         }
     }

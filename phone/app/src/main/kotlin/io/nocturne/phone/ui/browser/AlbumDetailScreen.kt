@@ -119,7 +119,15 @@ fun AlbumDetailScreen(
                         }
                     },
                     onPinClick = { vm.togglePinTrack(t.id) },
-                    onLongPress = {
+                    onPlayNext = {
+                        playerVm.playNextTrack(t)
+                        android.widget.Toast.makeText(
+                            ctx,
+                            "Playing next",
+                            android.widget.Toast.LENGTH_SHORT,
+                        ).show()
+                    },
+                    onAddToQueue = {
                         playerVm.enqueueTrack(t)
                         android.widget.Toast.makeText(
                             ctx,

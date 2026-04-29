@@ -281,7 +281,15 @@ fun BrowserRoot(
                                 }
                             }
                         },
-                        onTrackLongPress = { track ->
+                        onPlayNext = { track ->
+                            playerVm.playNextTrack(track)
+                            android.widget.Toast.makeText(
+                                ctx,
+                                "Playing next",
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        },
+                        onAddToQueue = { track ->
                             playerVm.enqueueTrack(track)
                             android.widget.Toast.makeText(
                                 ctx,
@@ -314,6 +322,7 @@ fun BrowserRoot(
                     arguments = listOf(navArgument("artistId") { type = NavType.StringType }),
                 ) { entry ->
                     val id = entry.arguments?.getString("artistId") ?: return@composable
+                    val ctx = androidx.compose.ui.platform.LocalContext.current
                     ArtistDetailScreen(
                         artistId = id,
                         vm = vm,
@@ -325,7 +334,22 @@ fun BrowserRoot(
                                 nav.navigate(Routes.NOW_PLAYING)
                             }
                         },
-                        onTrackLongPress = { track -> playerVm.enqueueTrack(track) },
+                        onPlayNext = { track ->
+                            playerVm.playNextTrack(track)
+                            android.widget.Toast.makeText(
+                                ctx,
+                                "Playing next",
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        },
+                        onAddToQueue = { track ->
+                            playerVm.enqueueTrack(track)
+                            android.widget.Toast.makeText(
+                                ctx,
+                                "Added to queue",
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        },
                         container = container,
                     )
                 }

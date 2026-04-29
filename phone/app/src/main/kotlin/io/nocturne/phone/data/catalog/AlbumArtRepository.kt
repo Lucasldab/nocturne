@@ -72,11 +72,41 @@ class AlbumArtRepository(
             .removePrefix("resident/")
             .removePrefix("archive/")
         val treeDocId = DocumentsContract.getTreeDocumentId(musicTreeUri)
-        val childDocId = "$treeDocId/$phoneRelativePath"
-        val fileUri = DocumentsContract.buildDocumentUriUsingTree(musicTreeUri, childDocId)
+        val audioFileDocId = "$treeDocId/$phoneRelativePath"
+        val audioFileUri = DocumentsContract.buildDocumentUriUsingTree(musicTreeUri, audioFileDocId)
 
+        // Path 1: embedded picture via MMR. FLAC + AAC carry covers natively;
+        // Opus drops them at transcode time (METADATA_BLOCK_PICTURE Vorbis
+        // comment isn't written by ffmpeg's single-pass encoder), which is
+        // why we need the sidecar fallback below.
+        val embedded = readEmbedded(audioFileUri, albumId)
+        if (embedded != null) return embedded
+
+        // Path 2: cover.jpg / folder.jpg sidecar in the album directory.
+        // Daemon hardlinks these from archive/ into resident/ alongside the
+        // transcoded audio (zero extra storage; same inode). Try common
+        // filenames in order.
+        val albumDirRelative = phoneRelativePath.substringBeforeLast('/', "")
+        for (name in SIDECAR_NAMES) {
+            val sidecarDocId = if (albumDirRelative.isEmpty()) {
+                "$treeDocId/$name"
+            } else {
+                "$treeDocId/$albumDirRelative/$name"
+            }
+            val sidecarUri = DocumentsContract.buildDocumentUriUsingTree(musicTreeUri, sidecarDocId)
+            val bytes = try {
+                appContext.contentResolver.openInputStream(sidecarUri)?.use { it.readBytes() }
+            } catch (e: Throwable) {
+                null
+            } ?: continue
+            return decodeScaled(bytes)
+        }
+        return null
+    }
+
+    private fun readEmbedded(audioFileUri: android.net.Uri, albumId: String): Bitmap? {
         val pfd = try {
-            appContext.contentResolver.openFileDescriptor(fileUri, "r") ?: return null
+            appContext.contentResolver.openFileDescriptor(audioFileUri, "r") ?: return null
         } catch (e: Throwable) {
             Log.w(TAG, "open failed for $albumId: ${e.message}")
             return null
@@ -85,7 +115,7 @@ class AlbumArtRepository(
             val mmr = MediaMetadataRetriever()
             try {
                 mmr.setDataSource(fd.fileDescriptor)
-                val bytes = mmr.embeddedPicture ?: return null
+                val bytes = mmr.embeddedPicture ?: return@use null
                 decodeScaled(bytes)
             } catch (e: Throwable) {
                 Log.w(TAG, "MMR failed for $albumId: ${e.message}")
@@ -112,5 +142,6 @@ class AlbumArtRepository(
 
     companion object {
         private const val TAG = "AlbumArtRepo"
+        private val SIDECAR_NAMES = listOf("cover.jpg", "cover.png", "folder.jpg", "folder.png")
     }
 }

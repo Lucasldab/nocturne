@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.nocturne.phone.data.AppContainer
+import io.nocturne.phone.data.catalog.CatalogReconciler
 import io.nocturne.phone.data.catalog.ManifestReconciler
 import io.nocturne.phone.ui.settings.RelativeTimeFormatter
 import kotlinx.coroutines.launch
@@ -152,7 +153,12 @@ fun SyncScreen(container: AppContainer) {
                     val uri = metaUri ?: return@clickable
                     refreshing = true
                     scope.launch {
-                        ManifestReconciler.reconcile(ctx, uri, container.db)
+                        val catalog = CatalogReconciler.reconcile(
+                            ctx, uri, container.db, container.importer, container.syncPrefs,
+                        )
+                        if (catalog == null) {
+                            ManifestReconciler.reconcile(ctx, uri, container.db)
+                        }
                         refreshing = false
                         lastRefreshLabel = "refreshed just now"
                     }

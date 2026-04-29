@@ -72,6 +72,36 @@ fun AppRoot(app: NocturneApp) {
     // any manual step.
     val reconcileScope = rememberCoroutineScope()
     var lastReconciledMtime by remember { mutableLongStateOf(0L) }
+    var lastReconciledCatalogMtime by remember { mutableLongStateOf(0L) }
+
+    // Reconcile order on every trigger: catalog first (covers schema +
+    // newly-added tracks via full re-import), then manifest (cheap residency
+    // flip) only if catalog was unchanged. CatalogReconciler restamps
+    // residency in the same pass, so when it runs we skip the manifest leg.
+    suspend fun runReconcile(uri: String) {
+        val catCurrent = io.nocturne.phone.data.catalog.CatalogReconciler
+            .catalogMtime(container.appContext, uri)
+        if (catCurrent != null && catCurrent != lastReconciledCatalogMtime) {
+            val cat = io.nocturne.phone.data.catalog.CatalogReconciler.reconcile(
+                container.appContext, uri, container.db,
+                container.importer, container.syncPrefs,
+            )
+            if (cat != null) {
+                lastReconciledCatalogMtime = cat
+                // Catalog import already applied manifest residency. Mark the
+                // manifest leg as up-to-date so the 45s loop doesn't re-run it.
+                io.nocturne.phone.data.catalog.ManifestReconciler
+                    .manifestMtime(container.appContext, uri)
+                    ?.let { lastReconciledMtime = it }
+                trackCount = container.db.trackDao().count()
+                return
+            }
+        }
+        val mtime = io.nocturne.phone.data.catalog.ManifestReconciler.reconcile(
+            container.appContext, uri, container.db,
+        )
+        if (mtime != null) lastReconciledMtime = mtime
+    }
 
     // Cold-start path — fires once when metaTreeUri + trackCount become
     // valid. ON_RESUME below fires before SyncPrefs flows have emitted on
@@ -79,37 +109,33 @@ fun AppRoot(app: NocturneApp) {
     LaunchedEffect(metaTreeUri, trackCount) {
         if (metaTreeUri == LOADING_SENTINEL || metaTreeUri == null) return@LaunchedEffect
         if (trackCount <= 0) return@LaunchedEffect
-        val mtime = io.nocturne.phone.data.catalog.ManifestReconciler.reconcile(
-            container.appContext, metaTreeUri!!, container.db,
-        )
-        if (mtime != null) lastReconciledMtime = mtime
+        runReconcile(metaTreeUri!!)
     }
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
         val uri = metaTreeUri
         if (uri == null || uri == LOADING_SENTINEL) return@LifecycleEventEffect
         if (trackCount <= 0) return@LifecycleEventEffect
-        reconcileScope.launch {
-            val mtime = io.nocturne.phone.data.catalog.ManifestReconciler
-                .reconcile(container.appContext, uri, container.db)
-            if (mtime != null) lastReconciledMtime = mtime
-        }
+        reconcileScope.launch { runReconcile(uri) }
     }
 
     // Long-foreground fallback: if user keeps the app open continuously and
-    // a file lands, no ON_RESUME fires. Probe manifest mtime every 45s.
+    // a file lands, no ON_RESUME fires. Probe both catalog + manifest mtimes
+    // every 45s.
     LaunchedEffect(metaTreeUri, trackCount) {
         if (metaTreeUri == LOADING_SENTINEL || metaTreeUri == null) return@LaunchedEffect
         if (trackCount <= 0) return@LaunchedEffect
         while (true) {
             kotlinx.coroutines.delay(45_000L)
-            val current = io.nocturne.phone.data.catalog.ManifestReconciler
-                .manifestMtime(container.appContext, metaTreeUri!!) ?: continue
-            if (current == lastReconciledMtime) continue
-            val mtime = io.nocturne.phone.data.catalog.ManifestReconciler.reconcile(
-                container.appContext, metaTreeUri!!, container.db,
-            )
-            if (mtime != null) lastReconciledMtime = mtime
+            val uri = metaTreeUri ?: continue
+            val catCurrent = io.nocturne.phone.data.catalog.CatalogReconciler
+                .catalogMtime(container.appContext, uri)
+            val manCurrent = io.nocturne.phone.data.catalog.ManifestReconciler
+                .manifestMtime(container.appContext, uri)
+            val catalogChanged = catCurrent != null && catCurrent != lastReconciledCatalogMtime
+            val manifestChanged = manCurrent != null && manCurrent != lastReconciledMtime
+            if (!catalogChanged && !manifestChanged) continue
+            runReconcile(uri)
         }
     }
 

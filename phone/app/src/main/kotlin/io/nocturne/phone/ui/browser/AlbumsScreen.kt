@@ -35,7 +35,13 @@ fun AlbumsScreen(
             contentType = pagingItems.itemContentType { "album" },
         ) { index ->
             val album = pagingItems[index] ?: return@items
-            AlbumRow(album = album, onTap = { onNavigate(album.id) }, container = container)
+            AlbumRow(
+                album = album,
+                onTap = { onNavigate(album.id) },
+                container = container,
+                onUnsync = { vm.unsyncAlbum(album.id) },
+                onDelete = { vm.deleteAlbum(album.id) },
+            )
         }
     }
 }

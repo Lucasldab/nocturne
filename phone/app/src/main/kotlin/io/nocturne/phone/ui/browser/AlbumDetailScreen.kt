@@ -135,6 +135,8 @@ fun AlbumDetailScreen(
                             android.widget.Toast.LENGTH_SHORT,
                         ).show()
                     },
+                    onUnsync = { vm.unsyncTrack(t.id) },
+                    onDelete = { vm.deleteTrack(t.id) },
                 )
             }
         }

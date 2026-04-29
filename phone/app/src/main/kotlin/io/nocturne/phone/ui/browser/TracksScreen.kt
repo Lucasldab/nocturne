@@ -49,6 +49,8 @@ fun TracksScreen(
                 onPinClick = { vm.togglePinTrack(track.id) },
                 onPlayNext = { onPlayNext(track) },
                 onAddToQueue = { onAddToQueue(track) },
+                onUnsync = { vm.unsyncTrack(track.id) },
+                onDelete = { vm.deleteTrack(track.id) },
             )
         }
     }

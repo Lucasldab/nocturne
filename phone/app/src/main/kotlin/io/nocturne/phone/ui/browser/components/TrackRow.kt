@@ -3,7 +3,9 @@ package io.nocturne.phone.ui.browser.components
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,6 +53,7 @@ import kotlin.math.roundToInt
  * Swipe distance threshold is 80dp; the row visually shifts with the drag and
  * snaps back on release (or open-menu commit).
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TrackRow(
     track: TrackEntity,
@@ -60,7 +63,10 @@ fun TrackRow(
     onPinClick: () -> Unit = {},
     onPlayNext: () -> Unit = {},
     onAddToQueue: () -> Unit = {},
+    onUnsync: () -> Unit = {},
+    onDelete: () -> Unit = {},
 ) {
+    var showActionsSheet by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val rowAlpha = if (track.isResident) 1f else NON_RESIDENT_ALPHA
     val accentColor = MaterialTheme.colorScheme.primary
 
@@ -95,7 +101,10 @@ fun TrackRow(
                 Row(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable(onClick = if (track.isResident) onTap else onPinClick),
+                        .combinedClickable(
+                            onClick = if (track.isResident) onTap else onPinClick,
+                            onLongClick = { showActionsSheet = true },
+                        ),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -137,6 +146,16 @@ fun TrackRow(
                 PinChip(onClick = onPinClick, state = pinState)
             }
         }
+    }
+
+    if (showActionsSheet) {
+        TrackActionsSheet(
+            displayName = "${track.title} — ${track.artist.firstOrNull() ?: ""}",
+            isAlbum = false,
+            onUnsync = onUnsync,
+            onDelete = onDelete,
+            onDismiss = { showActionsSheet = false },
+        )
     }
 }
 

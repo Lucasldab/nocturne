@@ -46,3 +46,17 @@ data class PinEvent(
     val id: String,
     val pinned: Boolean,
 )
+
+/**
+ * Long-press track/album action — "unsync" (unpin and unload) or "delete"
+ * (didn't like; nuke from archive + resident, blacklist sha). Daemon
+ * dispatches to actions.c. Field order frozen.
+ */
+@Serializable
+data class ActionEvent(
+    val v: Int,
+    val ts: Long,
+    val unit: String,                                  // "track" or "album"
+    val id: String,
+    val action: String,                                // "unsync" or "delete"
+)

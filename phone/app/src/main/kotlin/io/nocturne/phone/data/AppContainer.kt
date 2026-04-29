@@ -8,6 +8,7 @@ import io.nocturne.phone.data.db.MIGRATION_2_3
 import io.nocturne.phone.data.db.MIGRATION_3_4
 import io.nocturne.phone.data.db.NocturneDatabase
 import io.nocturne.phone.data.prefs.SyncPrefs
+import io.nocturne.phone.data.stats.ActionsWriter
 import io.nocturne.phone.data.stats.JsonlFileWriter
 import io.nocturne.phone.data.stats.LikesWriter
 import io.nocturne.phone.data.stats.PinsWriter
@@ -72,6 +73,12 @@ class AppContainer(
     }
     val likesWriter: LikesWriter by lazy {
         LikesWriter(db.likeDao(), syncPrefs, jsonlFileWriter)
+    }
+
+    // Long-press unsync/delete fire-and-forget writer. Phone UI calls
+    // emit*; daemon ingests on next cycle.
+    val actionsWriter: ActionsWriter by lazy {
+        ActionsWriter(syncPrefs, jsonlFileWriter)
     }
 
     // Embedded album-art reader (cached). AlbumRow uses this to render real

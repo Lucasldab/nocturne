@@ -95,7 +95,13 @@ fun ArtistDetailScreen(
                     )
                 }
                 items(items = albums, key = { it.id }, contentType = { "album" }) { album ->
-                    AlbumRow(album = album, onTap = { onAlbumTap(album.id) }, container = container)
+                    AlbumRow(
+                        album = album,
+                        onTap = { onAlbumTap(album.id) },
+                        container = container,
+                        onUnsync = { vm.unsyncAlbum(album.id) },
+                        onDelete = { vm.deleteAlbum(album.id) },
+                    )
                 }
                 item { HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant) }
             }
@@ -121,6 +127,8 @@ fun ArtistDetailScreen(
                     onPinClick = { vm.togglePinTrack(t.id) },
                     onPlayNext = { onPlayNext(t) },
                     onAddToQueue = { onAddToQueue(t) },
+                    onUnsync = { vm.unsyncTrack(t.id) },
+                    onDelete = { vm.deleteTrack(t.id) },
                 )
             }
         }

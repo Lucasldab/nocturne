@@ -38,6 +38,7 @@
 #define _GNU_SOURCE
 
 #include "ingest.h"
+#include "actions.h"
 
 #include "db.h"
 #include "jsonl.h"
@@ -377,6 +378,70 @@ static int handle_like(json_t *root, struct nocturne_db *db,
     return 0;
 }
 
+/* handle_action: phone-emitted "unsync" / "delete" commands.
+ *
+ * Schema: {"v":1,"ts":<ms>,"unit":"track|album","id":"<sha|album_id>",
+ *          "action":"unsync|delete"}
+ *
+ * Dispatched to actions.c (unsync_track / delete_track_everywhere /
+ * unsync_album / delete_album_everywhere). Idempotent on the daemon side
+ * (unsync uses ON CONFLICT, delete is no-op for a missing tracks row), so
+ * re-ingesting the same line is safe.
+ *
+ * Per-line errors return 1 (skip line, continue file). DB errors return -1
+ * (fail the file ingest).
+ */
+static int handle_action(json_t *root, struct nocturne_db *db,
+                         struct ingest_stats *stats, int dry_run,
+                         long long *event_ts_out)
+{
+    json_t *jv      = json_object_get(root, "v");
+    json_t *jts     = json_object_get(root, "ts");
+    json_t *junit   = json_object_get(root, "unit");
+    json_t *jid     = json_object_get(root, "id");
+    json_t *jaction = json_object_get(root, "action");
+
+    if (!json_is_integer(jv) || json_integer_value(jv) != 1) return 1;
+    if (!json_is_integer(jts)) return 1;
+    if (!json_is_string(junit)) return 1;
+    if (!json_is_string(jid)) return 1;
+    if (!json_is_string(jaction)) return 1;
+
+    long long ts = json_integer_value(jts);
+    if (!ts_plausible(ts)) return 1;
+
+    const char *unit = json_string_value(junit);
+    if (strcmp(unit, "track") != 0 && strcmp(unit, "album") != 0) return 1;
+
+    const char *id = json_string_value(jid);
+    if (!id || !*id) return 1;
+    if (!strcmp(unit, "track") && !is_sha256_hex(id)) return 1;
+
+    const char *action = json_string_value(jaction);
+    int is_delete;
+    if (!strcmp(action, "unsync")) is_delete = 0;
+    else if (!strcmp(action, "delete")) is_delete = 1;
+    else return 1;
+
+    if (event_ts_out && ts > *event_ts_out) *event_ts_out = ts;
+    if (dry_run) return 0;
+
+    struct action_stats astats = {0};
+    int rc;
+    if (!strcmp(unit, "album")) {
+        rc = is_delete ? delete_album_everywhere(db, id, &astats)
+                       : unsync_album(db, id, &astats);
+    } else {
+        rc = is_delete ? delete_track_everywhere(db, id, &astats)
+                       : unsync_track(db, id, &astats);
+    }
+    if (rc < 0) return -1;
+    /* No dedicated stats counter; bucket under pins_upserted for visibility
+     * since phone-side write paths share that fan-in. */
+    stats->pins_upserted++;
+    return 0;
+}
+
 static int handle_pin(json_t *root, struct nocturne_db *db,
                       struct ingest_stats *stats, int dry_run,
                       long long *event_ts_out)
@@ -452,7 +517,7 @@ static int handle_pin(json_t *root, struct nocturne_db *db,
  * Per-line errors (parse / validation / oversize) are logged + counted
  * but never fail the file. */
 
-enum file_kind { KIND_STATS, KIND_LIKES, KIND_PINS };
+enum file_kind { KIND_STATS, KIND_LIKES, KIND_PINS, KIND_ACTIONS };
 
 static int ingest_one_file(struct nocturne_db *db, const char *meta_dir,
                            const char *abs_path, enum file_kind kind,
@@ -530,9 +595,10 @@ static int ingest_one_file(struct nocturne_db *db, const char *meta_dir,
 
         int hr;
         switch (kind) {
-        case KIND_STATS: hr = handle_play(root, relpath, db, stats, dry_run, &max_event_ts); break;
-        case KIND_LIKES: hr = handle_like(root, db, stats, dry_run, &max_event_ts); break;
-        case KIND_PINS:  hr = handle_pin(root, db, stats, dry_run, &max_event_ts); break;
+        case KIND_STATS:   hr = handle_play(root, relpath, db, stats, dry_run, &max_event_ts); break;
+        case KIND_LIKES:   hr = handle_like(root, db, stats, dry_run, &max_event_ts); break;
+        case KIND_PINS:    hr = handle_pin(root, db, stats, dry_run, &max_event_ts); break;
+        case KIND_ACTIONS: hr = handle_action(root, db, stats, dry_run, &max_event_ts); break;
         default: hr = 1; break;
         }
         json_decref(root);
@@ -642,9 +708,10 @@ int ingest_run(struct nocturne_db *db, const char *meta_dir,
      *   likes-phone-*.jsonl     (top-level)
      *   pins-phone-*.jsonl      (top-level) */
     int rc = 0;
-    if (run_glob(db, meta_dir, "stats/phone-*.jsonl",  KIND_STATS, stats, dry_run) < 0) rc = -1;
-    if (run_glob(db, meta_dir, "likes-phone-*.jsonl",  KIND_LIKES, stats, dry_run) < 0) rc = -1;
-    if (run_glob(db, meta_dir, "pins-phone-*.jsonl",   KIND_PINS,  stats, dry_run) < 0) rc = -1;
+    if (run_glob(db, meta_dir, "stats/phone-*.jsonl",   KIND_STATS,   stats, dry_run) < 0) rc = -1;
+    if (run_glob(db, meta_dir, "likes-phone-*.jsonl",   KIND_LIKES,   stats, dry_run) < 0) rc = -1;
+    if (run_glob(db, meta_dir, "pins-phone-*.jsonl",    KIND_PINS,    stats, dry_run) < 0) rc = -1;
+    if (run_glob(db, meta_dir, "actions-phone-*.jsonl", KIND_ACTIONS, stats, dry_run) < 0) rc = -1;
 
     return rc;
 }

@@ -167,6 +167,43 @@ class BrowserViewModel(private val container: AppContainer) : ViewModel() {
             container.pinsWriter.drain()
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Long-press track/album actions: "unsync" (unpin and unload, reversible)
+    // and "delete" (didn't like it, destructive). Both fire-and-forget JSONL —
+    // daemon-side actions.c handles the actual demote / file removal /
+    // blacklisting. UI clears local pin row optimistically on unsync so the
+    // pin chip updates immediately; deletion side relies on next catalog
+    // reconcile to drop the row.
+    // -------------------------------------------------------------------------
+
+    fun unsyncTrack(trackId: String) {
+        viewModelScope.launch {
+            // Optimistic: clear local pin row so the chip updates without
+            // waiting for round-trip via Syncthing.
+            container.db.pinDao().setPinned(id = trackId, pinned = false, ts = System.currentTimeMillis())
+            container.actionsWriter.emitUnsyncTrack(trackId)
+        }
+    }
+
+    fun unsyncAlbum(albumId: String) {
+        viewModelScope.launch {
+            container.db.pinDao().setPinned(id = albumId, pinned = false, ts = System.currentTimeMillis())
+            container.actionsWriter.emitUnsyncAlbum(albumId)
+        }
+    }
+
+    fun deleteTrack(trackId: String) {
+        viewModelScope.launch {
+            container.actionsWriter.emitDeleteTrack(trackId)
+        }
+    }
+
+    fun deleteAlbum(albumId: String) {
+        viewModelScope.launch {
+            container.actionsWriter.emitDeleteAlbum(albumId)
+        }
+    }
 }
 
 class BrowserVMFactory(private val container: AppContainer) : ViewModelProvider.Factory {

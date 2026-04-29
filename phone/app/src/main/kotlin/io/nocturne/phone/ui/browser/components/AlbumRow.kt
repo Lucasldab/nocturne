@@ -1,6 +1,12 @@
 package io.nocturne.phone.ui.browser.components
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,13 +27,24 @@ import io.nocturne.phone.data.db.entity.AlbumEntity
 import io.nocturne.phone.ui.theme.NON_RESIDENT_ALPHA
 import io.nocturne.phone.ui.theme.NocturneTheme
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun AlbumRow(album: AlbumEntity, onTap: () -> Unit, container: AppContainer? = null) {
+fun AlbumRow(
+    album: AlbumEntity,
+    onTap: () -> Unit,
+    container: AppContainer? = null,
+    onUnsync: () -> Unit = {},
+    onDelete: () -> Unit = {},
+) {
     val rowAlpha = if (album.hasResident) 1f else NON_RESIDENT_ALPHA
+    var showActionsSheet by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onTap)
+            .combinedClickable(
+                onClick = onTap,
+                onLongClick = { showActionsSheet = true },
+            )
             .padding(horizontal = 16.dp, vertical = 12.dp)
             .alpha(rowAlpha),
         verticalAlignment = Alignment.CenterVertically,
@@ -60,6 +77,16 @@ fun AlbumRow(album: AlbumEntity, onTap: () -> Unit, container: AppContainer? = n
             text = "${album.trackCount}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+
+    if (showActionsSheet) {
+        TrackActionsSheet(
+            displayName = "${album.title} — ${album.albumArtist.firstOrNull() ?: ""}",
+            isAlbum = true,
+            onUnsync = onUnsync,
+            onDelete = onDelete,
+            onDismiss = { showActionsSheet = false },
         )
     }
 }

@@ -40,6 +40,9 @@ void cli_print_usage(FILE *f)
         "  doctor            Print library + DB health report\n"
         "  diskcheck         Verify resident-set has >=1 GiB margin against cap AND\n"
         "                    Syncthing minHomeDiskFree (TUNE-02; read-only, no lock)\n"
+        "  transcode <src> <dst> [--format opus|aac] [--bitrate N]\n"
+        "                    Re-encode <src> → <dst> via ffmpeg (preserves embedded\n"
+        "                    art + tags). Standalone for hand-testing quality.\n"
         "\n"
         "Options:\n"
         "  -h, --help              Print this help and exit\n"
@@ -87,6 +90,7 @@ static enum nocturned_subcommand subcommand_from_string(const char *s)
     if (!strcmp(s, "rotate"))  return CMD_ROTATE;
     if (!strcmp(s, "sync-config")) return CMD_SYNC_CONFIG;
     if (!strcmp(s, "cycle"))   return CMD_CYCLE;
+    if (!strcmp(s, "transcode")) return CMD_TRANSCODE;
     if (!strcmp(s, "help"))    return CMD_HELP;
     if (!strcmp(s, "version")) return CMD_VERSION;
     return CMD_NONE;
@@ -110,6 +114,8 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         { "meta-dir",            required_argument, NULL, 1008 },
         { "manifest",            required_argument, NULL, 1009 },
         { "diff",                no_argument,       NULL, 1010 },
+        { "format",              required_argument, NULL, 1011 },
+        { "bitrate",             required_argument, NULL, 1012 },
         { 0, 0, 0, 0 }
     };
 
@@ -130,6 +136,10 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         out->meta_dir             = NULL;
         out->track_id                = NULL;
         out->manifest_path_override  = NULL;
+        out->transcode_src           = NULL;
+        out->transcode_dst           = NULL;
+        out->transcode_format        = NULL;
+        out->transcode_bitrate_kbps  = 0;
     }
     if (!out || argc < 1) return CMD_NONE;
 
@@ -159,6 +169,8 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         case 1008: out->meta_dir = optarg; break;
         case 1009: out->manifest_path_override = optarg; break;
         case 1010: out->diff = 1; break;
+        case 1011: out->transcode_format = optarg; break;
+        case 1012: out->transcode_bitrate_kbps = atoi(optarg); break;
         case '?':
         default:
             out->cmd = CMD_NONE;
@@ -191,6 +203,12 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
      * why_cmd_main; we only capture the string here. */
     if (sub == CMD_WHY && optind < argc) {
         out->track_id = argv[optind++];
+    }
+
+    /* `transcode` takes two positionals: src + dst. */
+    if (sub == CMD_TRANSCODE) {
+        if (optind < argc) out->transcode_src = argv[optind++];
+        if (optind < argc) out->transcode_dst = argv[optind++];
     }
 
     return sub;

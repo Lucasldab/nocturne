@@ -30,6 +30,13 @@ struct nocturne_config {
 
     struct bucket_config *buckets;
     size_t buckets_n;
+
+    /* [transcode] — when enabled, rotate's promote step writes a lossy copy
+     * to resident/ instead of hardlinking the FLAC. Off by default; the
+     * standalone `nocturned transcode` CLI ignores this and uses argv. */
+    int transcode_enabled;       /* 0/1 */
+    char *transcode_format;      /* "opus" | "aac"; NULL when default */
+    int transcode_bitrate_kbps;  /* 0 → built-in default (128) */
 };
 
 /* Returns 0 on success. NULL or missing path → defaults (no error).

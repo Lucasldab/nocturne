@@ -86,6 +86,7 @@ void config_free(struct nocturne_config *c)
     free(c->syncthing_phone_sync_meta);
     free(c->syncthing_desktop_device_id);
     free(c->syncthing_phone_device_id);
+    free(c->transcode_format);
     for (size_t i = 0; i < c->buckets_n; i++) {
         free(c->buckets[i].name);
         free(c->buckets[i].source);
@@ -295,6 +296,25 @@ static int apply_kv(struct nocturne_config *c,
         if (!strcmp(key, "seed")) {
             if (!have_ll) goto fail;
             c->random_seed = (unsigned long) as_ll;
+            free(as_str); return 0;
+        }
+    } else if (!strcmp(section, "transcode")) {
+        if (!strcmp(key, "enabled")) {
+            if (!have_ll) goto fail;
+            c->transcode_enabled = (as_ll != 0);
+            free(as_str); return 0;
+        }
+        if (!strcmp(key, "format")) {
+            free(c->transcode_format);
+            c->transcode_format = as_str ? as_str : NULL;
+            if (!as_str) goto fail;
+            return 0;
+        }
+        if (!strcmp(key, "bitrate_kbps")) {
+            if (!have_ll) goto fail;
+            if (as_ll < 32) as_ll = 32;
+            if (as_ll > 510) as_ll = 510;
+            c->transcode_bitrate_kbps = (int) as_ll;
             free(as_str); return 0;
         }
     } else if (!strncmp(section, "buckets.", 8)) {

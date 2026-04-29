@@ -27,7 +27,8 @@ enum nocturned_subcommand {
     CMD_SYNC_CONFIG,
     CMD_CYCLE,
     CMD_WHY,
-    CMD_DISKCHECK
+    CMD_DISKCHECK,
+    CMD_TRANSCODE
 };
 
 /* Parsed argv for the daemon. Strings are pointers into argv (no ownership). */
@@ -48,6 +49,13 @@ struct cli_args {
     const char *meta_dir;         /* --meta-dir (ingest); NULL = config sync_meta.path = ~/sync/nocturne/meta */
     const char *track_id;                /* positional for `why` (sha256 hex full or >=8-char prefix) */
     const char *manifest_path_override;  /* --manifest <path> for `why` */
+
+    /* `transcode` positionals: src + dst. Format/bitrate come from --format
+     * and --bitrate (long opts) or fall back to config / built-in defaults. */
+    const char *transcode_src;
+    const char *transcode_dst;
+    const char *transcode_format;       /* opus|aac; NULL → config */
+    int transcode_bitrate_kbps;         /* 0 → config */
 };
 
 /* Parse argv. Returns the chosen subcommand (CMD_HELP / CMD_VERSION / CMD_NONE

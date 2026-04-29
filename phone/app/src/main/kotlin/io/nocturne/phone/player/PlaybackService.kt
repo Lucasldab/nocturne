@@ -84,8 +84,14 @@ class PlaybackService : MediaSessionService() {
                 /* handleAudioFocus = */ true,
             )
             .setHandleAudioBecomingNoisy(true)
-            // Wake mode: opt-out default in Media3 1.9+ (PLAY-03).
-            // Gapless: ExoPlayer default-on satisfies PLAY-02.
+            // Wake mode: explicit LOCAL acquires a partial wake-lock while
+            // playback is active. Without this, CPU sleep on screen-off can
+            // stall the decoder mid-track on GrapheneOS / aggressively-doze
+            // devices (the original "stopped while working out" bug).
+            // Released automatically on pause/stop. Local files only — no
+            // network, so WAKE_MODE_LOCAL (not WAKE_MODE_NETWORK) is correct.
+            .setWakeMode(C.WAKE_MODE_LOCAL)
+            // Gapless: ExoPlayer default-on satisfies the gapless contract.
             .build()
 
         // Surface playback errors via Toast AND auto-skip on missing file.
@@ -285,13 +291,12 @@ class PlaybackService : MediaSessionService() {
         mediaSession
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // User swiped the app away from recents.
-        // If nothing is playing OR the queue is empty, stop the service so we
-        // don't keep an idle FGS notification around. If music is still
-        // playing, leave the service running — the user expects audio to
-        // continue while they swipe away the catalog activity.
+        // User swiped the app away from recents. Only stop the service if the
+        // queue is genuinely empty — leaving it alive while paused preserves
+        // the lock-screen notification + instant resume on tap. The service
+        // self-destructs anyway when audio focus is lost permanently.
         val player = mediaSession?.player
-        if (player == null || !player.playWhenReady || player.mediaItemCount == 0) {
+        if (player == null || player.mediaItemCount == 0) {
             stopSelf()
         }
     }

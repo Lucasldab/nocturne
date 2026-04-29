@@ -9,6 +9,12 @@
     <!-- Phase 5: PlaybackService is a foreground service of type mediaPlayback (Pitfall 2 — mandatory on Android 14+). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Required for ExoPlayer.setWakeMode(WAKE_MODE_LOCAL). Without this the
+         player decoder thread may stall when the screen turns off, manifesting
+         as music stopping mid-track on GrapheneOS / aggressively-doze-managed
+         devices. WAKE_MODE_LOCAL holds a partial wake-lock only while playback
+         is active; pause / stop releases it. Audio-only — no screen wake. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:name=".NocturneApp"

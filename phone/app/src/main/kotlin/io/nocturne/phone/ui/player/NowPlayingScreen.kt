@@ -85,6 +85,9 @@ fun NowPlayingScreen(
 ) {
     var metadata by remember { mutableStateOf(controller.mediaMetadata) }
     var currentIndex by remember { mutableIntStateOf(controller.currentMediaItemIndex) }
+    var playbackState by remember { mutableIntStateOf(controller.playbackState) }
+    var isPlayingNow by remember { mutableStateOf(controller.isPlaying) }
+    var hasItem by remember { mutableStateOf(controller.currentMediaItem != null) }
 
     DisposableEffect(controller, playerVm) {
         // Phase 6: publish the current track id eagerly so isLikedFlow has a
@@ -94,11 +97,26 @@ fun NowPlayingScreen(
             override fun onMediaMetadataChanged(m: MediaMetadata) { metadata = m }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 currentIndex = controller.currentMediaItemIndex
+                hasItem = mediaItem != null
                 playerVm.publishCurrentTrackId(controller.currentMediaItem?.mediaId)
             }
+            override fun onPlaybackStateChanged(state: Int) { playbackState = state }
+            override fun onIsPlayingChanged(playing: Boolean) { isPlayingNow = playing }
         }
         controller.addListener(listener)
         onDispose { controller.removeListener(listener) }
+    }
+
+    // Eyebrow text reflects actual transport state. Was hardcoded to "playing"
+    // which produced "▸ playing / no track playing" contradictions when the
+    // queue exhausted or the service was killed mid-session.
+    val eyebrow = when {
+        !hasItem -> "idle"
+        playbackState == Player.STATE_BUFFERING -> "buffering"
+        playbackState == Player.STATE_ENDED -> "ended"
+        playbackState == Player.STATE_IDLE -> "idle"
+        isPlayingNow -> "playing"
+        else -> "paused"
     }
 
     val isLiked by playerVm.isLikedFlow.collectAsStateWithLifecycle()
@@ -124,6 +142,7 @@ fun NowPlayingScreen(
         currentTrackId = currentTrackId,
         currentTrack = trackEntity,
         isLiked = isLiked,
+        eyebrow = eyebrow,
         onToggleLike = { playerVm.toggleLike() },
         onBack = onBack,
     )
@@ -142,6 +161,7 @@ private fun NowPlayingBody(
     currentTrackId: String?,
     currentTrack: io.nocturne.phone.data.db.entity.TrackEntity?,
     isLiked: Boolean,
+    eyebrow: String,
     onToggleLike: () -> Unit,
     onBack: () -> Unit,
 ) {
@@ -207,9 +227,11 @@ private fun NowPlayingBody(
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(modifier = Modifier.weight(1f)) {
-                    // ▸ playing eyebrow — primary accent, mono caps, letterspaced
+                    // Transport-state eyebrow — primary accent, mono caps,
+                    // letterspaced. Text comes from the controller listener so
+                    // it tracks playing / paused / buffering / ended / idle.
                     Text(
-                        text = "▸ playing",
+                        text = "▸ $eyebrow",
                         style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMono),
                         color = MaterialTheme.colorScheme.primary,
                     )

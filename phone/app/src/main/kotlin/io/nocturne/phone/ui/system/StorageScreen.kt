@@ -220,8 +220,8 @@ private fun BucketStorageRow(index: Int, row: BucketRow, totalBytes: Long) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(2.dp)
                 .padding(top = 6.dp)
+                .height(2.dp)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
             Box(

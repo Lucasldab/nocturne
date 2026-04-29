@@ -11,6 +11,8 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.sp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -63,19 +65,38 @@ fun SwipeQueueActions(
         ) {
             content()
         }
+        // Mono-styled dropdown — `$ command` items in primary purple, on
+        // surface bg, to match SyncScreen / StatsScreen.
         DropdownMenu(
             expanded = menuExpanded,
             onDismissRequest = { menuExpanded = false },
+            containerColor = MaterialTheme.colorScheme.surface,
         ) {
+            val mono = TextStyle(
+                fontFamily = MaterialTheme.typography.bodySmall.fontFamily,
+                fontSize = 13.sp,
+            )
             DropdownMenuItem(
-                text = { Text("Play next") },
+                text = {
+                    Text(
+                        text = "$ play next",
+                        style = mono,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                },
                 onClick = {
                     menuExpanded = false
                     onPlayNext()
                 },
             )
             DropdownMenuItem(
-                text = { Text("Add to queue") },
+                text = {
+                    Text(
+                        text = "$ add to queue",
+                        style = mono,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                },
                 onClick = {
                     menuExpanded = false
                     onAddToQueue()

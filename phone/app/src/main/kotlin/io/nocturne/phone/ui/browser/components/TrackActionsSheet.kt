@@ -1,7 +1,10 @@
 package io.nocturne.phone.ui.browser.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,23 +23,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 
 /**
- * Long-press bottom sheet for a track or album. Two actions:
+ * Long-press bottom sheet — terminal-aesthetic to match SyncScreen / StatsScreen.
  *
- *   "Unpin and unload" — clears any pin and drops the resident copy from
- *   the phone (daemon demotes via unsync_overrides). Stats preserved.
- *   Reversible by re-pinning.
+ * Header reads `~/<unit>/<name>` like a shell path. Each action row is a
+ * `$ command` line in primary purple, with a muted-mono subtitle below.
+ * Confirm dialog uses the same mono typography (no Material titleLarge/
+ * bodyLarge defaults that look out of place against the rest of the app).
  *
- *   "Delete (didn't like it)" — destructive: nukes the FLAC from archive
- *   AND the resident transcode AND the DB rows. Daemon blacklists the sha
- *   so future re-imports refuse to bring it back. Two-step (confirm).
- *
- * `isAlbum` switches between track and album semantics. Display name is
- * shown verbatim in the confirm dialog so the user knows what they're
- * about to nuke.
+ * Two actions:
+ *   $ unpin & unload         — clear pin + drop resident copy. Reversible.
+ *   $ delete (didn't like)   — confirm → archive + resident files nuked,
+ *                               sha blacklisted, DB rows dropped. Permanent.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,18 +55,39 @@ fun TrackActionsSheet(
     val scope = rememberCoroutineScope()
     var showDeleteConfirm by remember { mutableStateOf(false) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp)) {
+    val unitWord = if (isAlbum) "album" else "track"
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.background,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+            // ~/track/<name> — terminal-prompt header in muted mono.
+            Text(
+                text = "~/$unitWord",
+                style = TextStyle(
+                    fontFamily = MaterialTheme.typography.bodySmall.fontFamily,
+                    fontSize = 11.sp,
+                    letterSpacing = 1.sp,
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
             Text(
                 text = displayName,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                style = MonoText(13),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
             )
 
-            ActionRow(
-                title = "Unpin and unload",
-                subtitle = "Removes from phone. Reversible.",
+            DividerLine()
+
+            CommandRow(
+                command = "unpin & unload",
+                hint = "removes from phone — reversible",
                 onClick = {
                     scope.launch { sheetState.hide() }
                     onUnsync()
@@ -70,26 +95,37 @@ fun TrackActionsSheet(
                 },
             )
 
-            ActionRow(
-                title = "Delete (didn't like it)",
-                subtitle = "Removes from desktop AND phone. Permanent.",
+            DividerLine()
+
+            CommandRow(
+                command = "delete (didn't like)",
+                hint = "removes from desktop and phone — permanent",
                 destructive = true,
                 onClick = { showDeleteConfirm = true },
             )
 
-            Spacer(Modifier.height(12.dp))
+            DividerLine()
         }
     }
 
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text(if (isAlbum) "Delete album?" else "Delete track?") },
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = {
+                Text(
+                    text = "── delete $unitWord ──",
+                    style = MonoText(12).copy(letterSpacing = 1.5.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            },
             text = {
                 Text(
-                    "\"$displayName\" will be removed from the desktop archive, the " +
-                        "phone, and your library forever. Future re-imports of the same " +
-                        "content will be refused.\n\nThis can't be undone.",
+                    text = "$displayName\n\nfiles unlinked from archive + resident, " +
+                        "sha blacklisted (future re-imports refused), db rows " +
+                        "dropped. cannot be undone.",
+                    style = MonoText(12),
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
             },
             confirmButton = {
@@ -101,39 +137,68 @@ fun TrackActionsSheet(
                         onDismiss()
                     },
                 ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                    Text(
+                        text = "$ delete",
+                        style = MonoText(13),
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text(
+                        text = "$ cancel",
+                        style = MonoText(13),
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             },
         )
     }
 }
 
 @Composable
-private fun ActionRow(
-    title: String,
-    subtitle: String,
+private fun CommandRow(
+    command: String,
+    hint: String,
     destructive: Boolean = false,
     onClick: () -> Unit,
 ) {
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (destructive) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Column {
+            Text(
+                text = "$ $command",
+                style = MonoText(14),
+                color = if (destructive) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = hint,
+                style = MonoText(11),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
+
+@Composable
+private fun DividerLine() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+    )
+}
+
+@Composable
+private fun MonoText(sizeSp: Int): TextStyle = TextStyle(
+    fontFamily = MaterialTheme.typography.bodySmall.fontFamily,
+    fontSize = sizeSp.sp,
+)

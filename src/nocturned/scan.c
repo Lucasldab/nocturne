@@ -172,10 +172,26 @@ static char *canon_tag_field(const struct tag_field *f, bool *needs_free)
     return out;
 }
 
+/* Returns 1 if `path` is a transcode artifact: lives under /resident/ and
+ * has an opus/m4a/aac extension. These are derivatives produced by rotate's
+ * transcode promote — the daemon must not insert tracks rows for them
+ * (the source FLAC's row is canonical; resident transcode metadata lives
+ * on residency_state). Returning early here is the simplest dedup. */
+static int is_transcode_artifact(const char *path)
+{
+    if (!path) return 0;
+    if (!strstr(path, "/resident/")) return 0;
+    const char *dot = strrchr(path, '.');
+    if (!dot) return 0;
+    return !strcasecmp(dot, ".opus") || !strcasecmp(dot, ".m4a") ||
+           !strcasecmp(dot, ".aac");
+}
+
 static enum walk_result on_file(const struct tag_record *rec, void *ud)
 {
     struct scan_ctx *ctx = (struct scan_ctx *) ud;
     if (!rec || !rec->path) return WALK_CONTINUE;
+    if (is_transcode_artifact(rec->path)) return WALK_CONTINUE;
     ctx->stats->files_seen++;
 
     /* stat for (mtime, size). */

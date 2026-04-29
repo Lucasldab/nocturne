@@ -63,122 +63,79 @@ fun TrackRow(
 ) {
     val rowAlpha = if (track.isResident) 1f else NON_RESIDENT_ALPHA
     val accentColor = MaterialTheme.colorScheme.primary
-    val density = LocalDensity.current
-    val swipeThresholdPx = with(density) { 80.dp.toPx() }
-    var dragOffsetPx by remember { mutableFloatStateOf(0f) }
-    var menuExpanded by remember { mutableStateOf(false) }
-    val animatedOffset by animateDpAsState(
-        targetValue = with(density) { dragOffsetPx.toDp() },
-        animationSpec = tween(durationMillis = 120),
-        label = "trackRowOffset",
-    )
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (isCurrentlyPlaying) {
-                    Modifier.drawBehind {
-                        val w = 2.dp.toPx()
-                        drawRect(
-                            color = accentColor,
-                            topLeft = Offset.Zero,
-                            size = androidx.compose.ui.geometry.Size(w, size.height),
-                        )
-                    }
-                } else Modifier,
-            ),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .offset { IntOffset(with(density) { animatedOffset.roundToPx() }, 0) }
-                .background(MaterialTheme.colorScheme.background)
-                .pointerInput(track.isResident) {
-                    if (!track.isResident) return@pointerInput
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            if (dragOffsetPx >= swipeThresholdPx) {
-                                menuExpanded = true
-                            }
-                            dragOffsetPx = 0f
-                        },
-                        onDragCancel = { dragOffsetPx = 0f },
-                        onHorizontalDrag = { change, dragAmount ->
-                            // Only allow positive drag (right). Negative
-                            // movement clamps to 0 so left-flicks don't
-                            // shove the row off-screen.
-                            dragOffsetPx = (dragOffsetPx + dragAmount).coerceAtLeast(0f)
-                            if (dragAmount > 0f) change.consume()
-                        },
+    val rowModifier = Modifier
+        .fillMaxWidth()
+        .then(
+            if (isCurrentlyPlaying) {
+                Modifier.drawBehind {
+                    val w = 2.dp.toPx()
+                    drawRect(
+                        color = accentColor,
+                        topLeft = Offset.Zero,
+                        size = androidx.compose.ui.geometry.Size(w, size.height),
                     )
                 }
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .alpha(rowAlpha),
-            verticalAlignment = Alignment.CenterVertically,
+            } else Modifier,
+        )
+
+    Box(modifier = rowModifier) {
+        SwipeQueueActions(
+            onPlayNext = onPlayNext,
+            onAddToQueue = onAddToQueue,
+            enabled = track.isResident,
         ) {
             Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .clickable(onClick = if (track.isResident) onTap else onPinClick),
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .alpha(rowAlpha),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = track.trackNumber?.toString()?.padStart(2, '0') ?: "  ",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.width(28.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Column(modifier = Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable(onClick = if (track.isResident) onTap else onPinClick),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Text(
-                        text = track.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    val subtitle = buildString {
-                        append(track.artist.firstOrNull().orEmpty())
-                        if (track.album.isNotBlank()) {
-                            if (isNotEmpty()) append(" · ")
-                            append(track.album)
-                        }
-                    }
-                    Text(
-                        text = subtitle,
+                        text = track.trackNumber?.toString()?.padStart(2, '0') ?: "  ",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.width(28.dp),
                     )
+                    Spacer(Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = track.title,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        val subtitle = buildString {
+                            append(track.artist.firstOrNull().orEmpty())
+                            if (track.album.isNotBlank()) {
+                                if (isNotEmpty()) append(" · ")
+                                append(track.album)
+                            }
+                        }
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
+                val pinState = when {
+                    isPinned && !track.isResident -> PinState.PinnedPulling
+                    isPinned && track.isResident -> PinState.PinnedReady
+                    else -> PinState.NotPinned
+                }
+                PinChip(onClick = onPinClick, state = pinState)
             }
-            val pinState = when {
-                isPinned && !track.isResident -> PinState.PinnedPulling
-                isPinned && track.isResident -> PinState.PinnedReady
-                else -> PinState.NotPinned
-            }
-            PinChip(onClick = onPinClick, state = pinState)
-        }
-        DropdownMenu(
-            expanded = menuExpanded,
-            onDismissRequest = { menuExpanded = false },
-        ) {
-            DropdownMenuItem(
-                text = { Text("Play next") },
-                onClick = {
-                    menuExpanded = false
-                    onPlayNext()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("Add to queue") },
-                onClick = {
-                    menuExpanded = false
-                    onAddToQueue()
-                },
-            )
         }
     }
 }

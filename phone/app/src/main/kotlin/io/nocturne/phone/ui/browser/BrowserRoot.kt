@@ -246,12 +246,31 @@ fun BrowserRoot(
                 // (no nav transition, no back-stack). The 4 sub-screens are
                 // selected by activeUtility and render as inline content
                 // composables below the UtilityBar slot owned by the topBar.
+                val utilityCtx = androidx.compose.ui.platform.LocalContext.current
                 Box(modifier = Modifier.fillMaxSize().padding(padding)) {
                     when (activeUtility) {
                         "rotation" -> RotationScreen(container = container)
                         "sync"     -> SyncScreen(container = container)
                         "storage"  -> StorageScreen(container = container)
-                        "stats"    -> StatsScreen(container = container)
+                        "stats"    -> StatsScreen(
+                            container = container,
+                            onPlayNext = { track ->
+                                playerVm.playNextTrack(track)
+                                android.widget.Toast.makeText(
+                                    utilityCtx,
+                                    "Playing next",
+                                    android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                            },
+                            onAddToQueue = { track ->
+                                playerVm.enqueueTrack(track)
+                                android.widget.Toast.makeText(
+                                    utilityCtx,
+                                    "Added to queue",
+                                    android.widget.Toast.LENGTH_SHORT,
+                                ).show()
+                            },
+                        )
                     }
                 }
                 return@Scaffold

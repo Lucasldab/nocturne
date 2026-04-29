@@ -28,7 +28,8 @@ enum nocturned_subcommand {
     CMD_CYCLE,
     CMD_WHY,
     CMD_DISKCHECK,
-    CMD_TRANSCODE
+    CMD_TRANSCODE,
+    CMD_TRANSCODE_MIGRATE
 };
 
 /* Parsed argv for the daemon. Strings are pointers into argv (no ownership). */

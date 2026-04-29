@@ -37,6 +37,7 @@
 #include "paths.h"
 #include "syncthing_api.h"
 #include "track_repo.h"
+#include "transcode.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -242,6 +243,226 @@ static int upsert_residency(struct sqlite3 *raw, const char *sha,
     return rc == SQLITE_DONE ? 0 : -1;
 }
 
+/* Same as upsert_residency but also writes the transcode_path / size /
+ * format columns. Used only by the transcode-promote path. */
+static int upsert_residency_transcode(struct sqlite3 *raw, const char *sha,
+                                      const char *iso,
+                                      const char *transcode_path,
+                                      long long transcode_size,
+                                      const char *transcode_format)
+{
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(raw,
+            "INSERT INTO residency_state (sha256, location, updated_at, "
+            "  transcode_path, transcode_size_bytes, transcode_format) "
+            "VALUES (?, 'resident', ?, ?, ?, ?) "
+            "ON CONFLICT(sha256) DO UPDATE SET location='resident', "
+            "  updated_at=excluded.updated_at, "
+            "  transcode_path=excluded.transcode_path, "
+            "  transcode_size_bytes=excluded.transcode_size_bytes, "
+            "  transcode_format=excluded.transcode_format",
+            -1, &stmt, NULL) != SQLITE_OK)
+        return -1;
+    sqlite3_bind_text(stmt, 1, sha, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, iso, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 3, transcode_path, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 4, transcode_size);
+    sqlite3_bind_text(stmt, 5, transcode_format, -1, SQLITE_TRANSIENT);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return rc == SQLITE_DONE ? 0 : -1;
+}
+
+/* Demote in transcode mode: clear transcode_* columns alongside flipping
+ * location to 'archive'. */
+static int upsert_residency_archive_clear_transcode(struct sqlite3 *raw,
+                                                    const char *sha,
+                                                    const char *iso)
+{
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(raw,
+            "INSERT INTO residency_state (sha256, location, updated_at, "
+            "  transcode_path, transcode_size_bytes, transcode_format) "
+            "VALUES (?, 'archive', ?, NULL, NULL, NULL) "
+            "ON CONFLICT(sha256) DO UPDATE SET location='archive', "
+            "  updated_at=excluded.updated_at, "
+            "  transcode_path=NULL, "
+            "  transcode_size_bytes=NULL, "
+            "  transcode_format=NULL",
+            -1, &stmt, NULL) != SQLITE_OK)
+        return -1;
+    sqlite3_bind_text(stmt, 1, sha, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 2, iso, -1, SQLITE_TRANSIENT);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return rc == SQLITE_DONE ? 0 : -1;
+}
+
+/* Read the current transcode_path for a sha (NULL if absent). Caller frees. */
+static char *lookup_transcode_path(struct sqlite3 *raw, const char *sha)
+{
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(raw,
+            "SELECT transcode_path FROM residency_state WHERE sha256=?",
+            -1, &stmt, NULL) != SQLITE_OK)
+        return NULL;
+    sqlite3_bind_text(stmt, 1, sha, -1, SQLITE_TRANSIENT);
+    char *out = NULL;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const unsigned char *t = sqlite3_column_text(stmt, 0);
+        if (t) out = strdup((const char *) t);
+    }
+    sqlite3_finalize(stmt);
+    return out;
+}
+
+/* Replace the file extension on `path` with `new_ext` (which must include
+ * the leading dot). If `path` has no dot in its basename, append. Caller
+ * frees. */
+static char *path_with_ext(const char *path, const char *new_ext)
+{
+    if (!path || !new_ext) return NULL;
+    const char *slash = strrchr(path, '/');
+    const char *base = slash ? slash + 1 : path;
+    const char *dot = strrchr(base, '.');
+    size_t prefix_len = dot ? (size_t)(dot - path) : strlen(path);
+    size_t ext_len = strlen(new_ext);
+    char *out = malloc(prefix_len + ext_len + 1);
+    if (!out) return NULL;
+    memcpy(out, path, prefix_len);
+    memcpy(out + prefix_len, new_ext, ext_len);
+    out[prefix_len + ext_len] = '\0';
+    return out;
+}
+
+/* Transcode-mode promote (archive → resident). archive/X.flac stays. We
+ * compute resident_transcode_path = swap_segment + extension swap, run
+ * ffmpeg into it, stat for size, write residency_state with location +
+ * transcode metadata. tracks.path UNCHANGED.
+ *
+ * Returns 0 on success, -1 on error (counter bumped). 1 means already
+ * resident with a transcode file present (idempotent re-run). */
+static int promote_transcode(struct nocturne_db *db, const char *library_root,
+                             const char *sha,
+                             const struct transcode_cfg *tc,
+                             const char *iso, struct rotate_stats *out)
+{
+    struct sqlite3 *raw = db_handle(db);
+    char *archive_path = lookup_track_path(raw, sha);
+    if (!archive_path) {
+        fprintf(stderr, "rotate: no tracks row for %.*s; skipping\n",
+                (int) strlen(sha), sha);
+        out->errors++;
+        return -1;
+    }
+
+    /* tracks.path must point under archive/. If it's under resident/ this
+     * library hasn't been migrated yet — refuse rather than silently doing
+     * the wrong thing. */
+    char *resident_dir_path = swap_segment(library_root, archive_path, "archive", "resident");
+    if (!resident_dir_path) {
+        fprintf(stderr,
+            "rotate: %.*s tracks.path %.*s is not under archive/; "
+            "run `nocturned transcode-migrate --apply` first\n",
+            (int) strlen(sha), sha,
+            (int) strlen(archive_path), archive_path);
+        out->errors++;
+        free(archive_path);
+        return -1;
+    }
+
+    const char *new_ext = transcode_dst_ext(tc);
+    if (!new_ext) {
+        fprintf(stderr,
+            "rotate: unsupported transcode format %s\n",
+            tc->format ? tc->format : "(null)");
+        out->errors++;
+        free(archive_path);
+        free(resident_dir_path);
+        return -1;
+    }
+
+    char *transcode_path = path_with_ext(resident_dir_path, new_ext);
+    free(resident_dir_path);
+    if (!transcode_path) {
+        out->errors++;
+        free(archive_path);
+        return -1;
+    }
+
+    /* Idempotence: existing transcode at the same path → skip the ffmpeg
+     * run, just refresh the residency row. */
+    struct stat st;
+    int already = (stat(transcode_path, &st) == 0 && S_ISREG(st.st_mode));
+
+    if (!already) {
+        if (mkparents(transcode_path) != 0) {
+            fprintf(stderr, "rotate: mkdir -p for %.*s failed: %s\n",
+                    (int) strlen(transcode_path), transcode_path,
+                    strerror(errno));
+            out->errors++;
+            free(archive_path); free(transcode_path);
+            return -1;
+        }
+        int trc = transcode_audio(archive_path, transcode_path, tc);
+        if (trc != 0) {
+            fprintf(stderr, "rotate: transcode failed for %.*s (rc=%d)\n",
+                    (int) strlen(sha), sha, trc);
+            out->errors++;
+            /* Best-effort cleanup of partial output. */
+            unlink(transcode_path);
+            free(archive_path); free(transcode_path);
+            return -1;
+        }
+        if (stat(transcode_path, &st) != 0) {
+            fprintf(stderr, "rotate: stat(%s) post-transcode failed: %s\n",
+                    transcode_path, strerror(errno));
+            out->errors++;
+            free(archive_path); free(transcode_path);
+            return -1;
+        }
+    }
+
+    if (upsert_residency_transcode(raw, sha, iso, transcode_path,
+                                   (long long) st.st_size, tc->format) != 0) {
+        fprintf(stderr, "rotate: residency_state upsert for %.*s failed\n",
+                (int) strlen(sha), sha);
+        out->errors++;
+        free(archive_path); free(transcode_path);
+        return -1;
+    }
+
+    free(archive_path);
+    free(transcode_path);
+    if (already) out->already_applied++;
+    return already ? 1 : 0;
+}
+
+/* Transcode-mode demote (resident → archive). Unlink the resident
+ * transcode (if present), clear residency_state.transcode_*, set
+ * location='archive'. archive/X.flac unchanged. */
+static int demote_transcode(struct nocturne_db *db, const char *sha,
+                            const char *iso, struct rotate_stats *out)
+{
+    struct sqlite3 *raw = db_handle(db);
+    char *transcode_path = lookup_transcode_path(raw, sha);
+    if (transcode_path) {
+        if (unlink(transcode_path) != 0 && errno != ENOENT) {
+            fprintf(stderr, "rotate: unlink(%s) failed: %s\n",
+                    transcode_path, strerror(errno));
+            /* Non-fatal — DB still gets updated; user can clean up. */
+        }
+        free(transcode_path);
+    }
+    if (upsert_residency_archive_clear_transcode(raw, sha, iso) != 0) {
+        fprintf(stderr, "rotate: residency clear for %.*s failed\n",
+                (int) strlen(sha), sha);
+        out->errors++;
+        return -1;
+    }
+    return 0;
+}
+
 /* Apply one direction of motion. `from`/`to` are the path segment
  * names; `target_location` is what residency_state should record after
  * this move.
@@ -377,8 +598,15 @@ static int move_one(struct nocturne_db *db, const char *library_root,
 int rotate_run(struct nocturne_db *db, const char *library_root,
                struct rotate_stats *out)
 {
+    return rotate_run_ex(db, library_root, NULL, out);
+}
+
+int rotate_run_ex(struct nocturne_db *db, const char *library_root,
+                  const struct transcode_cfg *tc, struct rotate_stats *out)
+{
     if (!db || !library_root || !out) return -1;
     memset(out, 0, sizeof(*out));
+    int transcode_on = (tc && tc->enabled);
 
     char iso_now[40];
     iso_now_buf(iso_now);
@@ -410,12 +638,17 @@ int rotate_run(struct nocturne_db *db, const char *library_root,
         const char *sha = manifest.items[i];
         if (set_contains(&resident, sha)) continue;
         long long before = out->errors;
-        int rc = move_one(db, library_root, sha,
+        int rc;
+        if (transcode_on) {
+            rc = promote_transcode(db, library_root, sha, tc, iso_now, out);
+        } else {
+            rc = move_one(db, library_root, sha,
                           "archive", "resident", "resident",
                           iso_now, out);
+        }
         if (rc == 0 && out->errors == before) out->added++;
-        /* rc == 1 means already_applied (counter was incremented in
-         * move_one); do NOT also count as added. */
+        /* rc == 1 means already_applied (counter was incremented inside the
+         * promote helper); do NOT also count as added. */
     }
 
     /* REMOVES second. */
@@ -423,9 +656,14 @@ int rotate_run(struct nocturne_db *db, const char *library_root,
         const char *sha = resident.items[i];
         if (set_contains(&manifest, sha)) continue;
         long long before = out->errors;
-        int rc = move_one(db, library_root, sha,
+        int rc;
+        if (transcode_on) {
+            rc = demote_transcode(db, sha, iso_now, out);
+        } else {
+            rc = move_one(db, library_root, sha,
                           "resident", "archive", "archive",
                           iso_now, out);
+        }
         if (rc == 0 && out->errors == before) out->removed++;
     }
 

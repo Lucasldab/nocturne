@@ -43,6 +43,10 @@ void cli_print_usage(FILE *f)
         "  transcode <src> <dst> [--format opus|aac] [--bitrate N]\n"
         "                    Re-encode <src> → <dst> via ffmpeg (preserves embedded\n"
         "                    art + tags). Standalone for hand-testing quality.\n"
+        "  transcode-migrate [--apply] [--format f] [--bitrate N]\n"
+        "                    One-time migration: convert all current FLAC residents\n"
+        "                    into transcoded copies, restore archive hardlinks.\n"
+        "                    Default is dry-run; pass --apply to execute.\n"
         "\n"
         "Options:\n"
         "  -h, --help              Print this help and exit\n"
@@ -91,6 +95,7 @@ static enum nocturned_subcommand subcommand_from_string(const char *s)
     if (!strcmp(s, "sync-config")) return CMD_SYNC_CONFIG;
     if (!strcmp(s, "cycle"))   return CMD_CYCLE;
     if (!strcmp(s, "transcode")) return CMD_TRANSCODE;
+    if (!strcmp(s, "transcode-migrate")) return CMD_TRANSCODE_MIGRATE;
     if (!strcmp(s, "help"))    return CMD_HELP;
     if (!strcmp(s, "version")) return CMD_VERSION;
     return CMD_NONE;

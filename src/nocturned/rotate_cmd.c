@@ -16,6 +16,7 @@
 #include "paths.h"
 #include "rotate.h"
 #include "syncthing_api.h"
+#include "transcode.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -82,7 +83,13 @@ int rotate_cmd_main(struct cli_args *args)
     }
 
     struct rotate_stats stats = {0};
-    int rc = rotate_run(db, cfg.library_root, &stats);
+    struct transcode_cfg tc = {
+        .enabled = cfg.transcode_enabled != 0,
+        .format = cfg.transcode_format ? cfg.transcode_format : "opus",
+        .bitrate_kbps = cfg.transcode_bitrate_kbps > 0
+                        ? cfg.transcode_bitrate_kbps : 128,
+    };
+    int rc = rotate_run_ex(db, cfg.library_root, &tc, &stats);
 
     fprintf(stdout,
         "rotate: to_add=%lld added=%lld to_remove=%lld removed=%lld "

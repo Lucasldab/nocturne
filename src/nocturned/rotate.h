@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 struct nocturne_db;
+struct transcode_cfg;
 
 struct rotate_stats {
     long long to_add;          /* tracks moving archive→resident (planned) */
@@ -32,6 +33,15 @@ struct rotate_stats {
  * in stats.errors and do not abort the run. */
 int rotate_run(struct nocturne_db *db, const char *library_root,
                struct rotate_stats *out);
+
+/* Same as rotate_run but with optional transcode. When `tc` is non-NULL and
+ * tc->enabled, promote becomes: keep archive/X.flac (no link, no unlink),
+ * transcode to resident/X.<ext>, store transcode metadata in
+ * residency_state.transcode_*. Demote: unlink the resident transcode,
+ * archive untouched. tracks.path is NEVER mutated in transcode mode — it
+ * remains the canonical archive reference for stable id semantics. */
+int rotate_run_ex(struct nocturne_db *db, const char *library_root,
+                  const struct transcode_cfg *tc, struct rotate_stats *out);
 
 /* Test seam: same convention as migrate_set_link_fn_for_testing. The
  * override receives (oldpath, newpath); return 0 success or set errno + -1.

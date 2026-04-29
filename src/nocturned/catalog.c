@@ -126,11 +126,18 @@ int catalog_emit(struct nocturne_db *db, FILE *f)
 
     json_t *tracks = json_array();
     sqlite3_stmt *st = NULL;
+    /* LEFT JOIN residency_state so we can override path/size/format with
+     * the transcoded copy when transcode is enabled. transcode_path is NULL
+     * when residency is 'archive' OR transcode is disabled (rotate's
+     * non-transcode path leaves these columns NULL). */
     const char *sql =
-        "SELECT sha256, path, mtime_ns, size_bytes, format, "
-        "       title, artist, album, album_artist, track_number, "
-        "       disc_number, year, genre, duration_ms, date_added "
-        "FROM tracks ORDER BY sha256 ASC";
+        "SELECT t.sha256, t.path, t.mtime_ns, t.size_bytes, t.format, "
+        "       t.title, t.artist, t.album, t.album_artist, t.track_number, "
+        "       t.disc_number, t.year, t.genre, t.duration_ms, t.date_added, "
+        "       r.transcode_path, r.transcode_size_bytes, r.transcode_format "
+        "FROM tracks t "
+        "LEFT JOIN residency_state r ON r.sha256 = t.sha256 "
+        "ORDER BY t.sha256 ASC";
     if (sqlite3_prepare_v2(raw, sql, -1, &st, NULL) != SQLITE_OK) {
         json_decref(root);
         free(library_root);
@@ -153,8 +160,20 @@ int catalog_emit(struct nocturne_db *db, FILE *f)
         const char *genre  = (const char *) sqlite3_column_text(st, 12);
         long long dur      = sqlite3_column_int64(st, 13);
         const char *dadd   = (const char *) sqlite3_column_text(st, 14);
+        const char *trans_path = (const char *) sqlite3_column_text(st, 15);
+        long long trans_size   = sqlite3_column_int64(st, 16);
+        const char *trans_fmt  = (const char *) sqlite3_column_text(st, 17);
 
-        char *rel = make_relative(path, library_root);
+        /* When the resident track has a transcoded copy on disk, the
+         * catalog reports THAT path/size/format so the phone reads the
+         * right file. Track id stays = archive sha (stable across
+         * re-encode cycles). Non-resident tracks → trans_path NULL → fall
+         * through to the archive metadata. */
+        const char *emit_path = trans_path ? trans_path : path;
+        long long emit_size = trans_path ? trans_size : size;
+        const char *emit_fmt = trans_path ? trans_fmt : fmt;
+
+        char *rel = make_relative(emit_path, library_root);
 
         json_t *t = json_object();
         json_object_set_new(t, "id", json_string(sha ? sha : ""));
@@ -172,8 +191,8 @@ int catalog_emit(struct nocturne_db *db, FILE *f)
         } else {
             json_object_set_new(t, "duration_ms", json_integer(dur));
         }
-        json_object_set_new(t, "size_bytes", json_integer(size));
-        json_object_set_new(t, "format", fmt ? json_string(fmt) : json_null());
+        json_object_set_new(t, "size_bytes", json_integer(emit_size));
+        json_object_set_new(t, "format", emit_fmt ? json_string(emit_fmt) : json_null());
         json_object_set_new(t, "mtime_ns", json_integer(mtime));
         json_object_set_new(t, "date_added", json_string(dadd ? dadd : ""));
 

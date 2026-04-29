@@ -1,0 +1,16 @@
+[Unit]
+Description=Run nocturne cycle every 15 minutes
+# Paired with nocturne-watch.service: watch keeps the DB fresh on FS events
+# (sub-second latency); this timer drives the resolve→rotate→publish pipeline
+# so new tracks reach the phone's catalog.json without waiting for the next
+# day. 15 min trades a tiny lock-handover blip against acceptable
+# "added song → visible on phone" latency.
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Persistent=true
+RandomizedDelaySec=2min
+
+[Install]
+WantedBy=timers.target

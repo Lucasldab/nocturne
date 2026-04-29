@@ -225,58 +225,56 @@ ls ~/music/library/resident/   # should NOT be empty
 find ~/music/library/resident -type f -name '*.flac' | wc -l
 ```
 
-## 7. Run as a service (optional)
+## 7. Run as a service
 
-`~/.config/systemd/user/nocturned-watch.service`:
+Reference unit files live under `config/systemd/user/`. Five units cover
+the full automation chain:
 
-```ini
-[Unit]
-Description=nocturne library watcher
-After=default.target
+| Unit | Role |
+|------|------|
+| `nocturne-watch.service` | inotify watcher; sub-second DB updates on FS events |
+| `nocturne-cycle.service` | one-shot scan→ingest→resolve→rotate→publish |
+| `nocturne-cycle.timer` | fires cycle every 15 min |
+| `nocturne-pin-cycle.service` | runs cycle when phone JSONL writes land |
+| `nocturne-pin-cycle.path` | path watcher that triggers pin-cycle |
 
-[Service]
-Type=simple
-ExecStart=%h/bin/nocturned watch %h/music/library
-Restart=on-failure
-
-[Install]
-WantedBy=default.target
-```
-
-`~/.config/systemd/user/nocturned-rotate.timer`:
-
-```ini
-[Unit]
-Description=nightly nocturne rotate
-
-[Timer]
-OnCalendar=daily
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-```
-
-`~/.config/systemd/user/nocturned-rotate.service`:
-
-```ini
-[Unit]
-Description=nightly nocturne resolve+rotate
-
-[Service]
-Type=oneshot
-ExecStart=/bin/sh -c '%h/bin/nocturned resolve && %h/bin/nocturned rotate'
-```
+Install:
 
 ```sh
+mkdir -p ~/.config/systemd/user
+cp config/systemd/user/*.{service,timer,path} ~/.config/systemd/user/
 systemctl --user daemon-reload
-systemctl --user enable --now nocturned-watch.service
-systemctl --user enable --now nocturned-rotate.timer
+systemctl --user enable --now \
+    nocturne-watch.service \
+    nocturne-cycle.timer \
+    nocturne-pin-cycle.path
 ```
 
-The watch service holds the single-writer lock continuously; the
-rotate service queues against it (per Phase 2's lock policy: doctor is
-lock-free, all writers serialize through `nocturned.pid`).
+Verify:
+
+```sh
+systemctl --user status nocturne-watch.service
+# active (running) — "library=/home/$USER/music dirs=N watches=N"
+systemctl --user list-timers | grep nocturne
+# nocturne-cycle.timer firing every 15 min
+```
+
+### Lock coordination
+
+`nocturned` enforces single-writer access via a flock on its pidfile.
+Watch holds it indefinitely; cycle / pin-cycle take it for the duration
+of their run. The reference units coordinate via `ExecStartPre` (stop
+watch) + `ExecStartPost` (restart watch). Handover takes ≈2 seconds of
+lost inotify coverage per cycle tick, which is fine — `nocturned scan`
+on next watch start picks up anything that changed during the gap.
+
+### Latency budget
+
+- Drop a song in `~/music/` → DB updated ≤2 s (watch).
+- Catalog/manifest published ≤15 min (next cycle tick — tighten via
+  `OnUnitActiveSec=` in the timer if you want faster).
+- Phone Syncthing pulls + Nocturne app reconciles ≤45 s after publish.
+- **End-to-end worst case: ≈16 min.**
 
 ## 8. Next: phone
 

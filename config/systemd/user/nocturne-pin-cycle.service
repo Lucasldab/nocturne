@@ -1,0 +1,15 @@
+[Unit]
+Description=nocturne pin-driven cycle (ingest+resolve+rotate+publish)
+After=default.target
+
+[Service]
+Type=oneshot
+# Same lock-handover dance as nocturne-cycle.service: stop watch first,
+# restart it after the wrapper finishes. `-` makes both calls non-fatal.
+ExecStartPre=-/usr/bin/systemctl --user stop nocturne-watch.service
+# Wrapper handles the 5s debounce + the "did anything phone-side actually
+# change?" gate, so the cycle only runs when there's real new input.
+ExecStart=%h/.local/bin/nocturne-pin-cycle-runner
+ExecStartPost=-/usr/bin/systemctl --user start --no-block nocturne-watch.service
+StandardOutput=journal
+StandardError=journal

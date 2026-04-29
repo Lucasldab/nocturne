@@ -72,3 +72,17 @@ count = 200
 source = "manual_pins"
 weight = 1.0
 window_days = 0
+
+# [transcode] — when enabled, rotate's promote step transcodes archive FLAC
+# into a lossy resident copy (Opus or AAC) instead of hardlinking. The
+# archive FLAC is preserved as the canonical source — track id (sha256 of
+# FLAC payload) stays stable across re-encode cycles. See docs/transcode.md
+# for the integration plan and the one-time migration command.
+#
+# Default: disabled (resident is a hardlink of archive, identical bytes).
+[transcode]
+# enabled = false
+# Codec: "opus" (smallest, no embedded art) or "aac" (larger, art preserved).
+# format = "opus"
+# Target bitrate. Sane Opus range: 96-192. AAC: 128-256.
+# bitrate_kbps = 128

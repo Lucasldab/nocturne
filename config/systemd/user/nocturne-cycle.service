@@ -1,0 +1,17 @@
+[Unit]
+Description=nocturne — scan/ingest/resolve/rotate/publish cycle
+Documentation=man:nocturned(1)
+After=network.target syncthing.service
+Wants=syncthing.service
+
+[Service]
+Type=oneshot
+# Stop the inotify watcher first — it holds the single-writer PID lock for
+# its lifetime, which would otherwise block the cycle pipeline. The leading
+# `-` makes "watch isn't running" a non-fatal pre-condition.
+ExecStartPre=-/usr/bin/systemctl --user stop nocturne-watch.service
+ExecStart=/usr/local/bin/nocturned cycle %h/music
+ExecStartPost=-/usr/bin/systemctl --user start --no-block nocturne-watch.service
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

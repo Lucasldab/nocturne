@@ -1,0 +1,22 @@
+[Unit]
+Description=nocturne — inotify watcher; rescan ~/music subtrees on FS change
+Documentation=man:nocturned(1)
+After=default.target
+
+[Service]
+Type=simple
+# Holds the single-writer PID lock for its lifetime. nocturne-cycle.service
+# and nocturne-pin-cycle.service stop watch via ExecStartPre and restart it
+# via ExecStartPost so the lock briefly hands over for the cycle pipeline.
+ExecStart=/usr/local/bin/nocturned watch %h/music
+# Idle: ~10-20MB RSS, 0% CPU. Spike on FS events: subtree scan only (DAEMON-03).
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

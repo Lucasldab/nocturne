@@ -1,0 +1,18 @@
+[Unit]
+Description=Watch meta dir for phone-side JSONL writes; trigger cycle
+After=default.target
+
+[Path]
+# Watch the WHOLE meta dir, not per-device-id files. Survives Syncthing's
+# atomic-write inode churn (PathModified on a specific file would miss
+# events when Syncthing renames a .tmp file over the target). The wrapper
+# script (nocturne-pin-cycle-runner) gates the cycle on "did any phone-*
+# JSONL change since manifest.json was last published" — so the meta-dir
+# watch doesn't loop on its own publish writes.
+PathChanged=%h/sync/nocturne/meta
+PathChanged=%h/sync/nocturne/meta/stats
+
+Unit=nocturne-pin-cycle.service
+
+[Install]
+WantedBy=default.target

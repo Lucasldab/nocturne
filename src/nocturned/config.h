@@ -37,6 +37,19 @@ struct nocturne_config {
     int transcode_enabled;       /* 0/1 */
     char *transcode_format;      /* "opus" | "aac"; NULL when default */
     int transcode_bitrate_kbps;  /* 0 → built-in default (128) */
+
+    /* [discover] — Weekly Discovery picker. exclude_album_substrings is a
+     * semicolon-separated list (e.g. "Live;Unplugged;Acoustic"); any track
+     * whose album column contains one of these substrings is filtered from
+     * the candidate pool. Empty/NULL = no filter. */
+    char *discover_exclude_album_substrings;
+
+    /* [listenbrainz] — read-only API access doesn't need a token; submit-
+     * listens (v2 scrobbling) does. Token from
+     * https://listenbrainz.org/profile/. Username is also stored so the
+     * recommendation endpoints know whose recs to fetch (v3). */
+    char *listenbrainz_username;
+    char *listenbrainz_user_token;
 };
 
 /* Returns 0 on success. NULL or missing path → defaults (no error).

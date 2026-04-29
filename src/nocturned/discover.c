@@ -285,8 +285,37 @@ static int take_from_pool(struct cand_buf *pool,
     return taken;
 }
 
+/* Returns 1 if `album` contains any of the semicolon-separated substrings
+ * in `patterns`. Case-insensitive substring match. Empty patterns = no
+ * filter (returns 0). */
+static int album_excluded(const char *album, const char *patterns)
+{
+    if (!patterns || !*patterns) return 0;
+    if (!album || !*album) return 0;
+    /* Walk the patterns string, handing each substring to strcasestr. */
+    const char *p = patterns;
+    while (*p) {
+        const char *end = strchr(p, ';');
+        size_t len = end ? (size_t)(end - p) : strlen(p);
+        /* trim leading space */
+        while (len > 0 && (*p == ' ' || *p == '\t')) { p++; len--; }
+        /* trim trailing space */
+        while (len > 0 && (p[len - 1] == ' ' || p[len - 1] == '\t')) len--;
+        if (len > 0) {
+            char needle[256];
+            if (len >= sizeof(needle)) len = sizeof(needle) - 1;
+            memcpy(needle, p, len);
+            needle[len] = '\0';
+            if (strcasestr(album, needle)) return 1;
+        }
+        if (!end) break;
+        p = end + 1;
+    }
+    return 0;
+}
+
 static int load_pool(struct sqlite3 *raw, const char *sql, const char *reason,
-                     struct cand_buf *out)
+                     const char *exclude_substrings, struct cand_buf *out)
 {
     sqlite3_stmt *st = NULL;
     if (sqlite3_prepare_v2(raw, sql, -1, &st, NULL) != SQLITE_OK) return -1;
@@ -295,13 +324,16 @@ static int load_pool(struct sqlite3 *raw, const char *sql, const char *reason,
         const unsigned char *album = sqlite3_column_text(st, 1);
         long long sz = sqlite3_column_int64(st, 2);
         if (!sha) continue;
+        if (album_excluded((const char *) album, exclude_substrings)) continue;
         cb_push(out, (const char *) sha, (const char *) album, sz, reason);
     }
     sqlite3_finalize(st);
     return 0;
 }
 
-int discover_run(struct nocturne_db *db, int count, struct discover_stats *out)
+int discover_run(struct nocturne_db *db, int count,
+                 const char *exclude_album_substrings,
+                 struct discover_stats *out)
 {
     if (!db || count <= 0 || !out) return -1;
     memset(out, 0, sizeof(*out));
@@ -320,10 +352,10 @@ int discover_run(struct nocturne_db *db, int count, struct discover_stats *out)
     /* random fills the rest */
 
     struct cand_buf never = {0}, aged = {0}, adj = {0}, fill = {0};
-    if (load_pool(raw, SQL_NEVER_PLAYED, "never_played", &never) != 0) goto fail;
-    if (load_pool(raw, SQL_AGED_OUT, "aged_out", &aged) != 0) goto fail;
-    if (load_pool(raw, SQL_ADJACENT_TO_LOVED, "adjacent_to_loved", &adj) != 0) goto fail;
-    if (load_pool(raw, SQL_RANDOM_FILL, "random", &fill) != 0) goto fail;
+    if (load_pool(raw, SQL_NEVER_PLAYED, "never_played", exclude_album_substrings, &never) != 0) goto fail;
+    if (load_pool(raw, SQL_AGED_OUT, "aged_out", exclude_album_substrings, &aged) != 0) goto fail;
+    if (load_pool(raw, SQL_ADJACENT_TO_LOVED, "adjacent_to_loved", exclude_album_substrings, &adj) != 0) goto fail;
+    if (load_pool(raw, SQL_RANDOM_FILL, "random", exclude_album_substrings, &fill) != 0) goto fail;
 
     out->candidates_seen = (long long)(never.n + aged.n + adj.n + fill.n);
 

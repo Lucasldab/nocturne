@@ -88,6 +88,9 @@ void config_free(struct nocturne_config *c)
     free(c->syncthing_desktop_device_id);
     free(c->syncthing_phone_device_id);
     free(c->transcode_format);
+    free(c->discover_exclude_album_substrings);
+    free(c->listenbrainz_username);
+    free(c->listenbrainz_user_token);
     for (size_t i = 0; i < c->buckets_n; i++) {
         free(c->buckets[i].name);
         free(c->buckets[i].source);
@@ -317,6 +320,26 @@ static int apply_kv(struct nocturne_config *c,
             if (as_ll > 510) as_ll = 510;
             c->transcode_bitrate_kbps = (int) as_ll;
             free(as_str); return 0;
+        }
+    } else if (!strcmp(section, "discover")) {
+        if (!strcmp(key, "exclude_album_substrings")) {
+            free(c->discover_exclude_album_substrings);
+            c->discover_exclude_album_substrings = as_str ? as_str : NULL;
+            if (!as_str) goto fail;
+            return 0;
+        }
+    } else if (!strcmp(section, "listenbrainz")) {
+        if (!strcmp(key, "username")) {
+            free(c->listenbrainz_username);
+            c->listenbrainz_username = as_str ? as_str : NULL;
+            if (!as_str) goto fail;
+            return 0;
+        }
+        if (!strcmp(key, "user_token")) {
+            free(c->listenbrainz_user_token);
+            c->listenbrainz_user_token = as_str ? as_str : NULL;
+            if (!as_str) goto fail;
+            return 0;
         }
     } else if (!strncmp(section, "buckets.", 8)) {
         const char *bn = section + 8;

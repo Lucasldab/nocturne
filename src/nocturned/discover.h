@@ -25,8 +25,16 @@ struct discover_stats {
  *                          track itself has zero plays
  *   4. random      — pure random non-resident fill
  *
- * Per-album cap = 2 (no deluxe-edition spam). Caller's responsibility to
- * acquire the single-writer lock before calling. Returns 0 success, -1 fatal. */
-int discover_run(struct nocturne_db *db, int count, struct discover_stats *out);
+ * Per-album cap = 2 (no deluxe-edition spam).
+ *
+ * `exclude_album_substrings` (optional, may be NULL) is a semicolon-
+ * separated list ("Live;Unplugged;Acoustic"). Tracks whose album column
+ * contains any of these substrings are filtered from the candidate pool.
+ *
+ * Caller's responsibility to acquire the single-writer lock before
+ * calling. Returns 0 success, -1 fatal. */
+int discover_run(struct nocturne_db *db, int count,
+                 const char *exclude_album_substrings,
+                 struct discover_stats *out);
 
 #endif /* NOCTURNE_NOCTURNED_DISCOVER_H */

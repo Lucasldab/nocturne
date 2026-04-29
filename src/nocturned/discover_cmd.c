@@ -15,6 +15,7 @@
 #define _GNU_SOURCE
 
 #include "cli.h"
+#include "config.h"
 #include "db.h"
 #include "discover.h"
 #include "lock.h"
@@ -52,10 +53,18 @@ int discover_cmd_main(struct cli_args *args)
     struct nocturne_db *db = db_open(db_path, err_to_stderr, NULL);
     if (!db) { lock_release(lock); return 3; }
 
+    struct nocturne_config cfg;
+    const char *cfg_path = args->config_path ? args->config_path : paths_config_file();
+    if (config_load(cfg_path, &cfg) != 0) {
+        config_free(&cfg);
+        db_close(db); lock_release(lock);
+        return 3;
+    }
+
     int count = 20;  /* TODO: read from [discover].count if/when added */
 
     struct discover_stats stats = {0};
-    int rc = discover_run(db, count, &stats);
+    int rc = discover_run(db, count, cfg.discover_exclude_album_substrings, &stats);
 
     fprintf(stdout,
         "discover: week=%s picked=%lld "
@@ -66,6 +75,7 @@ int discover_cmd_main(struct cli_args *args)
         stats.picked_adjacent_to_loved, stats.picked_random,
         stats.candidates_seen);
 
+    config_free(&cfg);
     db_close(db);
     lock_release(lock);
 

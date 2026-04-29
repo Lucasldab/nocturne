@@ -328,6 +328,13 @@ static int apply_kv(struct nocturne_config *c,
             if (!as_str) goto fail;
             return 0;
         }
+        if (!strcmp(key, "count")) {
+            if (!have_ll) goto fail;
+            if (as_ll < 1) as_ll = 1;
+            if (as_ll > 1000) as_ll = 1000;
+            c->discover_count = (int) as_ll;
+            free(as_str); return 0;
+        }
     } else if (!strcmp(section, "listenbrainz")) {
         if (!strcmp(key, "username")) {
             free(c->listenbrainz_username);

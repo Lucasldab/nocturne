@@ -85,6 +85,8 @@ window_days = 0
 
 # [discover] — knobs for the picker that fills the weekly_discovery bucket.
 [discover]
+# Picks per Monday. Default 20. Bump to 40 for more variety, 10 for tighter.
+# count = 20
 # Semicolon-separated case-insensitive substring filter against the album
 # tag. Any track whose album column contains one of these substrings is
 # filtered from Discovery's candidate pool before picking. Tweak to your

@@ -43,6 +43,8 @@ struct nocturne_config {
      * whose album column contains one of these substrings is filtered from
      * the candidate pool. Empty/NULL = no filter. */
     char *discover_exclude_album_substrings;
+    /* discover.count — picks per Monday. 0 → built-in default (20). */
+    int discover_count;
 
     /* [listenbrainz] — read-only API access doesn't need a token; submit-
      * listens (v2 scrobbling) does. Token from

@@ -156,7 +156,10 @@ static int set_add(struct sha_set *s, const char *sha)
         s->items = items;
         s->cap = newcap;
     }
-    strncpy(s->items[s->n], sha, 64);
+    /* sha is a 64-char hex string from sqlite. memcpy is safe here because
+     * we always read exactly 64 bytes + write a NUL — strncpy's truncation
+     * heuristic warns even when the caller has hand-counted lengths. */
+    memcpy(s->items[s->n], sha, 64);
     s->items[s->n][64] = '\0';
     s->n++;
     return 0;
@@ -206,8 +209,13 @@ static int ac_inc(struct album_counter *a, const char *album)
         a->items = items;
         a->cap = newcap;
     }
-    strncpy(a->items[a->n].album, album, sizeof(a->items[a->n].album) - 1);
-    a->items[a->n].album[sizeof(a->items[a->n].album) - 1] = '\0';
+    /* Bound the copy to at most album-buffer-1 bytes; truncation is fine
+     * here (only used as a same-album equality key, not for display). */
+    size_t cap = sizeof(a->items[a->n].album) - 1;
+    size_t alen = strlen(album);
+    size_t copy = alen < cap ? alen : cap;
+    memcpy(a->items[a->n].album, album, copy);
+    a->items[a->n].album[copy] = '\0';
     a->items[a->n].count = 1;
     a->n++;
     return 1;

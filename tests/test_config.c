@@ -63,7 +63,7 @@ int main(int argc, char **argv)
         const struct bucket_config *pins = find_bucket(&c, "manual_pins");
         expect(pins != NULL && pins->count == 200,
                "default manual_pins bucket count = 200");
-        expect(c.buckets_n == 6, "six default buckets present");
+        expect(c.buckets_n == 7, "seven default buckets present");
         config_free(&c);
     }
 
@@ -72,7 +72,7 @@ int main(int argc, char **argv)
         struct nocturne_config c;
         int rc = config_load("/tmp/nocturne-this-does-not-exist", &c);
         expect(rc == 0, "missing config file returns 0 (defaults)");
-        expect(c.buckets_n == 6, "missing-path: 6 default buckets");
+        expect(c.buckets_n == 7, "missing-path: 7 default buckets");
         config_free(&c);
     }
 

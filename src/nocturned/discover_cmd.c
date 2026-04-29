@@ -61,7 +61,7 @@ int discover_cmd_main(struct cli_args *args)
         return 3;
     }
 
-    int count = 20;  /* TODO: read from [discover].count if/when added */
+    int count = cfg.discover_count > 0 ? cfg.discover_count : 20;
 
     struct discover_stats stats = {0};
     int rc = discover_run(db, count, cfg.discover_exclude_album_substrings, &stats);

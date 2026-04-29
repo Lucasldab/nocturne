@@ -2,6 +2,7 @@ package io.nocturne.phone.player
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.core.graphics.scale
 import java.io.ByteArrayOutputStream
 
 /**
@@ -29,7 +30,7 @@ object ArtworkLoader {
         if (rawBytes == null || rawBytes.isEmpty()) return null
         val source = BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size) ?: return null
         return try {
-            val scaled = Bitmap.createScaledBitmap(source, TARGET_PX, TARGET_PX, /* filter = */ true)
+            val scaled = source.scale(TARGET_PX, TARGET_PX)
             val out = ByteArrayOutputStream()
             scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
             // Free the intermediate bitmap if it was a new allocation.

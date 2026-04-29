@@ -39,7 +39,7 @@ fun ArtistRow(artist: ArtistEntity, onTap: () -> Unit) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        // design pass 2026-04-27: artist row trailing pill shows resident
+        // : artist row trailing pill shows resident
         // / total track ratio. Empty here at the row level (we don't know
         // residency without an extra DAO query); the overall trackCount is
         // still useful as a tertiary at-a-glance metric.

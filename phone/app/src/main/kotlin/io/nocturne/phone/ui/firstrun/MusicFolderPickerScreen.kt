@@ -28,7 +28,7 @@ import kotlinx.coroutines.launch
  *
  * Mirrors the visual style of [FirstRunScreen] (which picks the metadata
  * folder). Two pickers stacked across two screens keeps each step single-
- * purpose and matches the design pass 2026-04-28 setup contract.
+ * purpose and matches the setup contract.
  *
  * Persists the granted SAF tree URI via `takePersistableUriPermission`
  * BEFORE storing it (Pitfall 29).

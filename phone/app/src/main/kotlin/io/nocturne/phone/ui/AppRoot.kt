@@ -113,9 +113,9 @@ fun AppRoot(app: NocturneApp) {
         }
     }
 
-    // Quick task 260428-8i6: AppRoot-hosted POST_NOTIFICATIONS gate. Tap-to-play
-    // call sites submit a deferred action via requestPlay; FirstPlayNotifGate
-    // decides whether to show the rationale (first time only) or run immediately.
+    // AppRoot-hosted POST_NOTIFICATIONS gate. Tap-to-play call sites submit a
+    // deferred action via requestPlay; FirstPlayNotifGate decides whether to
+    // show the rationale (first time only) or run immediately.
     var pendingPlayAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     val requestPlay: ((() -> Unit) -> Unit) = { action ->
         pendingPlayAction = action
@@ -139,7 +139,7 @@ fun AppRoot(app: NocturneApp) {
             }
             // Metadata + import done, but the music folder hasn't been picked
             // yet — render the same first-run picker style for the music dir
-            // (design pass 2026-04-28 setup contract: pick metadata then
+            // (setup contract: pick metadata then
             // music in sequence, no Settings detour).
             musicTreeUri == null -> {
                 io.nocturne.phone.ui.firstrun.MusicFolderPickerScreen(
@@ -154,7 +154,7 @@ fun AppRoot(app: NocturneApp) {
                 BrowserRoot(container = container, requestPlay = requestPlay)
             }
         }
-        // Quick task 260428-8i6: mount the gate unconditionally so tap-to-play
+        // mount the gate unconditionally so tap-to-play
         // requests from BrowserRoot can overlay an AlertDialog. pendingPlayAction
         // is null in the splash / first-run / picker paths so the gate is a no-op
         // until BrowserRoot fires requestPlay.

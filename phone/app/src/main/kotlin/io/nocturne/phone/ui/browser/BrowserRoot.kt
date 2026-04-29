@@ -68,7 +68,7 @@ fun BrowserRoot(
     container: AppContainer,
     requestPlay: (() -> Unit) -> Unit,
 ) {
-    // Quick task 260428-8i6: requestPlay is the AppRoot-hosted gate's submission
+    // requestPlay is the AppRoot-hosted gate's submission
     // lambda. Tap-to-play sites below wrap their playback action inside
     // requestPlay { ... } so the FirstPlayNotifGate decides whether to show the
     // rationale (first time) or run immediately.
@@ -80,7 +80,7 @@ fun BrowserRoot(
     }
     val nav = rememberNavController()
     var showSearch by remember { mutableStateOf(false) }
-    // Quick task 260428-ja8: the System affordance is now an in-place utility
+    // the System affordance is now an in-place utility
     // mode toggle (◇ → ◆) instead of a routed hub. `inUtility` flips the shell
     // to render UtilityBar + inline rotation/sync/storage/stats content; the
     // bottom nav + mini-player hide while in utility. plain `remember` (not
@@ -134,7 +134,7 @@ fun BrowserRoot(
                         TopAppBar(
                             title = { BrandWordmark() },
                             actions = {
-                                // Quick task 260428-ja8: ◇ toggles the shell
+                                // ◇ toggles the shell
                                 // into utility mode in place (no nav, no
                                 // back-stack). Active mode swaps the glyph to
                                 // ◆ + primary tint so the affordance reads
@@ -168,14 +168,14 @@ fun BrowserRoot(
                             ),
                         )
                         // 1px hairline under the brand row, color #c5c0b9 per
-                        // design pass 2026-04-28 hand-tuning.
+                        // hand-tuning.
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(1.dp)
                                 .background(androidx.compose.ui.graphics.Color(0xFFC5C0B9)),
                         )
-                        // Quick task 260428-ja8: when in utility mode, render
+                        // when in utility mode, render
                         // the 4-tab UtilityBar directly below the brand row so
                         // Scaffold lays content out below it without manual
                         // offset math.
@@ -193,7 +193,7 @@ fun BrowserRoot(
                     // NowPlaying owns its own bottom transport block — no mini,
                     // no nav. Utility mode hides both so the inline rotation/
                     // sync/storage/stats content occupies the full slot below
-                    // the UtilityBar (260428-ja8).
+                    // the UtilityBar.
                     return@Scaffold
                 }
                 // Bottom slot is mini-player (when present) stacked on top of the
@@ -241,12 +241,23 @@ fun BrowserRoot(
                 }
             },
         ) { padding ->
+            // One Context per Scaffold body — three composable destinations
+            // below all need it for the queue-action toasts.
+            val toastCtx = androidx.compose.ui.platform.LocalContext.current
+            val playNextWithToast: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = { track ->
+                playerVm.playNextTrack(track)
+                android.widget.Toast.makeText(toastCtx, "Playing next", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            val enqueueWithToast: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = { track ->
+                playerVm.enqueueTrack(track)
+                android.widget.Toast.makeText(toastCtx, "Added to queue", android.widget.Toast.LENGTH_SHORT).show()
+            }
+
             if (inUtility) {
-                // Quick task 260428-ja8: utility mode is hosted in-place
+                // utility mode is hosted in-place
                 // (no nav transition, no back-stack). The 4 sub-screens are
                 // selected by activeUtility and render as inline content
                 // composables below the UtilityBar slot owned by the topBar.
-                val utilityCtx = androidx.compose.ui.platform.LocalContext.current
                 Box(modifier = Modifier.fillMaxSize().padding(padding)) {
                     when (activeUtility) {
                         "rotation" -> RotationScreen(container = container)
@@ -254,22 +265,8 @@ fun BrowserRoot(
                         "storage"  -> StorageScreen(container = container)
                         "stats"    -> StatsScreen(
                             container = container,
-                            onPlayNext = { track ->
-                                playerVm.playNextTrack(track)
-                                android.widget.Toast.makeText(
-                                    utilityCtx,
-                                    "Playing next",
-                                    android.widget.Toast.LENGTH_SHORT,
-                                ).show()
-                            },
-                            onAddToQueue = { track ->
-                                playerVm.enqueueTrack(track)
-                                android.widget.Toast.makeText(
-                                    utilityCtx,
-                                    "Added to queue",
-                                    android.widget.Toast.LENGTH_SHORT,
-                                ).show()
-                            },
+                            onPlayNext = playNextWithToast,
+                            onAddToQueue = enqueueWithToast,
                         )
                     }
                 }
@@ -288,7 +285,6 @@ fun BrowserRoot(
                 }
                 composable(Routes.TRACKS) {
                     val scope = androidx.compose.runtime.rememberCoroutineScope()
-                    val ctx = androidx.compose.ui.platform.LocalContext.current
                     TracksScreen(
                         vm = vm,
                         onTrackTap = { track ->
@@ -300,22 +296,8 @@ fun BrowserRoot(
                                 }
                             }
                         },
-                        onPlayNext = { track ->
-                            playerVm.playNextTrack(track)
-                            android.widget.Toast.makeText(
-                                ctx,
-                                "Playing next",
-                                android.widget.Toast.LENGTH_SHORT,
-                            ).show()
-                        },
-                        onAddToQueue = { track ->
-                            playerVm.enqueueTrack(track)
-                            android.widget.Toast.makeText(
-                                ctx,
-                                "Added to queue",
-                                android.widget.Toast.LENGTH_SHORT,
-                            ).show()
-                        },
+                        onPlayNext = playNextWithToast,
+                        onAddToQueue = enqueueWithToast,
                     )
                 }
                 composable(Routes.GENRES) { GenresScreen(vm) }
@@ -341,7 +323,6 @@ fun BrowserRoot(
                     arguments = listOf(navArgument("artistId") { type = NavType.StringType }),
                 ) { entry ->
                     val id = entry.arguments?.getString("artistId") ?: return@composable
-                    val ctx = androidx.compose.ui.platform.LocalContext.current
                     ArtistDetailScreen(
                         artistId = id,
                         vm = vm,
@@ -353,22 +334,8 @@ fun BrowserRoot(
                                 nav.navigate(Routes.NOW_PLAYING)
                             }
                         },
-                        onPlayNext = { track ->
-                            playerVm.playNextTrack(track)
-                            android.widget.Toast.makeText(
-                                ctx,
-                                "Playing next",
-                                android.widget.Toast.LENGTH_SHORT,
-                            ).show()
-                        },
-                        onAddToQueue = { track ->
-                            playerVm.enqueueTrack(track)
-                            android.widget.Toast.makeText(
-                                ctx,
-                                "Added to queue",
-                                android.widget.Toast.LENGTH_SHORT,
-                            ).show()
-                        },
+                        onPlayNext = playNextWithToast,
+                        onAddToQueue = enqueueWithToast,
                         container = container,
                     )
                 }
@@ -398,7 +365,7 @@ fun BrowserRoot(
                 pinnedIds = pinnedIds,
                 onPinTrack = { vm.togglePinTrack(it) },
                 onTrackTap = { track ->
-                    // Quick task 260428-8i6: dismiss the overlay BEFORE submitting
+                    // dismiss the overlay BEFORE submitting
                     // to requestPlay so the gate's AlertDialog (if any) is not
                     // rendered behind the still-present overlay scrim.
                     showSearch = false
@@ -416,8 +383,7 @@ fun BrowserRoot(
 }
 
 /**
- * Top-bar wordmark — `$ nocturne▌` prompt-style per the design pass 2026-04-27
- * design pass (ratified default `brandMode: 'lower'`). Monospace family with the
+ * Top-bar wordmark — `$ nocturne▌` prompt-style per the * design pass (ratified default `brandMode: 'lower'`). Monospace family with the
  * cursor block in the primary accent color, leaning into the project's terminal
  * aesthetic without adding a font dependency (system mono is sufficient on
  * GrapheneOS + Pixel; F-Droid reproducible-build path stays clean).

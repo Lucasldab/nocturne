@@ -6,10 +6,9 @@ import kotlinx.serialization.json.Json
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.ZoneOffset
 
 /**
- * Quick task 260428-7zc — Stats aggregator (pure JVM).
+ * Stats aggregator (pure JVM).
  *
  * Reads the local-only `stats/phone-<deviceid>.jsonl` produced by Phase 6's
  * StatsWriter and rolls it up into the shape the System / Stats screen
@@ -172,7 +171,4 @@ object StatsAggregator {
     /** Convenience overload for production callers that don't override the zone. */
     fun aggregate(lines: Iterator<String>, nowMs: Long): StatsView =
         aggregate(lines, nowMs, ZoneId.systemDefault())
-
-    @Suppress("unused")
-    private val UTC: ZoneOffset = ZoneOffset.UTC  // kept to document zone-injection intent
 }

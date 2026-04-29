@@ -1,6 +1,7 @@
 package io.nocturne.phone.data.prefs
 
 import android.content.Context
+import androidx.core.net.toUri
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -106,7 +107,7 @@ class SyncPrefs(private val ctx: Context) {
     private suspend fun readDeviceIdFromSaf(): String? {
         val treeStr = metaTreeUri.first() ?: return null
         val tree = androidx.documentfile.provider.DocumentFile.fromTreeUri(
-            ctx, android.net.Uri.parse(treeStr),
+            ctx, treeStr.toUri(),
         ) ?: return null
         val file = tree.findFile(".nocturne-deviceid") ?: return null
         return runCatching {
@@ -120,7 +121,7 @@ class SyncPrefs(private val ctx: Context) {
     private suspend fun writeDeviceIdToSaf(id: String) {
         val treeStr = metaTreeUri.first() ?: return
         val tree = androidx.documentfile.provider.DocumentFile.fromTreeUri(
-            ctx, android.net.Uri.parse(treeStr),
+            ctx, treeStr.toUri(),
         ) ?: return
         val existing = tree.findFile(".nocturne-deviceid")
         val target = existing ?: tree.createFile("application/octet-stream", ".nocturne-deviceid") ?: return
@@ -142,9 +143,9 @@ class SyncPrefs(private val ctx: Context) {
     }
 
     /**
-     * Quick task 260428-7zc (System / Storage screen): user-configurable
-     * resident-set byte budget in whole gigabytes. Default 12 GB matches
-     * PROJECT.md's "default ~12GB" constraint. Range clamped to 4..32 GB on
+     * Storage screen: user-configurable resident-set byte budget in whole
+     * gigabytes. Default 12 GB matches the project's "default ~12GB"
+     * constraint. Range clamped to 4..32 GB on
      * write — the slider in StorageScreen renders the same domain so
      * out-of-range values can only arrive via direct DataStore tampering.
      *
@@ -162,7 +163,7 @@ class SyncPrefs(private val ctx: Context) {
     }
 
     /**
-     * Quick task 260428-8i6 (POST_NOTIFICATIONS gate): true once the
+     * POST_NOTIFICATIONS gate: true once the
      * AppRoot-hosted FirstPlayNotifGate has shown its rationale dialog
      * for the first time. The gate persists this on EVERY terminal
      * state (Allow tapped + system dialog resolved, "Not now" tapped,

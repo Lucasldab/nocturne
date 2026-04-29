@@ -13,6 +13,12 @@
     <issue id="UnrememberedMutableState" severity="error" />
     <issue id="AutoboxingStateCreation" severity="error" />
 
+    <!-- ObsoleteSdkInt on mipmap-anydpi-v26: lint suggests merging into
+         mipmap-anydpi/ since minSdk=26, but AAPT then fails to resolve
+         @mipmap/ic_launcher. The -v26 qualifier is load-bearing for AGP
+         adaptive-icon resolution; keep the dir and silence the warning. -->
+    <issue id="ObsoleteSdkInt" severity="ignore" />
+
     <!-- Ignored: project-config noise on intentionally pinned versions. -->
     <issue id="GradleDependency" severity="ignore" />
     <issue id="NewerVersionAvailable" severity="ignore" />

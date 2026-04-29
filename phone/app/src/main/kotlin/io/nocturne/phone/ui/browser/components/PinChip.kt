@@ -15,7 +15,7 @@ import io.nocturne.phone.ui.theme.NocturneTheme
  * Pin chip rendered next to TrackRow / AlbumRow entries that the user
  * has pinned, OR next to non-resident rows so the user can pin them.
  *
- * Three visual states (260428-mit pin-as-download contract):
+ * Three visual states (pin-as-download contract):
  *
  *   [PinState.NotPinned]            offer-to-pin (only shown on non-resident rows):
  *     border  = onSurfaceVariant

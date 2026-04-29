@@ -1,6 +1,6 @@
 package io.nocturne.phone.data.stats
 
-import android.net.Uri
+import androidx.core.net.toUri
 import io.nocturne.phone.data.db.dao.PinDao
 import io.nocturne.phone.data.db.entity.PinEntity
 import io.nocturne.phone.data.prefs.SyncPrefs
@@ -26,7 +26,7 @@ class PinsWriter(
 ) {
     suspend fun drain(): Int {
         val treeUriStr = syncPrefs.metaTreeUri.first() ?: return 0
-        val treeUri = Uri.parse(treeUriStr)
+        val treeUri = treeUriStr.toUri()
         val deviceId = syncPrefs.deviceId()
         val pending: List<PinEntity> = pinDao.unsyncedList()
         var emitted = 0

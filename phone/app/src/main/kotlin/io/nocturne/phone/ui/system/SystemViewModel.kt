@@ -1,6 +1,6 @@
 package io.nocturne.phone.ui.system
 
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -20,7 +20,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 
 /**
- * Quick task 260428-7zc — single ViewModel for the four System sub-screens.
+ * single ViewModel for the four System sub-screens.
  *
  * Exposes three StateFlows:
  *  - [rotation]: bucket roll-up + cap/used totals from manifest.json
@@ -151,7 +151,7 @@ class SystemViewModel(private val container: AppContainer) : ViewModel() {
 
     private suspend fun loadManifest(): ManifestJson? {
         val uriStr = container.syncPrefs.metaTreeUri.first() ?: return null
-        val tree = DocumentFile.fromTreeUri(container.appContext, Uri.parse(uriStr)) ?: return null
+        val tree = DocumentFile.fromTreeUri(container.appContext, uriStr.toUri()) ?: return null
         val f = tree.findFile("manifest.json") ?: return null
         return container.appContext.contentResolver.openInputStream(f.uri)?.use { ins ->
             BufferedReader(InputStreamReader(ins, Charsets.UTF_8)).use { r ->
@@ -164,7 +164,7 @@ class SystemViewModel(private val container: AppContainer) : ViewModel() {
 
     private suspend fun readStatsLines(deviceId: String): List<String> {
         val uriStr = container.syncPrefs.metaTreeUri.first() ?: return emptyList()
-        val tree = DocumentFile.fromTreeUri(container.appContext, Uri.parse(uriStr)) ?: return emptyList()
+        val tree = DocumentFile.fromTreeUri(container.appContext, uriStr.toUri()) ?: return emptyList()
         val statsDir = tree.findFile("stats") ?: return emptyList()
         val f = statsDir.findFile("phone-$deviceId.jsonl") ?: return emptyList()
         return container.appContext.contentResolver.openInputStream(f.uri)?.use { ins ->

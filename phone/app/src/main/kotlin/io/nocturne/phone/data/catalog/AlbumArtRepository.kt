@@ -4,8 +4,8 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
-import android.net.Uri
 import android.provider.DocumentsContract
+import androidx.core.net.toUri
 import android.util.Log
 import android.util.LruCache
 import io.nocturne.phone.data.db.NocturneDatabase
@@ -67,7 +67,7 @@ class AlbumArtRepository(
     private suspend fun readArt(albumId: String): Bitmap? {
         val track = db.trackDao().firstResidentByAlbum(albumId) ?: return null
         val musicTreeStr = syncPrefs.musicTreeUri.first() ?: return null
-        val musicTreeUri = Uri.parse(musicTreeStr)
+        val musicTreeUri = musicTreeStr.toUri()
         val phoneRelativePath = track.path
             .removePrefix("resident/")
             .removePrefix("archive/")

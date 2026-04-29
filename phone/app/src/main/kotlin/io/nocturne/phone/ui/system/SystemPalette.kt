@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * Quick task 260428-7zc — shared chrome for the four System sub-screens.
+ * shared chrome for the four System sub-screens.
  *
  * Mirrors the per-bucket palette from the canonical design source
  * /tmp/nocturne-design/nocturne/project/screens-system.jsx (BUCKETS array
@@ -95,7 +95,7 @@ fun ScreenHero(text: String, modifier: Modifier = Modifier) {
 }
 
 /**
- * Quick task 260428-ja8 — Utility-mode tab bar. Four horizontal tabs sit
+ * Utility-mode tab bar. Four horizontal tabs sit
  * directly below the BrowserRoot TopAppBar when the shell is in utility
  * mode (◇ → ◆). Mirrors phone-shell.jsx lines 50-66:
  *

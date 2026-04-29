@@ -89,16 +89,12 @@ fun NowPlayingScreen(
     var isPlayingNow by remember { mutableStateOf(controller.isPlaying) }
     var hasItem by remember { mutableStateOf(controller.currentMediaItem != null) }
 
-    DisposableEffect(controller, playerVm) {
-        // Phase 6: publish the current track id eagerly so isLikedFlow has a
-        // value before the first onMediaItemTransition fires.
-        playerVm.publishCurrentTrackId(controller.currentMediaItem?.mediaId)
+    DisposableEffect(controller) {
         val listener = object : Player.Listener {
             override fun onMediaMetadataChanged(m: MediaMetadata) { metadata = m }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 currentIndex = controller.currentMediaItemIndex
                 hasItem = mediaItem != null
-                playerVm.publishCurrentTrackId(controller.currentMediaItem?.mediaId)
             }
             override fun onPlaybackStateChanged(state: Int) { playbackState = state }
             override fun onIsPlayingChanged(playing: Boolean) { isPlayingNow = playing }
@@ -119,7 +115,6 @@ fun NowPlayingScreen(
         else -> "paused"
     }
 
-    val isLiked by playerVm.isLikedFlow.collectAsStateWithLifecycle()
     val currentTrackId = controller.currentMediaItem?.mediaId
 
     // FileInfoCard needs format / size / duration from the DB row (the
@@ -141,9 +136,7 @@ fun NowPlayingScreen(
         currentIndex = currentIndex,
         currentTrackId = currentTrackId,
         currentTrack = trackEntity,
-        isLiked = isLiked,
         eyebrow = eyebrow,
-        onToggleLike = { playerVm.toggleLike() },
         onBack = onBack,
     )
 }
@@ -160,12 +153,10 @@ private fun NowPlayingBody(
     currentIndex: Int,
     currentTrackId: String?,
     currentTrack: io.nocturne.phone.data.db.entity.TrackEntity?,
-    isLiked: Boolean,
     eyebrow: String,
-    onToggleLike: () -> Unit,
     onBack: () -> Unit,
 ) {
-    // Terminal Now Playing per design pass 2026-04-27 ratified
+    // Terminal Now Playing per ratified
     // `nowPlayingVariant: 'terminal'`. Metadata-led, file-info card, sticky
     // bottom transport. Top-row breadcrumb `~/now-playing` reinforces the
     // shell aesthetic. 88dp art (not 300dp) — leaves vertical room for the
@@ -197,9 +188,9 @@ private fun NowPlayingBody(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.weight(1f))
-                // Heart icon intentionally hidden 2026-04-28 — like-toggle UX
-                // deferred until the design pass settles. Underlying toggleLike
-                // wiring on PlayerViewModel is preserved for a future round.
+                // Heart icon intentionally absent. If a like-toggle is added
+                // later, re-introduce LikeDao.isLiked(...) Flow + a VM
+                // toggle method — both were deleted as dead code.
             }
 
             Spacer(Modifier.height(12.dp))
@@ -282,7 +273,7 @@ private fun NowPlayingBody(
         //    Top hairline divider only — no side / bottom border, so the block
         //    bleeds into the system gesture inset cleanly. #837A6C matches the
         //    bottom-nav top hairline for a consistent ruled-boundary accent
-        //    across the two transport surfaces (260428-ja8 polish pass).
+        //    across the two transport surfaces
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -447,7 +438,7 @@ private fun FileInfoCard(
     currentIndex: Int,
     track: io.nocturne.phone.data.db.entity.TrackEntity?,
 ) {
-    // FileInfoCard locked spec (design pass 2026-04-28 NowPlaying terminal):
+    // FileInfoCard locked spec (NowPlaying terminal):
     //   border 1px #1A1A1A · padding 10dp all sides · sharp corners
     //   font JetBrains Mono 11sp / lineHeight 1.7em · color #8A8A8A everywhere
     //   (NO label/value contrast — entire card is muted)

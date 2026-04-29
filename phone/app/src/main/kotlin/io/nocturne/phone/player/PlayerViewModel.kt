@@ -3,6 +3,7 @@ package io.nocturne.phone.player
 import android.content.ComponentName
 import android.content.Context
 import androidx.annotation.OptIn
+import androidx.core.net.toUri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -14,16 +15,10 @@ import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import io.nocturne.phone.data.AppContainer
 import io.nocturne.phone.data.db.entity.TrackEntity
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
@@ -49,6 +44,9 @@ class PlayerViewModel(
     private val container: AppContainer,
 ) : ViewModel() {
 
+    // Always the Application context (AppContainer.appContext = applicationContext);
+    // never an Activity. Lint can't infer this through the container indirection.
+    @android.annotation.SuppressLint("StaticFieldLeak")
     private val context: Context = container.appContext
     private var controllerFuture: ListenableFuture<MediaController>? = null
 
@@ -104,7 +102,7 @@ class PlayerViewModel(
             return
         }
         viewModelScope.launch {
-            val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
+            val musicUri = container.syncPrefs.musicTreeUri.first()?.toUri()
             if (musicUri == null) {
                 toastPickMusicFolder()
                 return@launch
@@ -148,7 +146,7 @@ class PlayerViewModel(
             return
         }
         viewModelScope.launch {
-            val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
+            val musicUri = container.syncPrefs.musicTreeUri.first()?.toUri()
             if (musicUri == null) {
                 toastPickMusicFolder()
                 return@launch
@@ -181,7 +179,7 @@ class PlayerViewModel(
             return
         }
         viewModelScope.launch {
-            val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
+            val musicUri = container.syncPrefs.musicTreeUri.first()?.toUri()
             if (musicUri == null) {
                 toastPickMusicFolder()
                 return@launch
@@ -212,7 +210,7 @@ class PlayerViewModel(
             return
         }
         viewModelScope.launch {
-            val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
+            val musicUri = container.syncPrefs.musicTreeUri.first()?.toUri()
             if (musicUri == null) {
                 toastPickMusicFolder()
                 return@launch
@@ -239,7 +237,7 @@ class PlayerViewModel(
             return
         }
         viewModelScope.launch {
-            val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
+            val musicUri = container.syncPrefs.musicTreeUri.first()?.toUri()
             if (musicUri == null) {
                 toastPickMusicFolder()
                 return@launch
@@ -301,7 +299,7 @@ class PlayerViewModel(
         // list according to that permutation.
         val indices = AlbumUnitShuffle.buildShuffledIndices(residentGroups, seed)
         viewModelScope.launch {
-            val musicUri = container.syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
+            val musicUri = container.syncPrefs.musicTreeUri.first()?.toUri()
             val shuffledItems = indices.map { flat[it].toMediaItem(musicTreeUri = musicUri) }
             c.setMediaItems(shuffledItems, /* startIndex = */ 0, /* startPositionMs = */ 0L)
             c.shuffleModeEnabled = true
@@ -329,53 +327,6 @@ class PlayerViewModel(
             Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
             Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
             else /* REPEAT_MODE_ONE */ -> Player.REPEAT_MODE_OFF
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Phase 6 (STATS-03 / D-15 / D-16): like state for the currently-playing
-    // track. The flow tracks controller.currentMediaItem.mediaId and queries
-    // LikeDao.isLiked(id, "track"). NowPlayingScreen collects via
-    // collectAsStateWithLifecycle to drive the heart icon.
-    // -------------------------------------------------------------------------
-
-    private val currentTrackIdFlow = MutableStateFlow<String?>(null)
-
-    /**
-     * Publish the currently-playing track id so [isLikedFlow] can react.
-     * Called by NowPlayingScreen from its DisposableEffect on attach and from
-     * Player.Listener.onMediaItemTransition.
-     */
-    fun publishCurrentTrackId(id: String?) {
-        currentTrackIdFlow.value = id
-    }
-
-    /**
-     * Like state of the currently-playing track. `false` when no track is
-     * loaded OR no row exists in the likes table for the current id.
-     */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val isLikedFlow: StateFlow<Boolean> = currentTrackIdFlow
-        .flatMapLatest { id ->
-            if (id == null) flowOf(false)
-            else container.db.likeDao().isLiked(id, "track").map { it == true }
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
-
-    /**
-     * Toggle the like state of the currently-playing track. Reads the current
-     * mediaId off the controller, queries Room for the current `liked` value,
-     * and emits the OPPOSITE state (idempotent if double-tapped — the second
-     * tap re-flips, the LWW timestamp on the JSONL line resolves on the desktop).
-     *
-     * No-ops when the controller is null OR no track is currently loaded.
-     */
-    fun toggleLike() {
-        val c = _controller.value ?: return
-        val mediaId = c.currentMediaItem?.mediaId ?: return
-        viewModelScope.launch {
-            val current = container.db.likeDao().isLiked(mediaId, "track").first() == true
-            container.likesWriter.record(id = mediaId, unit = "track", liked = !current)
         }
     }
 

@@ -1,6 +1,6 @@
 package io.nocturne.phone.ui.system
 
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -38,7 +38,7 @@ import io.nocturne.phone.ui.settings.RelativeTimeFormatter
 import kotlinx.coroutines.launch
 
 /**
- * Quick task 260428-ja8 — Sync / syncthing screen, now an inline utility-mode
+ * Sync / syncthing screen, now an inline utility-mode
  * content slot (no Scaffold / TopAppBar / back-button — the BrowserRoot shell
  * owns chrome). Mirrors
  * /tmp/nocturne-design/nocturne/project/screens-system.jsx lines 94-152, but
@@ -108,8 +108,8 @@ fun SyncScreen(container: AppContainer) {
 
         SectionHeader("device")
         KV("device id",  if (deviceId.isEmpty()) "…" else deviceId)
-        KV("meta uri",   metaUri?.let { Uri.parse(it).lastPathSegment } ?: "—")
-        KV("music uri",  musicUri?.let { Uri.parse(it).lastPathSegment } ?: "—")
+        KV("meta uri",   metaUri?.let { it.toUri().lastPathSegment } ?: "—")
+        KV("music uri",  musicUri?.let { it.toUri().lastPathSegment } ?: "—")
         KV("last meta sync",  lastImport ?: "—")
         KV(
             "last stats sync",

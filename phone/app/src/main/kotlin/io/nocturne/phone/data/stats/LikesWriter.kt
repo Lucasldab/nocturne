@@ -1,6 +1,6 @@
 package io.nocturne.phone.data.stats
 
-import android.net.Uri
+import androidx.core.net.toUri
 import io.nocturne.phone.data.db.dao.LikeDao
 import io.nocturne.phone.data.db.entity.LikeEntity
 import io.nocturne.phone.data.prefs.SyncPrefs
@@ -46,7 +46,7 @@ class LikesWriter(
 
     suspend fun drain(): Int {
         val treeUriStr = syncPrefs.metaTreeUri.first() ?: return 0
-        val treeUri = Uri.parse(treeUriStr)
+        val treeUri = treeUriStr.toUri()
         val deviceId = syncPrefs.deviceId()
         val pending: List<LikeEntity> = likeDao.unsyncedList()
         var emitted = 0

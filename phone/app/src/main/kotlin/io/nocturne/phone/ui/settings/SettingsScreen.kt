@@ -1,6 +1,7 @@
 package io.nocturne.phone.ui.settings
 
 import android.content.Intent
+import androidx.core.net.toUri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -125,7 +126,7 @@ fun SettingsScreen(container: AppContainer) {
                 text = if (musicTreeUri == null) {
                     "Not selected — playback will fail until you pick the Syncthing music-files folder."
                 } else {
-                    "Selected: ${android.net.Uri.parse(musicTreeUri!!).lastPathSegment ?: musicTreeUri}"
+                    "Selected: ${musicTreeUri!!.toUri().lastPathSegment ?: musicTreeUri}"
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,

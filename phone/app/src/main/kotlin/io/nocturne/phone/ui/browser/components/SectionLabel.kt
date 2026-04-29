@@ -10,7 +10,7 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Mono-lowercase letterspaced section header at the top of each browse screen.
- * Per design pass 2026-04-27 SectionLabel:
+ * Per SectionLabel:
  *   font: monospace 11sp
  *   color: onSurfaceVariant (muted)
  *   letterSpacing: 1

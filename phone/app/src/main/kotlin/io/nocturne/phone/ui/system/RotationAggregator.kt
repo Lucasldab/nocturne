@@ -4,7 +4,7 @@ import io.nocturne.phone.data.catalog.ManifestJson
 import io.nocturne.phone.data.db.entity.TrackEntity
 
 /**
- * Quick task 260428-7zc — Rotation/buckets aggregator (pure JVM).
+ * Rotation/buckets aggregator (pure JVM).
  *
  * Joins the daemon-published `manifest.json` (cap_bytes / used_bytes / per-id
  * bucket assignments) with the local Room track index (sizeBytes per id) to

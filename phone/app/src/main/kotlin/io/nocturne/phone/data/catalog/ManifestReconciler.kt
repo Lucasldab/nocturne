@@ -1,7 +1,7 @@
 package io.nocturne.phone.data.catalog
 
 import android.content.Context
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import io.nocturne.phone.data.db.NocturneDatabase
 import kotlinx.serialization.json.Json
@@ -34,7 +34,7 @@ object ManifestReconciler {
         metaTreeUri: String,
         db: NocturneDatabase,
     ): Long? = runCatching {
-        val tree = DocumentFile.fromTreeUri(ctx, Uri.parse(metaTreeUri))
+        val tree = DocumentFile.fromTreeUri(ctx, metaTreeUri.toUri())
             ?: return@runCatching null
         val manifestFile = tree.findFile("manifest.json") ?: return@runCatching null
         val mtime = manifestFile.lastModified()
@@ -61,7 +61,7 @@ object ManifestReconciler {
 
     /** Cheap mtime probe — used by the poll loop to skip work when unchanged. */
     fun manifestMtime(ctx: Context, metaTreeUri: String): Long? = runCatching {
-        DocumentFile.fromTreeUri(ctx, Uri.parse(metaTreeUri))
+        DocumentFile.fromTreeUri(ctx, metaTreeUri.toUri())
             ?.findFile("manifest.json")
             ?.lastModified()
     }.getOrNull()

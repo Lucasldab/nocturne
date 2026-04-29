@@ -30,7 +30,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import io.nocturne.phone.data.AppContainer
 
 /**
- * Quick task 260428-ja8 — Rotation / smart-buckets dashboard, now an inline
+ * Rotation / smart-buckets dashboard, now an inline
  * utility-mode content slot (no Scaffold / TopAppBar / back-button — the
  * BrowserRoot shell owns chrome). Mirrors
  * /tmp/nocturne-design/nocturne/project/screens-system.jsx lines 11-80.

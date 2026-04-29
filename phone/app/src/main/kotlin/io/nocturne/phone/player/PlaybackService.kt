@@ -3,6 +3,7 @@ package io.nocturne.phone.player
 import android.app.PendingIntent
 import android.content.Intent
 import androidx.annotation.OptIn
+import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -357,7 +358,7 @@ class PlaybackService : MediaSessionService() {
             serviceScope.launch {
                 try {
                     val saved = queueRepository.loadQueue()
-                    val musicUri = syncPrefs.musicTreeUri.first()?.let { android.net.Uri.parse(it) }
+                    val musicUri = syncPrefs.musicTreeUri.first()?.toUri()
                     val result = PlaybackResumption.toMediaItemsWithStartPosition(saved, trackDao, musicUri)
                     future.set(result)
                 } catch (e: Exception) {

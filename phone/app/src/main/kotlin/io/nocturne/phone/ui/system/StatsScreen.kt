@@ -39,7 +39,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * Quick task 260428-ja8 — Stats / listening dashboard, now an inline
+ * Stats / listening dashboard, now an inline
  * utility-mode content slot (no Scaffold / TopAppBar / back-button — the
  * BrowserRoot shell owns chrome). Mirrors
  * /tmp/nocturne-design/nocturne/project/screens-system.jsx lines 268-308.

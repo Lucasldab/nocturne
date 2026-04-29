@@ -101,7 +101,7 @@ fun AlbumDetailScreen(
                     isPinned = pinnedIds.contains(t.id),
                     onTap = {
                         if (t.isResident) {
-                            // Quick task 260428-8i6: route through the AppRoot-hosted
+                            // route through the AppRoot-hosted
                             // gate so the POST_NOTIFICATIONS rationale appears at most
                             // once per install. The gate may run this lambda
                             // immediately (already-shown / granted / pre-Android-13)

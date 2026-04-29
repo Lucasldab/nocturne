@@ -1,6 +1,6 @@
 package io.nocturne.phone.data.stats
 
-import android.net.Uri
+import androidx.core.net.toUri
 import io.nocturne.phone.data.prefs.SyncPrefs
 import kotlinx.coroutines.flow.first
 
@@ -41,7 +41,7 @@ class StatsWriter(
             durationMs = durationMs,
         )
         return fileWriter.appendLine(
-            treeUri = Uri.parse(treeUriStr),
+            treeUri = treeUriStr.toUri(),
             relativePath = "stats/phone-$deviceId.jsonl",
             event = event,
             serializer = StatsEvent.serializer(),

@@ -25,6 +25,14 @@ interface TrackDao {
     @Query("SELECT * FROM tracks WHERE id = :id")
     suspend fun byId(id: String): TrackEntity?
 
+    /**
+     * Batch lookup. Caller is responsible for chunking large id lists to stay
+     * under SQLite's parameter limit (999 by default; ~500 is the safe number
+     * the manifest reconciler also uses).
+     */
+    @Query("SELECT * FROM tracks WHERE id IN (:ids)")
+    suspend fun byIds(ids: List<String>): List<TrackEntity>
+
     @Query("SELECT * FROM tracks ORDER BY title COLLATE NOCASE")
     fun pagedAll(): PagingSource<Int, TrackEntity>
 

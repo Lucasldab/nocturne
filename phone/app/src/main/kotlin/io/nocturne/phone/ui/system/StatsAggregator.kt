@@ -33,6 +33,8 @@ data class StatsView(
     val totalListenedMs: Long,
     val uniqueTrackCount: Int,
     val topPlayed: List<TopPlayedRow>,
+    val perTrackPlays: Map<String, Int>,
+    val perTrackListenedMs: Map<String, Long>,
     val heatmap: Array<LongArray>,        // [day 0..6][hour 0..23]; day 6 = today
     val heatmapNormalized: Array<FloatArray>,
     val windowStartMs: Long,
@@ -44,6 +46,8 @@ data class StatsView(
             totalListenedMs = 0L,
             uniqueTrackCount = 0,
             topPlayed = emptyList(),
+            perTrackPlays = emptyMap(),
+            perTrackListenedMs = emptyMap(),
             heatmap = Array(7) { LongArray(24) },
             heatmapNormalized = Array(7) { FloatArray(24) },
             windowStartMs = windowStartMs,
@@ -57,20 +61,25 @@ object StatsAggregator {
     // instance (writer is the source of truth, reader is forgiving).
     private val json = Json { ignoreUnknownKeys = true }
 
-    private const val WINDOW_MS = 7L * 24L * 60L * 60L * 1000L
+    const val WEEK_MS = 7L * 24L * 60L * 60L * 1000L
+    const val MONTH_MS = 30L * 24L * 60L * 60L * 1000L
+    const val YEAR_MS = 365L * 24L * 60L * 60L * 1000L
+
     private const val FUTURE_TOLERANCE_MS = 86_400_000L  // 1 day
 
     fun aggregate(
         lines: Iterator<String>,
         nowMs: Long,
         zone: ZoneId = ZoneId.systemDefault(),
+        windowMs: Long = WEEK_MS,
     ): StatsView {
-        val windowStartMs = nowMs - WINDOW_MS
+        val windowStartMs = nowMs - windowMs
         // Anchor day 0 at the local-zone date corresponding to windowStart.
         val windowStartDate: LocalDate =
             Instant.ofEpochMilli(windowStartMs).atZone(zone).toLocalDate()
 
         val perTrack = HashMap<String, IntArray>()       // count
+        val perTrackMs = HashMap<String, Long>()         // listened ms per track
         val perTrackLastTs = HashMap<String, Long>()     // last seen ts
         val unique = HashSet<String>()
         var playCount = 0
@@ -99,15 +108,21 @@ object StatsAggregator {
                     unique.add(ev.track)
                     val cnt = perTrack.getOrPut(ev.track) { IntArray(1) }
                     cnt[0] += 1
+                    perTrackMs[ev.track] = (perTrackMs[ev.track] ?: 0L) + ev.playedMs
                     val prevTs = perTrackLastTs[ev.track] ?: Long.MIN_VALUE
                     if (ev.ts > prevTs) perTrackLastTs[ev.track] = ev.ts
                     // Heatmap: only "play" events contribute listened time.
+                    // Heatmap is fixed 7d × 24h regardless of window — for
+                    // longer windows we compress to the last 7 days.
                     val ldt = Instant.ofEpochMilli(ev.ts).atZone(zone).toLocalDateTime()
                     val playedDate = ldt.toLocalDate()
-                    val dayIdx = (playedDate.toEpochDay() - windowStartDate.toEpochDay())
-                        .toInt().coerceIn(0, 6)
-                    val hourIdx = ldt.hour.coerceIn(0, 23)
-                    heatmap[dayIdx][hourIdx] += ev.playedMs
+                    val today = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
+                    val daysFromNow = (today.toEpochDay() - playedDate.toEpochDay()).toInt()
+                    if (daysFromNow in 0..6) {
+                        val dayIdx = (6 - daysFromNow).coerceIn(0, 6)
+                        val hourIdx = ldt.hour.coerceIn(0, 23)
+                        heatmap[dayIdx][hourIdx] += ev.playedMs
+                    }
                 }
                 "skip" -> {
                     skipCount += 1
@@ -138,12 +153,16 @@ object StatsAggregator {
             }
         }
 
+        val perTrackPlays: Map<String, Int> =
+            perTrack.entries.associate { (id, cnt) -> id to cnt[0] }
         return StatsView(
             playCount = playCount,
             skipCount = skipCount,
             totalListenedMs = totalListenedMs,
             uniqueTrackCount = unique.size,
             topPlayed = topPlayed,
+            perTrackPlays = perTrackPlays,
+            perTrackListenedMs = perTrackMs,
             heatmap = heatmap,
             heatmapNormalized = heatmapNormalized,
             windowStartMs = windowStartMs,

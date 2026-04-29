@@ -47,6 +47,15 @@ class SystemViewModel(private val container: AppContainer) : ViewModel() {
     private val _topPlayedTracks = MutableStateFlow<Map<String, TrackEntity>>(emptyMap())
     val topPlayedTracks: StateFlow<Map<String, TrackEntity>> = _topPlayedTracks.asStateFlow()
 
+    private val _topArtists = MutableStateFlow<List<TopGroupRow>>(emptyList())
+    val topArtists: StateFlow<List<TopGroupRow>> = _topArtists.asStateFlow()
+
+    private val _topGenres = MutableStateFlow<List<TopGroupRow>>(emptyList())
+    val topGenres: StateFlow<List<TopGroupRow>> = _topGenres.asStateFlow()
+
+    private val _statsWindow = MutableStateFlow(StatsWindow.Week)
+    val statsWindow: StateFlow<StatsWindow> = _statsWindow.asStateFlow()
+
     fun refreshRotation() {
         viewModelScope.launch {
             val manifest = withContext(Dispatchers.IO) { loadManifest() }
@@ -65,21 +74,78 @@ class SystemViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    fun setStatsWindow(window: StatsWindow) {
+        if (_statsWindow.value == window) return
+        _statsWindow.value = window
+        refreshStats()
+    }
+
     fun refreshStats() {
+        val window = _statsWindow.value
         viewModelScope.launch {
             val deviceId = container.syncPrefs.deviceId()
             val lines = withContext(Dispatchers.IO) { readStatsLines(deviceId) }
-            val view = StatsAggregator.aggregate(lines.iterator(), System.currentTimeMillis())
+            val view = StatsAggregator.aggregate(
+                lines.iterator(),
+                System.currentTimeMillis(),
+                windowMs = window.ms,
+            )
             _stats.value = view
             // Resolve track titles for the top-played rows so the Stats screen
             // can render real titles. Bounded by topPlayed.take(10) upstream.
-            val tracks = withContext(Dispatchers.IO) {
+            val topPlayedTracks = withContext(Dispatchers.IO) {
                 val dao = container.db.trackDao()
                 buildMap {
                     view.topPlayed.forEach { row -> dao.byId(row.trackId)?.let { put(row.trackId, it) } }
                 }
             }
-            _topPlayedTracks.value = tracks
+            _topPlayedTracks.value = topPlayedTracks
+
+            // Resolve every played track in batches, then group plays + listened
+            // ms by artist[0] and genre[0]. Tracks not in the local DB (e.g.
+            // legacy plays of tracks since removed from the catalog) are
+            // skipped — we'd render the sha256 prefix and that's noise.
+            val (artists, genres) = withContext(Dispatchers.IO) {
+                val dao = container.db.trackDao()
+                val ids = view.perTrackPlays.keys.toList()
+                val resolved = mutableMapOf<String, TrackEntity>()
+                ids.chunked(500).forEach { chunk ->
+                    dao.byIds(chunk).forEach { resolved[it.id] = it }
+                }
+                val artistAgg = HashMap<String, Pair<Int, Long>>()  // plays, ms
+                val genreAgg = HashMap<String, Pair<Int, Long>>()
+                view.perTrackPlays.forEach { (trackId, plays) ->
+                    val entity = resolved[trackId] ?: return@forEach
+                    val ms = view.perTrackListenedMs[trackId] ?: 0L
+                    val artistKey = entity.artist.firstOrNull()?.takeIf { it.isNotBlank() }
+                    val genreKey = entity.genre.firstOrNull()?.takeIf { it.isNotBlank() }
+                    if (artistKey != null) {
+                        val prev = artistAgg[artistKey] ?: (0 to 0L)
+                        artistAgg[artistKey] = (prev.first + plays) to (prev.second + ms)
+                    }
+                    if (genreKey != null) {
+                        val prev = genreAgg[genreKey] ?: (0 to 0L)
+                        genreAgg[genreKey] = (prev.first + plays) to (prev.second + ms)
+                    }
+                }
+                val artistList = artistAgg.entries
+                    .map { (k, v) -> TopGroupRow(label = k, plays = v.first, listenedMs = v.second) }
+                    .sortedWith(
+                        compareByDescending<TopGroupRow> { it.listenedMs }
+                            .thenByDescending { it.plays },
+                    )
+                    .take(10)
+                val genreList = genreAgg.entries
+                    .map { (k, v) -> TopGroupRow(label = k, plays = v.first, listenedMs = v.second) }
+                    .sortedWith(
+                        compareByDescending<TopGroupRow> { it.listenedMs }
+                            .thenByDescending { it.plays },
+                    )
+                    .take(10)
+                artistList to genreList
+            }
+            _topArtists.value = artists
+            _topGenres.value = genres
         }
     }
 
@@ -111,4 +177,21 @@ class SystemViewModel(private val container: AppContainer) : ViewModel() {
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
             SystemViewModel(container) as T
     }
+}
+
+/**
+ * Top-N row for artists / genres on the Stats screen. The label is the raw
+ * artist[0] or genre[0] string from the matching TrackEntity.
+ */
+data class TopGroupRow(
+    val label: String,
+    val plays: Int,
+    val listenedMs: Long,
+)
+
+/** Window selector for the Stats screen. */
+enum class StatsWindow(val label: String, val ms: Long) {
+    Week("7d", StatsAggregator.WEEK_MS),
+    Month("30d", StatsAggregator.MONTH_MS),
+    Year("1y", StatsAggregator.YEAR_MS),
 }

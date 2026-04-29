@@ -196,24 +196,38 @@ private fun NowPlayingBody(
             Spacer(Modifier.height(12.dp))
 
             // 2. Hero row — 88dp art on the left, metadata stack on the right.
+            // Art source ladder: (1) MediaMetadata.artworkData if set by the
+            // ExoPlayer extractor (FLAC/AAC); (2) AlbumArtRepository sidecar
+            // fallback for Opus files where the extractor has nothing to
+            // hand us. Sidecar load is async — fall through to the bg tile
+            // while it resolves.
+            val container = (androidx.compose.ui.platform.LocalContext.current.applicationContext
+                as io.nocturne.phone.NocturneApp).container
+            var sidecarBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+            androidx.compose.runtime.LaunchedEffect(currentTrack?.albumId, artworkBytes) {
+                sidecarBitmap = if (artworkBytes == null && currentTrack != null) {
+                    container.albumArt.load(currentTrack.albumId)
+                } else null
+            }
             Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
                 Box(
                     modifier = Modifier
                         .size(88.dp)
                         .background(MaterialTheme.colorScheme.surfaceVariant),
                 ) {
-                    if (artworkBytes != null) {
-                        val bitmap = remember(artworkBytes) {
+                    val embeddedBitmap = if (artworkBytes != null) {
+                        remember(artworkBytes) {
                             BitmapFactory.decodeByteArray(artworkBytes, 0, artworkBytes.size)
                         }
-                        if (bitmap != null) {
-                            Image(
-                                bitmap = bitmap.asImageBitmap(),
-                                contentDescription = "Album art",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
+                    } else null
+                    val drawn = embeddedBitmap ?: sidecarBitmap
+                    if (drawn != null) {
+                        Image(
+                            bitmap = drawn.asImageBitmap(),
+                            contentDescription = "Album art",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                 }
                 Spacer(Modifier.width(12.dp))

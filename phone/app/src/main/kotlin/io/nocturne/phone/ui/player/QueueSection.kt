@@ -45,8 +45,8 @@ import io.nocturne.phone.ui.theme.NocturnePrimary
 fun QueueSection(
     controller: MediaController,
     currentIndex: Int,
-    playerVm: PlayerViewModel? = null,
     modifier: Modifier = Modifier,
+    playerVm: PlayerViewModel? = null,
 ) {
     val items = remember { mutableStateOf<List<MediaItem>>(emptyList()) }
 

@@ -17,8 +17,8 @@ import io.nocturne.phone.ui.browser.components.SectionLabel
 fun AlbumsScreen(
     vm: BrowserViewModel,
     onNavigate: (String) -> Unit,
-    container: AppContainer? = null,
     modifier: Modifier = Modifier,
+    container: AppContainer? = null,
 ) {
     val pagingItems = vm.albums.collectAsLazyPagingItems()
     LazyColumn(

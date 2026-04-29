@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -70,7 +71,7 @@ fun AppRoot(app: NocturneApp) {
     // hit it. This is the path that makes pin-as-download "just work" without
     // any manual step.
     val reconcileScope = rememberCoroutineScope()
-    var lastReconciledMtime by remember { mutableStateOf(0L) }
+    var lastReconciledMtime by remember { mutableLongStateOf(0L) }
 
     // Cold-start path — fires once when metaTreeUri + trackCount become
     // valid. ON_RESUME below fires before SyncPrefs flows have emitted on

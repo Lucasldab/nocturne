@@ -42,10 +42,19 @@ fun AlbumDetailScreen(
     onPlayStarted: () -> Unit,
 ) {
     var album by remember { mutableStateOf<AlbumEntity?>(null) }
-    LaunchedEffect(albumId) { album = vm.albumById(albumId) }
+    var fullTrackList by remember { mutableStateOf<List<io.nocturne.phone.data.db.entity.TrackEntity>>(emptyList()) }
+    LaunchedEffect(albumId) {
+        album = vm.albumById(albumId)
+        // Header needs aggregates the AlbumEntity doesn't carry: count of
+        // resident tracks + total duration. Pull the full track list once
+        // (paging is fine for the LazyColumn below; we need a snapshot for
+        // the header). Cheap — single album, ≤ ~20 rows typical.
+        fullTrackList = vm.tracksByAlbumList(albumId)
+    }
     val tracks = vm.tracksByAlbum(albumId).collectAsLazyPagingItems()
     val scope = rememberCoroutineScope()
     val ctx = androidx.compose.ui.platform.LocalContext.current
+    val container = (ctx.applicationContext as io.nocturne.phone.NocturneApp).container
 
     // PLAY-10: collect pinnedIdSet once per screen; each TrackRow reads its
     // isPinned state from this shared set (more efficient than per-row flows).
@@ -56,37 +65,29 @@ fun AlbumDetailScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
+        // BackButton row — own row, padding 12/16/0 (top/sides/bottom).
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = "<",
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier
-                    .clickable(onClick = onBack)
-                    .padding(end = 8.dp),
+                modifier = Modifier.clickable(onClick = onBack),
             )
-            Spacer(Modifier.width(8.dp))
-            Column {
-                Text(
-                    text = album?.title ?: "…",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-                Text(
-                    text = buildString {
-                        append(album?.albumArtist?.firstOrNull().orEmpty())
-                        if (album?.year != null) {
-                            if (isNotEmpty()) append(" · ")
-                            append(album!!.year)
-                        }
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+        }
+        // Album Detail header block (spec).
+        album?.let { a ->
+            val residentCount = fullTrackList.count { it.isResident }
+            val totalSec = fullTrackList.sumOf { (it.durationMs ?: 0L) / 1000L }
+            val totalMin = ((totalSec + 30) / 60).toInt()
+            io.nocturne.phone.ui.browser.components.AlbumDetailHeader(
+                album = a,
+                residentTrackCount = residentCount,
+                totalDurationMin = totalMin,
+                container = container,
+            )
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
         LazyColumn(modifier = Modifier.fillMaxSize()) {

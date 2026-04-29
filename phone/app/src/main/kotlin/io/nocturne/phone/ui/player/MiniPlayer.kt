@@ -42,7 +42,7 @@ import androidx.media3.ui.compose.material3.buttons.PlayPauseButton
 import io.nocturne.phone.ui.theme.NocturneTheme
 
 /**
- * Minimal mini-player per design pass2026-04-27 pass (ratified
+ * Minimal mini-player per design pass 2026-04-27 pass (ratified
  * `miniVariant: 'minimal'`). Single 44dp line above the NavigationBar:
  *
  *   • title · artist                                        ⏵

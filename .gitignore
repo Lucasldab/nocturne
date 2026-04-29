@@ -55,7 +55,7 @@ phone/app/build/
 phone/app/release/
 phone/**/*.iml
 
-# tools/nocturne-schedule-resume.sh — local state for next-resume hint
+# Local state files used by the (now-removed) resume helper scripts.
 .nocturne-next-cmd
 .nocturne-resume.log
 .nocturne-kitty.log
@@ -66,5 +66,6 @@ phone/**/*.iml
 /*.jpeg
 /*.webp
 
-# Agent runtime state (worktrees, locks, local settings)
+# Agent / IDE runtime state
 .claude/
+.planning/

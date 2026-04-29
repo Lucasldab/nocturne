@@ -168,7 +168,7 @@ fun BrowserRoot(
                             ),
                         )
                         // 1px hairline under the brand row, color #c5c0b9 per
-                        // design pass2026-04-28 hand-tuning.
+                        // design pass 2026-04-28 hand-tuning.
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -373,7 +373,7 @@ fun BrowserRoot(
 }
 
 /**
- * Top-bar wordmark — `$ nocturne▌` prompt-style per the design pass2026-04-27
+ * Top-bar wordmark — `$ nocturne▌` prompt-style per the design pass 2026-04-27
  * design pass (ratified default `brandMode: 'lower'`). Monospace family with the
  * cursor block in the primary accent color, leaning into the project's terminal
  * aesthetic without adding a font dependency (system mono is sufficient on

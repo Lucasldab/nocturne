@@ -138,7 +138,7 @@ fun AppRoot(app: NocturneApp) {
             }
             // Metadata + import done, but the music folder hasn't been picked
             // yet — render the same first-run picker style for the music dir
-            // (design pass2026-04-28 setup contract: pick metadata then
+            // (design pass 2026-04-28 setup contract: pick metadata then
             // music in sequence, no Settings detour).
             musicTreeUri == null -> {
                 io.nocturne.phone.ui.firstrun.MusicFolderPickerScreen(

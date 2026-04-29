@@ -27,7 +27,7 @@ import kotlin.math.sin
  * If [container] is provided AND the album's first resident track has embedded
  * artwork, decodes it via [io.nocturne.phone.data.catalog.AlbumArtRepository]
  * and renders the bitmap. Otherwise falls back to the deterministic gradient
- * placeholder (design pass2026-04-27 albumGradient).
+ * placeholder (design pass 2026-04-27 albumGradient).
  *
  * The gradient is ALWAYS painted under the bitmap so a partially-loaded row
  * never flashes a blank box. `produceState` runs on the default dispatcher;

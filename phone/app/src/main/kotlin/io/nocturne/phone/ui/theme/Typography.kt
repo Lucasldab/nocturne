@@ -9,7 +9,7 @@ import androidx.compose.ui.unit.sp
 import io.nocturne.phone.R
 
 // Inter sans-serif — bundled OFL TTFs (Inter v4 static, optical size 18pt).
-// Adopted per design pass2026-04-27 pass; system Sans replaced for the
+// Adopted per design pass 2026-04-27 pass; system Sans replaced for the
 // headline / title text styles. Body / label slots stay on monospace
 // (FontFamily.Monospace = Roboto Mono on Android) to preserve the
 // terminal-feel established in earlier phases.

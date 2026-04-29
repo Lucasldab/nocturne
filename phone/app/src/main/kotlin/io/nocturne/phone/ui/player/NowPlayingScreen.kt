@@ -145,7 +145,7 @@ private fun NowPlayingBody(
     onToggleLike: () -> Unit,
     onBack: () -> Unit,
 ) {
-    // Terminal Now Playing per design pass2026-04-27 ratified
+    // Terminal Now Playing per design pass 2026-04-27 ratified
     // `nowPlayingVariant: 'terminal'`. Metadata-led, file-info card, sticky
     // bottom transport. Top-row breadcrumb `~/now-playing` reinforces the
     // shell aesthetic. 88dp art (not 300dp) — leaves vertical room for the
@@ -425,7 +425,7 @@ private fun FileInfoCard(
     currentIndex: Int,
     track: io.nocturne.phone.data.db.entity.TrackEntity?,
 ) {
-    // FileInfoCard locked spec (design pass2026-04-28 NowPlaying terminal):
+    // FileInfoCard locked spec (design pass 2026-04-28 NowPlaying terminal):
     //   border 1px #1A1A1A · padding 10dp all sides · sharp corners
     //   font JetBrains Mono 11sp / lineHeight 1.7em · color #8A8A8A everywhere
     //   (NO label/value contrast — entire card is muted)

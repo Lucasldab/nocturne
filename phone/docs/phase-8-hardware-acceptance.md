@@ -49,8 +49,7 @@ without modifications. Phone APK sideloaded via Obtainium / `adb install`
 ### Setup
 
 1. Desktop is at clean git HEAD on `main`.
-2. `nocturned` build dependencies installed per the Tech Stack —
-   Daemon (`pacman -S sqlite taglib jansson curl base-devel`).
+2. `nocturned` build dependencies installed (`pacman -S sqlite taglib jansson curl base-devel`).
 3. GrapheneOS phone has Syncthing-Fork installed and paired with desktop
    Syncthing per `docs/phone-setup.md`.
 4. Phone has F-Droid + Obtainium installed (Obtainium can sideload from a

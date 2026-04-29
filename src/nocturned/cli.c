@@ -50,6 +50,13 @@ void cli_print_usage(FILE *f)
         "  discover          Pick this week's Weekly Discovery tracks; resolver\n"
         "                    promotes them via the [buckets.weekly_discovery]\n"
         "                    bucket on the next cycle. Idempotent per Monday.\n"
+        "  unsync <sha|id>   \"Unpin and unload\" — clear pin, force-demote.\n"
+        "                    Pass --album to target an album_id instead. Files\n"
+        "                    in archive/ untouched; reversible by re-pinning.\n"
+        "  delete <sha|id>   \"Didn't like it\" — DESTRUCTIVE: rm archive +\n"
+        "                    resident files, blacklist sha (refused on future\n"
+        "                    re-imports), DELETE tracks row + cascades. Pass\n"
+        "                    --album for album-level. --yes skips confirmation.\n"
         "\n"
         "Options:\n"
         "  -h, --help              Print this help and exit\n"
@@ -100,6 +107,8 @@ static enum nocturned_subcommand subcommand_from_string(const char *s)
     if (!strcmp(s, "transcode")) return CMD_TRANSCODE;
     if (!strcmp(s, "transcode-migrate")) return CMD_TRANSCODE_MIGRATE;
     if (!strcmp(s, "discover")) return CMD_DISCOVER;
+    if (!strcmp(s, "unsync")) return CMD_UNSYNC;
+    if (!strcmp(s, "delete")) return CMD_DELETE;
     if (!strcmp(s, "help"))    return CMD_HELP;
     if (!strcmp(s, "version")) return CMD_VERSION;
     return CMD_NONE;
@@ -125,6 +134,8 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         { "diff",                no_argument,       NULL, 1010 },
         { "format",              required_argument, NULL, 1011 },
         { "bitrate",             required_argument, NULL, 1012 },
+        { "album",               no_argument,       NULL, 1013 },
+        { "yes",                 no_argument,       NULL, 1014 },
         { 0, 0, 0, 0 }
     };
 
@@ -149,6 +160,9 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         out->transcode_dst           = NULL;
         out->transcode_format        = NULL;
         out->transcode_bitrate_kbps  = 0;
+        out->action_target           = NULL;
+        out->action_is_album         = 0;
+        out->action_yes              = 0;
     }
     if (!out || argc < 1) return CMD_NONE;
 
@@ -180,6 +194,8 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
         case 1010: out->diff = 1; break;
         case 1011: out->transcode_format = optarg; break;
         case 1012: out->transcode_bitrate_kbps = atoi(optarg); break;
+        case 1013: out->action_is_album = 1; break;
+        case 1014: out->action_yes = 1; break;
         case '?':
         default:
             out->cmd = CMD_NONE;
@@ -218,6 +234,11 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
     if (sub == CMD_TRANSCODE) {
         if (optind < argc) out->transcode_src = argv[optind++];
         if (optind < argc) out->transcode_dst = argv[optind++];
+    }
+
+    /* `unsync` / `delete` take one positional: sha256 or album_id. */
+    if ((sub == CMD_UNSYNC || sub == CMD_DELETE) && optind < argc) {
+        out->action_target = argv[optind++];
     }
 
     return sub;

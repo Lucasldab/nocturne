@@ -172,6 +172,22 @@ static char *canon_tag_field(const struct tag_field *f, bool *needs_free)
     return out;
 }
 
+/* Returns 1 if `sha` is in track_blacklist (user said "I didn't like it" via
+ * delete-everywhere). Re-imports of the same content via streamrip etc.
+ * would otherwise re-create a tracks row; this filter catches them at the
+ * scan stage so the file goes nowhere. */
+static int is_blacklisted(struct sqlite3 *raw, const char *sha)
+{
+    sqlite3_stmt *st = NULL;
+    if (sqlite3_prepare_v2(raw,
+            "SELECT 1 FROM track_blacklist WHERE sha256=? LIMIT 1",
+            -1, &st, NULL) != SQLITE_OK) return 0;
+    sqlite3_bind_text(st, 1, sha, -1, SQLITE_TRANSIENT);
+    int hit = (sqlite3_step(st) == SQLITE_ROW);
+    sqlite3_finalize(st);
+    return hit;
+}
+
 /* Returns 1 if `path` is a transcode artifact: lives under /resident/ and
  * has an opus/m4a/aac extension. These are derivatives produced by rotate's
  * transcode promote — the daemon must not insert tracks rows for them
@@ -237,6 +253,15 @@ static enum walk_result on_file(const struct tag_record *rec, void *ud)
     }
     if (rc < 0) {
         ctx->stats->hash_failed++;
+        free(existing_sha);
+        return WALK_CONTINUE;
+    }
+
+    /* Blacklist check — user said "didn't like it" for this content sha.
+     * Refuse to insert; the file is on disk but we treat it as if it isn't.
+     * Real cleanup (unlinking the file) is delete_track_everywhere's job;
+     * this just stops a re-import path from re-creating the tracks row. */
+    if (is_blacklisted(db_handle(ctx->db), hex)) {
         free(existing_sha);
         return WALK_CONTINUE;
     }

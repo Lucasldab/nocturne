@@ -30,7 +30,9 @@ enum nocturned_subcommand {
     CMD_DISKCHECK,
     CMD_TRANSCODE,
     CMD_TRANSCODE_MIGRATE,
-    CMD_DISCOVER
+    CMD_DISCOVER,
+    CMD_UNSYNC,
+    CMD_DELETE
 };
 
 /* Parsed argv for the daemon. Strings are pointers into argv (no ownership). */
@@ -58,6 +60,11 @@ struct cli_args {
     const char *transcode_dst;
     const char *transcode_format;       /* opus|aac; NULL → config */
     int transcode_bitrate_kbps;         /* 0 → config */
+
+    /* `unsync` / `delete` positional: sha256 (full hex) or album_id (--album). */
+    const char *action_target;
+    int action_is_album;                /* --album flag */
+    int action_yes;                     /* --yes (skip delete confirm prompt) */
 };
 
 /* Parse argv. Returns the chosen subcommand (CMD_HELP / CMD_VERSION / CMD_NONE

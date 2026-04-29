@@ -48,6 +48,27 @@ If Syncthing-Fork still gets killed, also check Settings → Apps →
 Syncthing-Fork → App battery usage and confirm it is NOT in any "Restricted"
 or "Sleeping app" bucket.
 
+## 3a. GrapheneOS battery + background — nocturne app
+
+Same problem, same fix, different app. Without these exceptions GrapheneOS
+will kill the nocturne `PlaybackService` mid-track when the screen turns off
+(symptom: music stops mid-song, reopening the app shows an empty queue).
+v0.4.14+ holds a `WAKE_MODE_LOCAL` partial wake-lock during playback, but
+the OS can still terminate the foreground service if you leave background
+activity restricted.
+
+Settings → Apps → nocturne:
+
+| Setting                              | Value           |
+| ------------------------------------ | --------------- |
+| Battery → Background usage           | **Unrestricted** |
+| Battery → Allow background activity  | **Allow**       |
+| Notifications → Allow notifications  | **Allow** (the media notification is what marks the service as foreground; required) |
+
+The wake-lock is partial (CPU only, no screen wake) and is released
+automatically when playback pauses or stops, so battery cost is the same
+as any other music player.
+
 ## 4. Verifying
 
 After the steps above:

@@ -51,6 +51,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/time.h>
 #include <time.h>
 
@@ -531,6 +532,21 @@ static int ingest_one_file(struct nocturne_db *db, const char *meta_dir,
     }
 
     long long old_offset = lookup_offset(db, relpath);
+
+    /* RACE-05: if the file was truncated (phone reinstall / Syncthing
+     * conflict resolution), the persisted offset overshoots the new
+     * file size.  lseek past EOF succeeds silently, so every subsequent
+     * read returns 0 bytes and the offset is never advanced — new events
+     * are permanently invisible.  LWW semantics make a full re-play safe:
+     * older-or-equal-ts rows are discarded by the UPSERT. */
+    {
+        struct stat _st;
+        if (stat(abs_path, &_st) == 0 && old_offset > (long long)_st.st_size) {
+            fprintf(stderr, "ingest: %s: offset %lld overshoots size %lld; resetting\n",
+                    relpath, old_offset, (long long)_st.st_size);
+            old_offset = 0;
+        }
+    }
 
     struct jsonl_reader *jr = jsonl_open(abs_path, (off_t) old_offset);
     if (!jr) {

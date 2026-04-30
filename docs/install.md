@@ -241,8 +241,10 @@ the full automation chain:
 Install:
 
 ```sh
-mkdir -p ~/.config/systemd/user
+mkdir -p ~/.config/systemd/user ~/.local/bin
 cp config/systemd/user/*.{service,timer,path} ~/.config/systemd/user/
+cp config/bin/nocturne-pin-cycle-runner ~/.local/bin/
+chmod +x ~/.local/bin/nocturne-pin-cycle-runner
 systemctl --user daemon-reload
 systemctl --user enable --now \
     nocturne-watch.service \

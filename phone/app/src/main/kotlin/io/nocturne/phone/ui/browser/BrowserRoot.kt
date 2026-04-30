@@ -281,7 +281,11 @@ fun BrowserRoot(
                     AlbumsScreen(vm, onNavigate = { id -> nav.navigate(Routes.albumDetail(id)) }, container = container)
                 }
                 composable(Routes.ARTISTS) {
-                    ArtistsScreen(vm, onNavigate = { id -> nav.navigate(Routes.artistDetail(id)) })
+                    ArtistsScreen(
+                        vm,
+                        onNavigate = { id -> nav.navigate(Routes.artistDetail(id)) },
+                        container = container,
+                    )
                 }
                 composable(Routes.TRACKS) {
                     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -298,6 +302,7 @@ fun BrowserRoot(
                         },
                         onPlayNext = playNextWithToast,
                         onAddToQueue = enqueueWithToast,
+                        container = container,
                     )
                 }
                 composable(Routes.GENRES) { GenresScreen(vm) }

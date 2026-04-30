@@ -13,6 +13,7 @@ import io.nocturne.phone.data.stats.JsonlFileWriter
 import io.nocturne.phone.data.stats.LikesWriter
 import io.nocturne.phone.data.stats.PinsWriter
 import io.nocturne.phone.data.stats.StatsWriter
+import io.nocturne.phone.data.sync.SyncProgressRepository
 import io.nocturne.phone.player.QueueRepository
 
 /**
@@ -86,5 +87,14 @@ class AppContainer(
     // MediaMetadataRetriever — no Coil dependency.
     val albumArt: AlbumArtRepository by lazy {
         AlbumArtRepository(applicationContext, db, syncPrefs)
+    }
+
+    // SAF-based pinned-track download progress probe. Stat-only, no network
+    // (CROSS-01 invariant): reads the size of `.syncthing.<basename>.tmp`
+    // staging files via SAF and divides by catalog sizeBytes for a 0..1
+    // fraction. Powers the per-row PIN chip percentage and the SyncScreen
+    // dashboard.
+    val syncProgress: SyncProgressRepository by lazy {
+        SyncProgressRepository(applicationContext, db, syncPrefs)
     }
 }

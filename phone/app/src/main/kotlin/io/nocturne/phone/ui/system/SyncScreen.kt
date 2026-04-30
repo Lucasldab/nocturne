@@ -35,24 +35,23 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.nocturne.phone.data.AppContainer
 import io.nocturne.phone.data.catalog.CatalogReconciler
 import io.nocturne.phone.data.catalog.ManifestReconciler
+import io.nocturne.phone.ui.browser.BrowserViewModel
 import io.nocturne.phone.ui.settings.RelativeTimeFormatter
 import kotlinx.coroutines.launch
 
 /**
- * Sync / syncthing screen, now an inline utility-mode
- * content slot (no Scaffold / TopAppBar / back-button — the BrowserRoot shell
- * owns chrome). Mirrors
- * /tmp/nocturne-design/nocturne/project/screens-system.jsx lines 94-152, but
- * intentionally narrower than the JSX mock: live Syncthing connection state
- * (transfer progress, peer ip/port, codec) is NOT surfaced on-device by
- * design (CROSS-03 forbids hitting the daemon REST). Fields we cannot know
- * locally render as "—" with an explanatory note.
+ * Sync / syncthing screen — inline utility-mode content slot (no Scaffold /
+ * TopAppBar / back-button; BrowserRoot owns chrome).
  *
- * Reads ONLY existing SyncPrefs flows. No new network calls. audit-network.sh
- * stays green.
+ * Phone has no INTERNET permission (CROSS-01) so we cannot call Syncthing's
+ * REST API. Live progress for pinned-but-not-resident tracks is derived from
+ * SAF stats on Syncthing's `.syncthing.<name>.tmp` staging files (see
+ * SyncProgressRepository). Peer-list / codec / connection state still
+ * unavailable — those genuinely require Syncthing's REST and would force
+ * dropping CROSS-01.
  */
 @Composable
-fun SyncScreen(container: AppContainer) {
+fun SyncScreen(container: AppContainer, browserVm: BrowserViewModel? = null) {
     val lastImport by container.syncPrefs.lastImportAt.collectAsStateWithLifecycle(initialValue = null)
     val lastStats by container.syncPrefs.lastStatsSyncAt.collectAsStateWithLifecycle(initialValue = null)
     val metaUri by container.syncPrefs.metaTreeUri.collectAsStateWithLifecycle(initialValue = null)
@@ -185,6 +184,41 @@ fun SyncScreen(container: AppContainer) {
             )
         }
 
+        // Live download progress for pinned-not-resident tracks. Derived
+        // from SAF stats on Syncthing's staging files (no network — CROSS-01
+        // intact). See SyncProgressRepository.
+        if (browserVm != null) {
+            val progress by browserVm.pinnedDownloadProgress.collectAsStateWithLifecycle()
+            SectionHeader("downloads")
+            if (progress.pendingCount == 0) {
+                Text(
+                    text = "all pinned tracks resident",
+                    style = monoStyle(12),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            } else {
+                val pct = progress.aggregate?.let { (it * 100f).toInt() }
+                val headline = if (pct != null) {
+                    "syncing ${progress.pendingCount} · $pct%"
+                } else {
+                    "syncing ${progress.pendingCount} · queued"
+                }
+                Text(
+                    text = headline,
+                    style = monoStyle(13),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+                )
+                val activeCount = progress.perTrack.values.count { it != null && it < 1f }
+                val readyCount = progress.perTrack.values.count { it != null && it >= 1f }
+                val unknownCount = progress.pendingCount - activeCount - readyCount
+                if (activeCount > 0) KV("active", activeCount.toString())
+                if (readyCount > 0) KV("awaiting flip", readyCount.toString())
+                if (unknownCount > 0) KV("queued", unknownCount.toString())
+            }
+        }
+
         SectionHeader("note")
         // Compose has no built-in dashed border without a custom DrawScope;
         // a 1dp solid border + the explanatory text below is sufficient.
@@ -196,7 +230,7 @@ fun SyncScreen(container: AppContainer) {
                 .padding(12.dp),
         ) {
             Text(
-                text = "Live Syncthing connection state is not surfaced on-device by design (CROSS-03).",
+                text = "Peer list, codec and rate require Syncthing REST — phone app has no INTERNET permission by design (CROSS-01).",
                 style = monoStyle(12),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

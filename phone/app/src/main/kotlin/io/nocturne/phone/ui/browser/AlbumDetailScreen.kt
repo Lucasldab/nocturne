@@ -60,6 +60,10 @@ fun AlbumDetailScreen(
     // isPinned state from this shared set (more efficient than per-row flows).
     val pinnedIds by vm.pinnedIdSet.collectAsStateWithLifecycle()
 
+    // SAF-stat-derived download progress for PinnedPulling rows. ViewModel
+    // ticks every 5s while subscribed; map lookup is O(1) per row.
+    val pullProgress by vm.pinnedDownloadProgress.collectAsStateWithLifecycle()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -100,6 +104,7 @@ fun AlbumDetailScreen(
                 TrackRow(
                     track = t,
                     isPinned = pinnedIds.contains(t.id),
+                    pullProgress = pullProgress.perTrack[t.id],
                     onTap = {
                         if (t.isResident) {
                             // route through the AppRoot-hosted

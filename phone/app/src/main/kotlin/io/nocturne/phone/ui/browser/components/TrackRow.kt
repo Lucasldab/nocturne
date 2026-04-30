@@ -60,6 +60,7 @@ fun TrackRow(
     onTap: () -> Unit,
     isCurrentlyPlaying: Boolean = false,
     isPinned: Boolean = false,
+    pullProgress: Float? = null,
     onPinClick: () -> Unit = {},
     onPlayNext: () -> Unit = {},
     onAddToQueue: () -> Unit = {},
@@ -143,7 +144,11 @@ fun TrackRow(
                     isPinned && track.isResident -> PinState.PinnedReady
                     else -> PinState.NotPinned
                 }
-                PinChip(onClick = onPinClick, state = pinState)
+                PinChip(
+                    onClick = onPinClick,
+                    state = pinState,
+                    progress = if (pinState == PinState.PinnedPulling) pullProgress else null,
+                )
             }
         }
     }

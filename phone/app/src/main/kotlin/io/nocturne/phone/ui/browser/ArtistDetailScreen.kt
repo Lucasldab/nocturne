@@ -50,6 +50,7 @@ fun ArtistDetailScreen(
 
     // PLAY-10: collect pinnedIdSet once per screen for efficient pin state.
     val pinnedIds by vm.pinnedIdSet.collectAsStateWithLifecycle()
+    val pullProgress by vm.pinnedDownloadProgress.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -123,6 +124,7 @@ fun ArtistDetailScreen(
                 TrackRow(
                     track = t,
                     isPinned = pinnedIds.contains(t.id),
+                    pullProgress = pullProgress.perTrack[t.id],
                     onTap = { onTrackTap(t) },
                     onPinClick = { vm.togglePinTrack(t.id) },
                     onPlayNext = { onPlayNext(t) },

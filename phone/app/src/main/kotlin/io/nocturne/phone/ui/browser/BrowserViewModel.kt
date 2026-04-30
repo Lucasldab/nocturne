@@ -13,9 +13,11 @@ import io.nocturne.phone.data.db.entity.ArtistEntity
 import io.nocturne.phone.data.db.entity.GenreEntity
 import io.nocturne.phone.data.db.entity.PinEntity
 import io.nocturne.phone.data.db.entity.TrackEntity
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -106,6 +108,69 @@ class BrowserViewModel(private val container: AppContainer) : ViewModel() {
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = emptySet(),
         )
+
+    // -------------------------------------------------------------------------
+    // Pinned-track download progress (SAF-stat probe; no network — CROSS-01).
+    //
+    // Polls every 5s while the StateFlow has subscribers. Each tick re-derives
+    // the set of pinned-but-not-resident track ids from pinDao + tracks table
+    // and asks SyncProgressRepository for SAF stats on the Syncthing temp
+    // files. Empty pulling set → no probing, but the StateFlow still ticks
+    // (cheap; the probe short-circuits on empty input). When all subscribers
+    // disappear, WhileSubscribed(5s) tears down the timer.
+    //
+    // Aggregate fields exposed alongside the per-id map so SyncScreen can show
+    // "syncing N · 67%" without re-deriving in compose.
+    // -------------------------------------------------------------------------
+
+    data class SyncProgressState(
+        /** Map of trackId → progress (0..1, or null when unknown). */
+        val perTrack: Map<String, Float?> = emptyMap(),
+        /** Number of tracks currently pinned-but-not-resident. */
+        val pendingCount: Int = 0,
+        /** Aggregate completion fraction across pending tracks (0..1, null when empty). */
+        val aggregate: Float? = null,
+    )
+
+    val pinnedDownloadProgress: kotlinx.coroutines.flow.StateFlow<SyncProgressState> =
+        flow {
+            while (true) {
+                val state = computeProgressOnce()
+                emit(state)
+                delay(5_000L)
+            }
+        }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = SyncProgressState(),
+            )
+
+    private suspend fun computeProgressOnce(): SyncProgressState {
+        val pinnedRows = container.db.pinDao().flowAllPinned().first()
+            .filter { it.pinned && it.unit == "track" }
+        if (pinnedRows.isEmpty()) return SyncProgressState()
+        val tracks = pinnedRows.map { it.id }.chunked(500)
+            .flatMap { container.db.trackDao().byIds(it) }
+        val pending = tracks.filter { !it.isResident }
+        if (pending.isEmpty()) return SyncProgressState()
+        val perTrack = container.syncProgress.probe(pending.map { it.id })
+        // Aggregate: weight progress by expected size so a half-done 50MB track
+        // counts more than a half-done 5MB track.
+        var totalBytes = 0L
+        var doneBytes = 0L
+        for (t in pending) {
+            val p = perTrack[t.id] ?: continue
+            totalBytes += t.sizeBytes
+            doneBytes += (p * t.sizeBytes).toLong()
+        }
+        val agg = if (totalBytes > 0L) doneBytes.toFloat() / totalBytes.toFloat() else null
+        return SyncProgressState(
+            perTrack = perTrack,
+            pendingCount = pending.size,
+            aggregate = agg,
+        )
+    }
 
     /**
      * Upsert a pin record for [trackId] with the current timestamp.

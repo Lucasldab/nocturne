@@ -27,6 +27,7 @@ fun TracksScreen(
 
     // PLAY-10: collect pinnedIdSet once per screen for efficient pin state.
     val pinnedIds by vm.pinnedIdSet.collectAsStateWithLifecycle()
+    val pullProgress by vm.pinnedDownloadProgress.collectAsStateWithLifecycle()
 
     LazyColumn(
         modifier = modifier
@@ -45,6 +46,7 @@ fun TracksScreen(
             TrackRow(
                 track = track,
                 isPinned = pinnedIds.contains(track.id),
+                pullProgress = pullProgress.perTrack[track.id],
                 onTap = { onTrackTap(track) },
                 onPinClick = { vm.togglePinTrack(track.id) },
                 onPlayNext = { onPlayNext(track) },

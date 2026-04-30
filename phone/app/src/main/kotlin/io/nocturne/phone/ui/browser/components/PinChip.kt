@@ -51,6 +51,7 @@ enum class PinState { NotPinned, PinnedPulling, PinnedReady }
 fun PinChip(
     onClick: () -> Unit = {},
     state: PinState = PinState.NotPinned,
+    progress: Float? = null,
 ) {
     val borderColor = when (state) {
         PinState.NotPinned -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -66,6 +67,14 @@ fun PinChip(
         PinState.PinnedReady -> MaterialTheme.colorScheme.onPrimary
     }
 
+    val label = when (state) {
+        PinState.PinnedPulling -> {
+            val pct = progress?.let { (it * 100f).toInt().coerceIn(0, 99) }
+            if (pct != null) "PIN $pct%" else "PIN ⋯"
+        }
+        else -> "PIN"
+    }
+
     Surface(
         modifier = Modifier.padding(start = 8.dp),
         border = BorderStroke(1.dp, borderColor),
@@ -73,7 +82,7 @@ fun PinChip(
         onClick = onClick,
     ) {
         Text(
-            text = "PIN",
+            text = label,
             style = MaterialTheme.typography.labelSmall,
             color = labelColor,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
@@ -91,6 +100,12 @@ private fun PinChipNotPinnedPreview() {
 @Composable
 private fun PinChipPullingPreview() {
     NocturneTheme { PinChip(state = PinState.PinnedPulling) }
+}
+
+@Preview(showBackground = true, backgroundColor = 0xFF0A0A0A)
+@Composable
+private fun PinChipPullingWithProgressPreview() {
+    NocturneTheme { PinChip(state = PinState.PinnedPulling, progress = 0.42f) }
 }
 
 @Preview(showBackground = true, backgroundColor = 0xFF0A0A0A)

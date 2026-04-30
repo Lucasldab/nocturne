@@ -261,7 +261,7 @@ fun BrowserRoot(
                 Box(modifier = Modifier.fillMaxSize().padding(padding)) {
                     when (activeUtility) {
                         "rotation" -> RotationScreen(container = container)
-                        "sync"     -> SyncScreen(container = container)
+                        "sync"     -> SyncScreen(container = container, browserVm = vm)
                         "storage"  -> StorageScreen(container = container)
                         "stats"    -> StatsScreen(
                             container = container,

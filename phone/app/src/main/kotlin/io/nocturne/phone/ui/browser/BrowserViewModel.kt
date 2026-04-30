@@ -1,5 +1,7 @@
 package io.nocturne.phone.ui.browser
 
+import androidx.core.net.toUri
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -13,14 +15,23 @@ import io.nocturne.phone.data.db.entity.ArtistEntity
 import io.nocturne.phone.data.db.entity.GenreEntity
 import io.nocturne.phone.data.db.entity.PinEntity
 import io.nocturne.phone.data.db.entity.TrackEntity
+import io.nocturne.phone.ui.system.StatsAggregator
+import io.nocturne.phone.ui.system.StatsView
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 /**
  * Single ViewModel scoping all browser screens. Pager flows for the four axes
@@ -269,6 +280,99 @@ class BrowserViewModel(private val container: AppContainer) : ViewModel() {
             container.actionsWriter.emitDeleteAlbum(albumId)
         }
     }
+
+    // -------------------------------------------------------------------------
+    // Quick task 260430-s5u — Tracks-tab sort modes.
+    //
+    // [trackSortMode] mirrors SyncPrefs so process death + relaunch restores
+    // the user's last selection. [tracksSorted] is the non-paged sorted list
+    // for the three non-Alphabetical modes (Alphabetical keeps the existing
+    // paged path so the letter rail's row-index math stays valid).
+    //
+    // Stats JSONL is read lazily and cached in [_statsView]: only modes that
+    // need play counts / lastTs (MostListened + RecentlyListened) trigger
+    // the SAF read, and a second sort flip between those two reuses the
+    // cache. RecentlyDownloaded reads dateAdded directly from TrackEntity
+    // and bypasses the cache entirely.
+    // -------------------------------------------------------------------------
+
+    val trackSortMode: StateFlow<TrackSortMode> =
+        container.syncPrefs.trackSortMode
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = TrackSortMode.DEFAULT,
+            )
+
+    fun setTrackSortMode(mode: TrackSortMode) {
+        viewModelScope.launch { container.syncPrefs.setTrackSortMode(mode) }
+    }
+
+    private val _statsView = MutableStateFlow<StatsView?>(null)
+
+    /**
+     * Reads the local stats JSONL via the same SAF pattern SystemViewModel
+     * uses (kept private there — duplicated here verbatim rather than
+     * widening visibility, per scope_decisions point 4).
+     *
+     * Returns [StatsView.empty] on any first-run failure (no SAF tree yet,
+     * stats dir missing, file missing) — the sort flow renders a
+     * dateAdded-and-title ordering in that case rather than throwing.
+     */
+    private suspend fun loadStatsView(): StatsView = withContext(Dispatchers.IO) {
+        val deviceId = container.syncPrefs.deviceId()
+        val uriStr = container.syncPrefs.metaTreeUri.first() ?: return@withContext StatsView.empty()
+        val tree = DocumentFile.fromTreeUri(container.appContext, uriStr.toUri())
+            ?: return@withContext StatsView.empty()
+        val statsDir = tree.findFile("stats") ?: return@withContext StatsView.empty()
+        val f = statsDir.findFile("phone-$deviceId.jsonl") ?: return@withContext StatsView.empty()
+        val lines = container.appContext.contentResolver.openInputStream(f.uri)?.use { ins ->
+            BufferedReader(InputStreamReader(ins, Charsets.UTF_8)).use { it.readLines() }
+        } ?: return@withContext StatsView.empty()
+        StatsAggregator.aggregate(
+            lines = lines.iterator(),
+            nowMs = System.currentTimeMillis(),
+            allTime = true,
+        )
+    }
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val tracksSorted: StateFlow<List<TrackEntity>> =
+        trackSortMode
+            .flatMapLatest { mode ->
+                flow {
+                    if (mode == TrackSortMode.Alphabetical) {
+                        // Alphabetical uses the paged path; this StateFlow
+                        // is irrelevant. Emit an empty list so subscribers
+                        // that don't gate on mode see a coherent value.
+                        emit(emptyList())
+                        return@flow
+                    }
+                    val all = withContext(Dispatchers.IO) {
+                        container.db.trackDao().listAll()
+                    }
+                    val needsStats = mode == TrackSortMode.MostListened ||
+                        mode == TrackSortMode.RecentlyListened
+                    val stats = if (needsStats) {
+                        _statsView.value ?: loadStatsView().also { _statsView.value = it }
+                    } else {
+                        StatsView.empty()
+                    }
+                    emit(
+                        TrackSorter.sort(
+                            tracks = all,
+                            mode = mode,
+                            perTrackPlays = stats.perTrackPlays,
+                            perTrackLastTs = stats.perTrackLastTs,
+                        ),
+                    )
+                }
+            }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = emptyList(),
+            )
 }
 
 class BrowserVMFactory(private val container: AppContainer) : ViewModelProvider.Factory {

@@ -13,6 +13,22 @@ META="${NOCTURNE_META_DIR:-$HOME/sync/nocturne/meta}"
 MANIFEST="${NOCTURNE_MANIFEST:-$HOME/.local/share/nocturne/manifest.json}"
 NOCTURNED="${NOCTURNED:-nocturned}"
 
+# Belt-and-suspenders: kill any rogue `nocturned watch` not owned by
+# nocturne-watch.service. systemd's ExecStartPre=systemctl stop ... only
+# affects unit-managed processes. A manually-launched `nocturned watch`
+# (e.g. from a terminal that later exited and orphaned the process to
+# systemd-user) keeps the SQLite single-writer flock and silently breaks
+# every cycle at the scan step with rc=4 / NOPERMISSION.
+# Regression discovered 2026-04-30: pinned tracks failed to download for
+# a day before this guard was added.
+managed_pid=$(systemctl --user show -p MainPID --value nocturne-watch.service 2>/dev/null || echo 0)
+for _pid in $(pgrep -f "^/usr/local/bin/nocturned watch" 2>/dev/null); do
+    if [ "$_pid" != "$managed_pid" ]; then
+        echo "pin-cycle-runner: killing rogue nocturned watch (pid=$_pid; managed=$managed_pid)"
+        kill "$_pid" 2>/dev/null || true
+    fi
+done
+
 # 5s debounce: give Syncthing time to finish before we probe.
 sleep 5
 

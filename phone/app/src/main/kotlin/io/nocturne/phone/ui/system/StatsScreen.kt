@@ -123,7 +123,12 @@ fun StatsScreen(
         Heatmap(view = view)
 
         SectionHeader("top played")
-        if (view.topPlayed.isEmpty()) {
+        // Skip rows whose trackId no longer maps to a TrackEntity — the play
+        // events are real but the track is gone from the catalog (rotated out
+        // and the file removed from the desktop library, or library
+        // reorganized). Rendering the truncated sha256 was just noise.
+        val resolvable = view.topPlayed.filter { tracks[it.trackId] != null }
+        if (resolvable.isEmpty()) {
             Text(
                 text = "no plays yet",
                 style = monoStyle(12),
@@ -131,30 +136,20 @@ fun StatsScreen(
                 modifier = Modifier.padding(top = 4.dp),
             )
         } else {
-            val maxPlays = view.topPlayed.maxOf { it.playCount }.coerceAtLeast(1)
-            view.topPlayed.forEachIndexed { i, row ->
-                val track = tracks[row.trackId]
-                if (track != null) {
-                    SwipeQueueActions(
-                        onPlayNext = { onPlayNext(track) },
-                        onAddToQueue = { onAddToQueue(track) },
-                        enabled = track.isResident,
-                    ) {
-                        TopPlayedRowView(
-                            index = i,
-                            row = row,
-                            maxPlays = maxPlays,
-                            title = track.title,
-                            artist = track.artist.firstOrNull() ?: "",
-                        )
-                    }
-                } else {
+            val maxPlays = resolvable.maxOf { it.playCount }.coerceAtLeast(1)
+            resolvable.forEachIndexed { i, row ->
+                val track = tracks.getValue(row.trackId)
+                SwipeQueueActions(
+                    onPlayNext = { onPlayNext(track) },
+                    onAddToQueue = { onAddToQueue(track) },
+                    enabled = track.isResident,
+                ) {
                     TopPlayedRowView(
                         index = i,
                         row = row,
                         maxPlays = maxPlays,
-                        title = row.trackId.take(8) + "…",
-                        artist = "",
+                        title = track.title,
+                        artist = track.artist.firstOrNull() ?: "",
                     )
                 }
             }

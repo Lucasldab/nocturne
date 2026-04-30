@@ -1,0 +1,56 @@
+#!/bin/bash
+# Debounce + gate wrapper invoked by nocturne-pin-cycle.service.
+# Runs `nocturned cycle` only when a phone-side pins JSONL is actually
+# newer than the last published manifest.json.
+#
+# Gate logic uses nanosecond mtime (RACE-01 Option A) to avoid the
+# wall-second tie that silently swallows pins on slow Wi-Fi transfers.
+# Also waits for Syncthing .tmp sentinels to drain (RACE-01 Option C)
+# so we never ingest a half-written JSONL.
+set -euo pipefail
+
+META="${NOCTURNE_META_DIR:-$HOME/sync/nocturne/meta}"
+MANIFEST="${NOCTURNE_MANIFEST:-$HOME/.local/share/nocturne/manifest.json}"
+NOCTURNED="${NOCTURNED:-nocturned}"
+
+# 5s debounce: give Syncthing time to finish before we probe.
+sleep 5
+
+# Wait for in-flight Syncthing .tmp files to drain.
+# Syncthing removes .tmp before the rename lands, so a .tmp means a
+# write is still in progress; running the cycle now would read a stale
+# JSONL inode (RACE-02) and likely miss the new events.
+for _i in $(seq 1 10); do
+    _found=0
+    for _f in "$META"/.syncthing.pins-phone-*.jsonl.tmp; do
+        [ -e "$_f" ] && _found=1 && break
+    done
+    [ "$_found" -eq 0 ] && break
+    echo "pin-cycle-runner: waiting for Syncthing .tmp to drain..."
+    sleep 2
+done
+
+# mtime_ns PATH — print mtime in nanoseconds since epoch.
+mtime_ns() {
+    python3 -c "import os, sys; print(os.stat(sys.argv[1]).st_mtime_ns)" "$1" 2>/dev/null || echo 0
+}
+
+manifest_ns=0
+[ -f "$MANIFEST" ] && manifest_ns=$(mtime_ns "$MANIFEST")
+
+needs_cycle=0
+for _jsonl in "$META"/pins-phone-*.jsonl; do
+    [ -f "$_jsonl" ] || continue
+    _ns=$(mtime_ns "$_jsonl")
+    if [ "$_ns" -gt "$manifest_ns" ]; then
+        needs_cycle=1
+        break
+    fi
+done
+
+if [ "$needs_cycle" -eq 0 ]; then
+    echo "pin-cycle-runner: no new JSONL since last manifest (manifest_ns=$manifest_ns); skipping"
+    exit 0
+fi
+
+exec "$NOCTURNED" cycle

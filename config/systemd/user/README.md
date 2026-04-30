@@ -13,6 +13,12 @@ Copy these into `~/.config/systemd/user/`, reload, enable.
 | `nocturne-pin-cycle.service` | Wrapper that runs cycle when phone JSONL writes land in the meta dir. Same lock-handover dance as cycle. |
 | `nocturne-pin-cycle.path` | Path watcher that fires `nocturne-pin-cycle.service` on changes inside `~/sync/nocturne/meta/`. |
 
+The service's `ExecStart` calls `~/.local/bin/nocturne-pin-cycle-runner` — a
+shell wrapper in `config/bin/` that implements the 5 s debounce, waits for
+Syncthing `.tmp` sentinels to drain, then gates the cycle on nanosecond mtime
+comparison (so a Syncthing rename and a manifest write that land in the same
+wall-clock second don't silently suppress the retry).
+
 ## Lock coordination
 
 `nocturned` enforces single-writer access via a flock on its pidfile. Watch
@@ -32,8 +38,10 @@ End-to-end handover is ~2 seconds of lost inotify coverage.
 ## Install
 
 ```sh
-mkdir -p ~/.config/systemd/user
+mkdir -p ~/.config/systemd/user ~/.local/bin
 cp config/systemd/user/*.{service,timer,path} ~/.config/systemd/user/
+cp config/bin/nocturne-pin-cycle-runner ~/.local/bin/
+chmod +x ~/.local/bin/nocturne-pin-cycle-runner
 systemctl --user daemon-reload
 systemctl --user enable --now \
     nocturne-watch.service \

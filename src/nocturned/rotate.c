@@ -753,6 +753,54 @@ int rotate_run_ex(struct nocturne_db *db, const char *library_root,
         if (rc == 0 && out->errors == before) out->removed++;
     }
 
+    /* Cover sidecar backfill: walk every track that is currently resident
+     * (post-add, post-remove) and ensure cover.jpg-style sidecars exist next
+     * to the resident audio file. Idempotent — link_album_covers skips when
+     * the dst sidecar already exists, so this is cheap on steady-state runs.
+     *
+     * Catches:
+     *   1. tracks promoted before this code shipped (no cover ever linked)
+     *   2. albums whose cover.jpg landed in archive AFTER the track promote
+     *   3. resident dirs that lost the sidecar somehow (manual cleanup, etc.)
+     *
+     * Best-effort: failures log inside link_album_covers but never bump
+     * out->errors. */
+    {
+        const char *sql_resident_with_paths =
+            transcode_on
+              ? "SELECT t.path, r.transcode_path FROM tracks t "
+                "JOIN residency_state r ON r.sha256 = t.sha256 "
+                "WHERE r.location = 'resident' AND r.transcode_path IS NOT NULL"
+              : "SELECT t.path, NULL FROM tracks t "
+                "JOIN residency_state r ON r.sha256 = t.sha256 "
+                "WHERE r.location = 'resident'";
+        sqlite3_stmt *stmt = NULL;
+        if (sqlite3_prepare_v2(raw, sql_resident_with_paths, -1, &stmt, NULL) == SQLITE_OK) {
+            while (sqlite3_step(stmt) == SQLITE_ROW) {
+                const unsigned char *track_path = sqlite3_column_text(stmt, 0);
+                const unsigned char *xcode_path = sqlite3_column_text(stmt, 1);
+                if (!track_path) continue;
+                if (transcode_on) {
+                    /* tracks.path = archive/...flac; transcode_path = resident/...opus */
+                    if (xcode_path) {
+                        link_album_covers((const char *) track_path,
+                                          (const char *) xcode_path);
+                    }
+                } else {
+                    /* tracks.path = resident/...flac; archive dir computed by swap. */
+                    char *archive_audio = swap_segment(library_root,
+                                                       (const char *) track_path,
+                                                       "resident", "archive");
+                    if (archive_audio) {
+                        link_album_covers(archive_audio, (const char *) track_path);
+                        free(archive_audio);
+                    }
+                }
+            }
+            sqlite3_finalize(stmt);
+        }
+    }
+
     /* manifest_meta.last_rotation_at */
     {
         sqlite3_stmt *stmt = NULL;

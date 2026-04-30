@@ -89,6 +89,44 @@ class StatsAggregatorTest {
     }
 
     @Test
+    fun all_time_mode_includes_old_events_outside_default_window() {
+        // ts = 0 (epoch) is far older than now - WEEK_MS, so the default
+        // window would reject it; allTime = true must keep it.
+        val line =
+            "{\"v\":1,\"ts\":0,\"kind\":\"play\",\"track\":\"old-track\",\"played_ms\":60000,\"duration_ms\":120000}"
+        val v = StatsAggregator.aggregate(
+            lines = listOf(line).iterator(),
+            nowMs = now,
+            zone = ZoneOffset.UTC,
+            allTime = true,
+        )
+        assertEquals(1, v.playCount)
+        assertEquals(1, v.uniqueTrackCount)
+        assertEquals(1, v.perTrackPlays["old-track"])
+    }
+
+    @Test
+    fun per_track_last_ts_exposed_on_view_and_uses_max_observed_ts() {
+        // Three plays for "a" at ts 100, 200, 50 — max is 200.
+        val nowFar = now  // far in the future, so window includes 50/100/200.
+        // But the default window is 7 days; ts values 50/100/200 are far older
+        // than now - WEEK_MS, so we use allTime = true.
+        val lines = listOf(
+            "{\"v\":1,\"ts\":100,\"kind\":\"play\",\"track\":\"a\",\"played_ms\":1000,\"duration_ms\":2000}",
+            "{\"v\":1,\"ts\":200,\"kind\":\"play\",\"track\":\"a\",\"played_ms\":1000,\"duration_ms\":2000}",
+            "{\"v\":1,\"ts\":50,\"kind\":\"play\",\"track\":\"a\",\"played_ms\":1000,\"duration_ms\":2000}",
+        )
+        val v = StatsAggregator.aggregate(
+            lines = lines.iterator(),
+            nowMs = nowFar,
+            zone = ZoneOffset.UTC,
+            allTime = true,
+        )
+        assertEquals(3, v.playCount)
+        assertEquals(200L, v.perTrackLastTs["a"])
+    }
+
+    @Test
     fun heatmap_cell_math_30min_play_at_local_14_00_lights_today_hour14() {
         // Play at 2026-04-28 14:00 in the test zone (UTC). Today (last day in 7d window) → dayIdx 6, hourIdx 14.
         val ts = LocalDateTime.of(2026, 4, 28, 14, 0, 0)

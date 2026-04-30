@@ -37,6 +37,12 @@ data class StatsView(
     val heatmap: Array<LongArray>,        // [day 0..6][hour 0..23]; day 6 = today
     val heatmapNormalized: Array<FloatArray>,
     val windowStartMs: Long,
+    /**
+     * trackId -> max ev.ts observed for that track. Already computed inside
+     * [StatsAggregator.aggregate]; exposed for the Tracks-tab "recently
+     * listened" sort mode (quick task 260430-s5u).
+     */
+    val perTrackLastTs: Map<String, Long> = emptyMap(),
 ) {
     companion object {
         fun empty(windowStartMs: Long = 0L): StatsView = StatsView(
@@ -50,6 +56,7 @@ data class StatsView(
             heatmap = Array(7) { LongArray(24) },
             heatmapNormalized = Array(7) { FloatArray(24) },
             windowStartMs = windowStartMs,
+            perTrackLastTs = emptyMap(),
         )
     }
 }
@@ -71,11 +78,25 @@ object StatsAggregator {
         nowMs: Long,
         zone: ZoneId = ZoneId.systemDefault(),
         windowMs: Long = WEEK_MS,
+        /**
+         * When true, skip the `ev.ts < windowStartMs` filter — every event is
+         * counted regardless of age. The future-cutoff sanity guard
+         * (`ev.ts > nowMs + 1d`) still applies. Used by the Tracks-tab
+         * "most listened" / "recently listened" sort modes (quick task
+         * 260430-s5u) where the user wants their full play history, not a
+         * 7d/30d/1y window.
+         */
+        allTime: Boolean = false,
     ): StatsView {
-        val windowStartMs = nowMs - windowMs
+        val windowStartMs = if (allTime) Long.MIN_VALUE else nowMs - windowMs
         // Anchor day 0 at the local-zone date corresponding to windowStart.
+        // For allTime we pin the heatmap anchor to the standard 7d window so
+        // the Stats screen's heatmap still reads correctly when an
+        // allTime-aggregated view is reused there (defensive — current
+        // callers don't share views across screens).
+        val windowStartDateAnchor: Long = if (allTime) nowMs - WEEK_MS else windowStartMs
         val windowStartDate: LocalDate =
-            Instant.ofEpochMilli(windowStartMs).atZone(zone).toLocalDate()
+            Instant.ofEpochMilli(windowStartDateAnchor).atZone(zone).toLocalDate()
 
         val perTrack = HashMap<String, IntArray>()       // count
         val perTrackMs = HashMap<String, Long>()         // listened ms per track
@@ -164,7 +185,12 @@ object StatsAggregator {
             perTrackListenedMs = perTrackMs,
             heatmap = heatmap,
             heatmapNormalized = heatmapNormalized,
-            windowStartMs = windowStartMs,
+            // For allTime, return the heatmap anchor (last 7d) so the Stats
+            // screen's heatmap day-row labels stay coherent if a caller ever
+            // shares an allTime view; the timestamp filter itself is not
+            // re-derived from this field downstream.
+            windowStartMs = if (allTime) windowStartDateAnchor else windowStartMs,
+            perTrackLastTs = perTrackLastTs.toMap(),
         )
     }
 

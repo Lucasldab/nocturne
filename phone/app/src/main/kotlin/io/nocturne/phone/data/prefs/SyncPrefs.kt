@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import io.nocturne.phone.ui.browser.TrackSortMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -21,6 +22,7 @@ private val DEVICE_ID = stringPreferencesKey("device_id")
 private val LAST_STATS_SYNC_AT = longPreferencesKey("last_stats_sync_at_ms")
 private val STORAGE_BUDGET_GB = intPreferencesKey("storage_budget_gb")
 private val NOTIF_PROMPT_SHOWN = booleanPreferencesKey("notif_prompt_shown")
+private val TRACK_SORT_MODE = stringPreferencesKey("track_sort_mode")
 
 /**
  * Single-purpose DataStore wrapper. Keys:
@@ -176,5 +178,17 @@ class SyncPrefs(private val ctx: Context) {
 
     suspend fun setNotifPromptShown(shown: Boolean) {
         ctx.syncDataStore.edit { it[NOTIF_PROMPT_SHOWN] = shown }
+    }
+
+    /**
+     * Quick task 260430-s5u: Tracks-tab sort mode. Persisted as the enum's
+     * `persistedKey` (string) so future modes append without breaking older
+     * builds; an unknown / null value falls back to [TrackSortMode.DEFAULT].
+     */
+    val trackSortMode: Flow<TrackSortMode> =
+        ctx.syncDataStore.data.map { TrackSortMode.fromPersistedKey(it[TRACK_SORT_MODE]) }
+
+    suspend fun setTrackSortMode(mode: TrackSortMode) {
+        ctx.syncDataStore.edit { it[TRACK_SORT_MODE] = mode.persistedKey }
     }
 }

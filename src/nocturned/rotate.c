@@ -94,7 +94,9 @@ static int mkparents(const char *path)
     return rc;
 }
 
-static int copy_and_unlink(const char *src, const char *dst)
+/* Copy src → dst byte-for-byte, fsync, leave src in place. Returns 0 on
+ * success, -1 on failure (with dst removed). */
+static int copy_only(const char *src, const char *dst)
 {
     int s = open(src, O_RDONLY | O_CLOEXEC);
     if (s < 0) return -1;
@@ -118,6 +120,12 @@ done:
     if (rc == 0 && fsync(d) != 0) rc = -1;
     close(d); close(s);
     if (rc != 0) { unlink(dst); return -1; }
+    return 0;
+}
+
+static int copy_and_unlink(const char *src, const char *dst)
+{
+    if (copy_only(src, dst) != 0) return -1;
     if (unlink(src) != 0) return -1;
     return 0;
 }
@@ -335,6 +343,69 @@ static char *path_with_ext(const char *path, const char *new_ext)
     return out;
 }
 
+/* Album-folder cover sidecars to propagate from archive/ → resident/.
+ * Phone-side AlbumArtRepository falls back to these when MMR returns no
+ * embedded picture (opus drops it during transcode). Without the link,
+ * Syncthing only ships the resident audio and the phone gets no art. */
+static const char *const COVER_SIDECAR_NAMES[] = {
+    "cover.jpg", "cover.png", "folder.jpg", "folder.png", NULL,
+};
+
+/* Hardlink (or copy on EXDEV) every cover sidecar that exists in
+ * `archive_audio_path`'s directory into the corresponding directory of
+ * `resident_audio_path`. Idempotent: skips when the destination already
+ * exists. Best-effort — sidecar failures are logged but never fail the
+ * rotate (a missing cover is cosmetic, not a sync correctness issue). */
+static void link_album_covers(const char *archive_audio_path,
+                              const char *resident_audio_path)
+{
+    if (!archive_audio_path || !resident_audio_path) return;
+    const char *a_slash = strrchr(archive_audio_path, '/');
+    const char *r_slash = strrchr(resident_audio_path, '/');
+    if (!a_slash || !r_slash) return;
+    size_t a_dirlen = (size_t)(a_slash - archive_audio_path);
+    size_t r_dirlen = (size_t)(r_slash - resident_audio_path);
+
+    for (int i = 0; COVER_SIDECAR_NAMES[i]; i++) {
+        const char *name = COVER_SIDECAR_NAMES[i];
+        size_t nlen = strlen(name);
+        char *src = malloc(a_dirlen + 1 + nlen + 1);
+        char *dst = malloc(r_dirlen + 1 + nlen + 1);
+        if (!src || !dst) { free(src); free(dst); continue; }
+        memcpy(src, archive_audio_path, a_dirlen);
+        src[a_dirlen] = '/';
+        memcpy(src + a_dirlen + 1, name, nlen + 1);
+        memcpy(dst, resident_audio_path, r_dirlen);
+        dst[r_dirlen] = '/';
+        memcpy(dst + r_dirlen + 1, name, nlen + 1);
+
+        struct stat sst;
+        if (stat(src, &sst) != 0 || !S_ISREG(sst.st_mode)) {
+            free(src); free(dst);
+            continue;
+        }
+        struct stat dst_st;
+        if (stat(dst, &dst_st) == 0) {
+            free(src); free(dst);
+            continue;  /* sidecar already present — leave it alone */
+        }
+
+        int rc = do_link(src, dst);
+        if (rc != 0 && errno == EXDEV) {
+            if (copy_only(src, dst) != 0) {
+                fprintf(stderr,
+                    "rotate: cover sidecar %s → %s cross-fs copy failed: %s\n",
+                    src, dst, strerror(errno));
+            }
+        } else if (rc != 0 && errno != EEXIST) {
+            fprintf(stderr,
+                "rotate: cover sidecar link(%s, %s) failed: %s\n",
+                src, dst, strerror(errno));
+        }
+        free(src); free(dst);
+    }
+}
+
 /* Transcode-mode promote (archive → resident). archive/X.flac stays. We
  * compute resident_transcode_path = swap_segment + extension swap, run
  * ffmpeg into it, stat for size, write residency_state with location +
@@ -431,6 +502,12 @@ static int promote_transcode(struct nocturne_db *db, const char *library_root,
         free(archive_path); free(transcode_path);
         return -1;
     }
+
+    /* Cover sidecar propagation: archive/<album>/cover.jpg has to reach the
+     * phone alongside the transcode for AlbumArtRepository to render art for
+     * opus tracks (which lose embedded picture during the encode). Idempotent
+     * + best-effort — failures don't fail the promote. */
+    link_album_covers(archive_path, transcode_path);
 
     free(archive_path);
     free(transcode_path);
@@ -588,6 +665,15 @@ static int move_one(struct nocturne_db *db, const char *library_root,
         fprintf(stderr, "rotate: residency_state upsert for %.*s failed\n",
                 (int) strlen(sha), sha);
         out->errors++;
+    }
+
+    /* Promote-only sidecar propagation: when moving archive→resident, also
+     * hardlink the album's cover.jpg-style sidecars into resident/<album>/
+     * so Syncthing ships them to the phone for AlbumArtRepository fallback.
+     * `cur` is the old archive path; its directory still holds the sidecar
+     * after the audio unlink. Skip on demote — sidecar can stay where it is. */
+    if (!strcmp(target_location, "resident")) {
+        link_album_covers(cur, new_path);
     }
 
     free(cur);

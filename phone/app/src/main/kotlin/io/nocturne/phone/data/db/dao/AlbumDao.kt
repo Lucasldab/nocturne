@@ -5,6 +5,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import io.nocturne.phone.data.db.LetterAnchor
 import io.nocturne.phone.data.db.entity.AlbumEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -30,4 +31,30 @@ interface AlbumDao {
 
     @Query("SELECT COUNT(*) FROM albums")
     suspend fun count(): Int
+
+    /**
+     * Letter-rail anchor list. One row per starting-letter bucket, paired
+     * with the 0-based row index of the first album under that letter
+     * within `pagedAll()`'s ORDER BY title COLLATE NOCASE listing. Buckets
+     * non-A..Z starts (digits, accents, punctuation, empty) into '#'.
+     *
+     * Caller must add `+1` to `rowIndex` if the screen prepends a
+     * SectionLabel header item — the DAO is UI-chrome-unaware.
+     */
+    @Query(
+        """
+        SELECT letter, MIN(rn) AS rowIndex FROM (
+          SELECT
+            CASE
+              WHEN UPPER(SUBSTR(title, 1, 1)) BETWEEN 'A' AND 'Z'
+                THEN UPPER(SUBSTR(title, 1, 1))
+              ELSE '#'
+            END AS letter,
+            (ROW_NUMBER() OVER (ORDER BY title COLLATE NOCASE)) - 1 AS rn
+          FROM albums
+        )
+        GROUP BY letter
+        """,
+    )
+    suspend fun letterFirstIndex(): List<LetterAnchor>
 }

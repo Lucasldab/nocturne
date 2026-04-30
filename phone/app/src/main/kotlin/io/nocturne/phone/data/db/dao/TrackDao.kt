@@ -6,6 +6,7 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Upsert
+import io.nocturne.phone.data.db.LetterAnchor
 import io.nocturne.phone.data.db.entity.TrackEntity
 
 @Dao
@@ -76,4 +77,26 @@ interface TrackDao {
      */
     @Query("SELECT * FROM tracks WHERE albumId = :albumId AND isResident = 1 ORDER BY discNumber, trackNumber LIMIT 1")
     suspend fun firstResidentByAlbum(albumId: String): TrackEntity?
+
+    /**
+     * Letter-rail anchors over `pagedAll()`'s ORDER BY title COLLATE NOCASE
+     * listing. See [io.nocturne.phone.data.db.dao.AlbumDao.letterFirstIndex]
+     * for the bucketing contract.
+     */
+    @Query(
+        """
+        SELECT letter, MIN(rn) AS rowIndex FROM (
+          SELECT
+            CASE
+              WHEN UPPER(SUBSTR(title, 1, 1)) BETWEEN 'A' AND 'Z'
+                THEN UPPER(SUBSTR(title, 1, 1))
+              ELSE '#'
+            END AS letter,
+            (ROW_NUMBER() OVER (ORDER BY title COLLATE NOCASE)) - 1 AS rn
+          FROM tracks
+        )
+        GROUP BY letter
+        """,
+    )
+    suspend fun letterFirstIndex(): List<LetterAnchor>
 }

@@ -19,6 +19,16 @@ interface ArtistDao {
     @Query("SELECT * FROM artists ORDER BY name COLLATE NOCASE")
     fun pagedAll(): PagingSource<Int, ArtistEntity>
 
+    /**
+     * Non-paged full artist list. Same ORDER BY as [pagedAll] so the
+     * letter-rail's [letterFirstIndex] row indices line up byte-for-byte.
+     * Used by [io.nocturne.phone.ui.browser.BrowserViewModel.artistsAll] for
+     * the ArtistsScreen LazyColumn — Pager+scrollToItem cannot reach indices
+     * outside the loaded window (quick task 260430-vtb Bug 1).
+     */
+    @Query("SELECT * FROM artists ORDER BY name COLLATE NOCASE")
+    suspend fun listAll(): List<ArtistEntity>
+
     @Query("SELECT * FROM artists WHERE id = :id")
     suspend fun byId(id: String): ArtistEntity?
 

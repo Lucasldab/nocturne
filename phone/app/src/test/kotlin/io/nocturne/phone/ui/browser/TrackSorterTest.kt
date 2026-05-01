@@ -128,9 +128,12 @@ class TrackSorterTest {
 
     @Test
     fun recently_downloaded_orders_by_date_added_desc_with_alpha_tiebreak() {
-        val newA = mkTrack("1", "Zulu", dateAdded = "2026-04-30")
-        val newB = mkTrack("2", "Alpha", dateAdded = "2026-04-30")
-        val older = mkTrack("3", "Mike", dateAdded = "2026-04-15")
+        // Quick task 260430-vtb: dateAdded is now parsed as ISO-8601 UTC
+        // (matching the daemon's scan.c emit shape). Bare "YYYY-MM-DD" no
+        // longer parses; switched fixture to canonical "YYYY-MM-DDTHH:MM:SSZ".
+        val newA = mkTrack("1", "Zulu", dateAdded = "2026-04-30T10:00:00Z")
+        val newB = mkTrack("2", "Alpha", dateAdded = "2026-04-30T10:00:00Z")
+        val older = mkTrack("3", "Mike", dateAdded = "2026-04-15T10:00:00Z")
         val sorted = TrackSorter.sort(
             tracks = listOf(newA, older, newB),
             mode = TrackSortMode.RecentlyDownloaded,

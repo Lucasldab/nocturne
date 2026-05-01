@@ -24,9 +24,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.paging.compose.itemContentType
-import androidx.paging.compose.itemKey
 import io.nocturne.phone.data.db.entity.ArtistEntity
 import io.nocturne.phone.ui.browser.components.AlbumRow
 import io.nocturne.phone.ui.browser.components.TrackRow
@@ -46,7 +43,7 @@ fun ArtistDetailScreen(
     LaunchedEffect(artistId) { artist = vm.artistById(artistId) }
 
     val albums by vm.albumsByArtist(artistId).collectAsStateWithLifecycle(initialValue = emptyList())
-    val tracks = vm.tracksByArtist(artistId).collectAsLazyPagingItems()
+    val tracks by vm.tracksByArtistState(artistId).collectAsStateWithLifecycle()
 
     // PLAY-10: collect pinnedIdSet once per screen for efficient pin state.
     val pinnedIds by vm.pinnedIdSet.collectAsStateWithLifecycle()
@@ -116,11 +113,10 @@ fun ArtistDetailScreen(
                 )
             }
             items(
-                count = tracks.itemCount,
-                key = tracks.itemKey { it.id },
-                contentType = tracks.itemContentType { "track" },
-            ) { idx ->
-                val t = tracks[idx] ?: return@items
+                items = tracks,
+                key = { it.id },
+                contentType = { "track" },
+            ) { t ->
                 TrackRow(
                     track = t,
                     isPinned = pinnedIds.contains(t.id),

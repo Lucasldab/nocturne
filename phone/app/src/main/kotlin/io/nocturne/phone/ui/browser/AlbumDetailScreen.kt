@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,9 +25,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.paging.compose.itemContentType
-import androidx.paging.compose.itemKey
 import io.nocturne.phone.data.db.entity.AlbumEntity
 import io.nocturne.phone.player.PlayerViewModel
 import io.nocturne.phone.ui.browser.components.TrackRow
@@ -51,7 +49,7 @@ fun AlbumDetailScreen(
         // the header). Cheap — single album, ≤ ~20 rows typical.
         fullTrackList = vm.tracksByAlbumList(albumId)
     }
-    val tracks = vm.tracksByAlbum(albumId).collectAsLazyPagingItems()
+    val tracks by vm.tracksByAlbumState(albumId).collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val container = (ctx.applicationContext as io.nocturne.phone.NocturneApp).container
@@ -96,11 +94,10 @@ fun AlbumDetailScreen(
         HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             items(
-                count = tracks.itemCount,
-                key = tracks.itemKey { it.id },
-                contentType = tracks.itemContentType { "track" },
-            ) { idx ->
-                val t = tracks[idx] ?: return@items
+                items = tracks,
+                key = { it.id },
+                contentType = { "track" },
+            ) { t ->
                 TrackRow(
                     track = t,
                     isPinned = pinnedIds.contains(t.id),

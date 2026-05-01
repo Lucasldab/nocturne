@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -137,21 +138,26 @@ class BrowserViewModel(private val container: AppContainer) : ViewModel() {
             )
 
     // -------------------------------------------------------------------------
-    // Quick task 260430-vtb (Bug 1 + Bug 3): non-paged alphabetical browse axes.
+    // Quick task 260430-wt0 (Bug 1): Room-Flow-backed alphabetical browse axes.
     //
-    // Pager+scrollToItem(target) silently swallows seeks past the loaded paging
-    // window, so the LetterScrollRail couldn't snap to letters far from the
-    // current scroll position. Library is bounded (~1899 tracks); a single
-    // sortedWith over Dispatchers.IO is well under the frame budget. Initial
-    // emit is `emptyList()` so screens render immediately on cold start; the
-    // real list arrives on the first IO tick (also addresses Bug 3 — Pager
-    // warm-up was the cold-start TracksScreen latency cause).
+    // Previously these were `flow { emit(suspend listAll()) }.stateIn(...)` —
+    // single-emit, so when the catalog reconciler flipped isResident on
+    // already-loaded rows the screen never re-rendered until the user navigated
+    // away and back. Switching to `dao.flowAll(): Flow<List<X>>` plumbs Room's
+    // table-change notifications all the way to Compose so live updates land.
+    // `flowOn(IO)` is belt-and-suspenders — Room handles its own dispatcher
+    // routing, but downstream `.map { ... }` consumers (none today, but cheap
+    // to insulate) won't accidentally re-suspend on Main.
+    //
+    // Earlier (quick task 260430-vtb) this surface was switched from Pager to
+    // non-paged so the LetterScrollRail could scrollToItem to indices outside
+    // the paging window; that decision is preserved here — the only change is
+    // single-emit → Room-Flow.
     // -------------------------------------------------------------------------
 
     val tracksAlphabetical: StateFlow<List<TrackEntity>> =
-        flow {
-            emit(withContext(Dispatchers.IO) { container.db.trackDao().listAll() })
-        }
+        container.db.trackDao().flowAll()
+            .flowOn(Dispatchers.IO)
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(5_000),
@@ -159,9 +165,8 @@ class BrowserViewModel(private val container: AppContainer) : ViewModel() {
             )
 
     val albumsAll: StateFlow<List<AlbumEntity>> =
-        flow {
-            emit(withContext(Dispatchers.IO) { container.db.albumDao().listAll() })
-        }
+        container.db.albumDao().flowAll()
+            .flowOn(Dispatchers.IO)
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(5_000),
@@ -169,14 +174,56 @@ class BrowserViewModel(private val container: AppContainer) : ViewModel() {
             )
 
     val artistsAll: StateFlow<List<ArtistEntity>> =
-        flow {
-            emit(withContext(Dispatchers.IO) { container.db.artistDao().listAll() })
-        }
+        container.db.artistDao().flowAll()
+            .flowOn(Dispatchers.IO)
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(5_000),
                 initialValue = emptyList(),
             )
+
+    // -------------------------------------------------------------------------
+    // Quick task 260430-wt0 (Bug 4): non-paged Album/Artist Detail track lists.
+    //
+    // AlbumDetailScreen / ArtistDetailScreen previously rendered tracks via
+    // `Pager(cfg) { dao.pagedByAlbum/Artist(id) }`; cold-load latency was
+    // dominated by Pager warm-up despite albums having ~30 tracks. Switch to
+    // Room-Flow non-paged + per-id memoized StateFlow so:
+    //   (a) cold-load is a single SELECT (no pagination overhead)
+    //   (b) live isResident updates propagate (same fix as Bug 1)
+    //   (c) re-entering an album within 5s reuses the live subscription
+    //
+    // Cache grows bounded by user navigation; tearing down on
+    // WhileSubscribed(5_000) keeps the upstream Flow cold when nothing
+    // observes. Eviction is intentionally absent — albums/artists are bounded
+    // (~hundreds), and cleared via VM teardown on activity destroy.
+    // -------------------------------------------------------------------------
+
+    private val tracksByAlbumStateCache = mutableMapOf<String, StateFlow<List<TrackEntity>>>()
+
+    fun tracksByAlbumState(albumId: String): StateFlow<List<TrackEntity>> =
+        tracksByAlbumStateCache.getOrPut(albumId) {
+            container.db.trackDao().tracksByAlbumFlow(albumId)
+                .flowOn(Dispatchers.IO)
+                .stateIn(
+                    scope = viewModelScope,
+                    started = SharingStarted.WhileSubscribed(5_000),
+                    initialValue = emptyList(),
+                )
+        }
+
+    private val tracksByArtistStateCache = mutableMapOf<String, StateFlow<List<TrackEntity>>>()
+
+    fun tracksByArtistState(artistId: String): StateFlow<List<TrackEntity>> =
+        tracksByArtistStateCache.getOrPut(artistId) {
+            container.db.trackDao().tracksByArtistFlow(artistId)
+                .flowOn(Dispatchers.IO)
+                .stateIn(
+                    scope = viewModelScope,
+                    started = SharingStarted.WhileSubscribed(5_000),
+                    initialValue = emptyList(),
+                )
+        }
 
     // -------------------------------------------------------------------------
     // Pinned-track download progress (SAF-stat probe; no network — CROSS-01).

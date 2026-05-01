@@ -48,12 +48,23 @@ object TrackSorter {
                     .then(byTitle),
             )
             TrackSortMode.RecentlyDownloaded -> {
-                // Quick task 260430-vtb Bug 2: overlay pinnedAt onto dateAdded
-                // so a freshly-pinned track outranks a bulk-rescanned older
-                // catalog row. dateAdded is ISO-8601 UTC ("2026-04-30T12:34:56Z"
-                // emitted by the daemon's scan.c). Parse to epoch ms; on parse
-                // failure fall back to MIN so the pinnedAt contribution still
-                // wins if the user pinned this track.
+                // Quick task 260430-wt0 Bug 3: filter to currently-resident tracks
+                // BEFORE sorting. The user's mental model: "Recently Downloaded" =
+                // currently on the phone, ordered by when they arrived. Non-resident
+                // tracks (catalog rows that aren't on disk) shouldn't appear in this
+                // view at all. Other sort modes are unchanged — Alphabetical is "the
+                // whole library", and the play-history-driven modes legitimately
+                // surface non-resident tracks the user has previously played.
+                //
+                // pinnedAt overlay (quick task 260430-vtb Bug 2) is preserved: a
+                // freshly pinned + already-resident track outranks a bulk-rescanned
+                // older catalog row that shares the same dateAdded. dateAdded is
+                // ISO-8601 UTC ("2026-04-30T12:34:56Z" emitted by the daemon's
+                // scan.c). Parse to epoch ms; on parse failure fall back to MIN so
+                // the pinnedAt contribution still wins if the user pinned this
+                // track.
+                val resident = tracks.filter { it.isResident }
+                if (resident.isEmpty()) return resident
                 fun keyOf(t: TrackEntity): Long {
                     val addedMs = runCatching {
                         java.time.Instant.parse(t.dateAdded).toEpochMilli()
@@ -61,7 +72,7 @@ object TrackSorter {
                     val pinnedMs = perTrackPinnedAt[t.id] ?: Long.MIN_VALUE
                     return maxOf(addedMs, pinnedMs)
                 }
-                tracks.sortedWith(
+                resident.sortedWith(
                     compareByDescending<TrackEntity> { keyOf(it) }.then(byTitle),
                 )
             }

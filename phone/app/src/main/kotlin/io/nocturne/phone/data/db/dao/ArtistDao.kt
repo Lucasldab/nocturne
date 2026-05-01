@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import io.nocturne.phone.data.db.LetterAnchor
 import io.nocturne.phone.data.db.entity.ArtistEntity
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ArtistDao {
@@ -28,6 +29,14 @@ interface ArtistDao {
      */
     @Query("SELECT * FROM artists ORDER BY name COLLATE NOCASE")
     suspend fun listAll(): List<ArtistEntity>
+
+    /**
+     * Room-Flow alphabetical artist list. Same ORDER BY as [pagedAll] / [listAll].
+     * Used by BrowserViewModel.artistsAll for live re-render
+     * (quick task 260430-wt0 Bug 1).
+     */
+    @Query("SELECT * FROM artists ORDER BY name COLLATE NOCASE")
+    fun flowAll(): Flow<List<ArtistEntity>>
 
     @Query("SELECT * FROM artists WHERE id = :id")
     suspend fun byId(id: String): ArtistEntity?

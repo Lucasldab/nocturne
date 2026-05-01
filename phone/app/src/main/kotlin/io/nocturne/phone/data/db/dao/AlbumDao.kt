@@ -30,6 +30,14 @@ interface AlbumDao {
     @Query("SELECT * FROM albums ORDER BY title COLLATE NOCASE")
     suspend fun listAll(): List<AlbumEntity>
 
+    /**
+     * Room-Flow alphabetical album list. Same ORDER BY as [pagedAll] / [listAll].
+     * Used by BrowserViewModel.albumsAll for live re-render on catalog updates
+     * (quick task 260430-wt0 Bug 1).
+     */
+    @Query("SELECT * FROM albums ORDER BY title COLLATE NOCASE")
+    fun flowAll(): Flow<List<AlbumEntity>>
+
     @Query("SELECT * FROM albums WHERE id = :id")
     suspend fun byId(id: String): AlbumEntity?
 

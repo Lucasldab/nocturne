@@ -2,7 +2,8 @@ package io.nocturne.phone.ui.browser.components
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,11 +16,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.nocturne.phone.ui.theme.JetBrainsMono
@@ -33,8 +37,11 @@ import kotlinx.coroutines.launch
  * composable can index its [letterIndex] map with the same key the DAO emits.
  */
 object LetterIndex {
-    /** A..Z + '#' (catch-all for digits, accents, punctuation, empty). */
-    val LETTERS: List<Char> = ('A'..'Z').toList() + '#'
+    /** '#' first (catch-all for digits, accents, punctuation, empty), then A..Z.
+     *  '#'-first matches the user's mental model: titles starting with digits
+     *  / symbols (e.g. "111", "4up") are listed BEFORE alphabetical entries
+     *  in the data ordering, so the rail's first cell jumps to that bucket. */
+    val LETTERS: List<Char> = listOf('#') + ('A'..'Z').toList()
 
     /** Bucket the first character of [s] to one of [LETTERS]. */
     fun letterOf(s: String): Char {
@@ -74,6 +81,8 @@ fun LetterScrollRail(
 ) {
     val scope = rememberCoroutineScope()
     val alpha = remember { Animatable(0.35f) }
+    val railHeightPx = remember { mutableIntStateOf(0) }
+    val lastTargetIdx = remember { mutableIntStateOf(-1) }
 
     LaunchedEffect(listState.isScrollInProgress) {
         if (listState.isScrollInProgress) {
@@ -88,11 +97,48 @@ fun LetterScrollRail(
         }
     }
 
+    // Resolve a finger-Y position to a letter index, then scroll the list to
+    // the first row of that letter's bucket. Coalesces consecutive snaps to
+    // the same letter (drag through a 200dp rail at 30 fps would otherwise
+    // fire 30 redundant scrollToItem calls per second).
+    fun handleY(y: Float) {
+        val total = railHeightPx.intValue
+        if (total <= 0) return
+        val letters = LetterIndex.LETTERS
+        val per = total.toFloat() / letters.size
+        val raw = (y / per).toInt().coerceIn(0, letters.size - 1)
+        if (raw == lastTargetIdx.intValue) return
+        val char = letters[raw]
+        val target = letterIndex[char] ?: return
+        lastTargetIdx.intValue = raw
+        scope.launch {
+            alpha.snapTo(1f)
+            listState.scrollToItem(target)
+        }
+    }
+
     Column(
         modifier = modifier
-            .width(16.dp)
+            // 28dp (was 16dp) gives a thumb-sized hit area — testing at 16dp
+            // showed real-device taps landing on dead-zones / adjacent letters.
+            .width(28.dp)
             .fillMaxHeight()
-            .alpha(alpha.value),
+            .alpha(alpha.value)
+            .onSizeChanged { railHeightPx.intValue = it.height }
+            .pointerInput(letterIndex) {
+                detectVerticalDragGestures(
+                    onDragStart = { offset -> handleY(offset.y) },
+                    onDragEnd = { lastTargetIdx.intValue = -1 },
+                    onDragCancel = { lastTargetIdx.intValue = -1 },
+                    onVerticalDrag = { change, _ ->
+                        change.consume()
+                        handleY(change.position.y)
+                    },
+                )
+            }
+            .pointerInput(letterIndex) {
+                detectTapGestures(onTap = { offset -> handleY(offset.y) })
+            },
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -104,20 +150,15 @@ fun LetterScrollRail(
                 NocturneOnSurfaceMuted
             }
             val perGlyphAlpha = if (populated) 1f else 0.25f
-            val tapModifier = if (populated) {
-                Modifier.clickable {
-                    val target = letterIndex.getValue(char)
-                    scope.launch { listState.scrollToItem(target) }
-                }
-            } else {
-                Modifier
-            }
+            // No per-letter clickable now — the parent Column owns a single
+            // pointerInput that handles both tap (jump to letter under finger)
+            // and drag (scrub through letters as the finger moves). Per-letter
+            // clickables would steal events from the drag gesture.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 2.dp)
-                    .alpha(perGlyphAlpha)
-                    .then(tapModifier),
+                    .alpha(perGlyphAlpha),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(

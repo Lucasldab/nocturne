@@ -20,6 +20,16 @@ interface AlbumDao {
     @Query("SELECT * FROM albums ORDER BY title COLLATE NOCASE")
     fun pagedAll(): PagingSource<Int, AlbumEntity>
 
+    /**
+     * Non-paged full album list. Same ORDER BY as [pagedAll] so the
+     * letter-rail's [letterFirstIndex] row indices line up byte-for-byte.
+     * Used by [io.nocturne.phone.ui.browser.BrowserViewModel.albumsAll] for
+     * the AlbumsScreen LazyColumn — Pager+scrollToItem cannot reach indices
+     * outside the loaded window (quick task 260430-vtb Bug 1).
+     */
+    @Query("SELECT * FROM albums ORDER BY title COLLATE NOCASE")
+    suspend fun listAll(): List<AlbumEntity>
+
     @Query("SELECT * FROM albums WHERE id = :id")
     suspend fun byId(id: String): AlbumEntity?
 

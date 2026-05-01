@@ -120,6 +120,67 @@ class BrowserViewModel(private val container: AppContainer) : ViewModel() {
             initialValue = emptySet(),
         )
 
+    /**
+     * Map of pinned track id -> pinnedAt epoch-ms. Powers the
+     * RecentlyDownloaded pin overlay (quick task 260430-vtb Bug 2). Filtered
+     * to unit="track" rows with pinned=true so unpinned tombstones don't leak
+     * into the ordering.
+     */
+    val pinnedAtById: StateFlow<Map<String, Long>> =
+        container.db.pinDao().flowAllPinned()
+            .map { rows ->
+                rows.asSequence()
+                    .filter { it.pinned && it.unit == "track" }
+                    .associate { it.id to it.pinnedAt }
+            }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = emptyMap(),
+            )
+
+    // -------------------------------------------------------------------------
+    // Quick task 260430-vtb (Bug 1 + Bug 3): non-paged alphabetical browse axes.
+    //
+    // Pager+scrollToItem(target) silently swallows seeks past the loaded paging
+    // window, so the LetterScrollRail couldn't snap to letters far from the
+    // current scroll position. Library is bounded (~1899 tracks); a single
+    // sortedWith over Dispatchers.IO is well under the frame budget. Initial
+    // emit is `emptyList()` so screens render immediately on cold start; the
+    // real list arrives on the first IO tick (also addresses Bug 3 — Pager
+    // warm-up was the cold-start TracksScreen latency cause).
+    // -------------------------------------------------------------------------
+
+    val tracksAlphabetical: StateFlow<List<TrackEntity>> =
+        flow {
+            emit(withContext(Dispatchers.IO) { container.db.trackDao().listAll() })
+        }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = emptyList(),
+            )
+
+    val albumsAll: StateFlow<List<AlbumEntity>> =
+        flow {
+            emit(withContext(Dispatchers.IO) { container.db.albumDao().listAll() })
+        }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = emptyList(),
+            )
+
+    val artistsAll: StateFlow<List<ArtistEntity>> =
+        flow {
+            emit(withContext(Dispatchers.IO) { container.db.artistDao().listAll() })
+        }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = emptyList(),
+            )
+
     // -------------------------------------------------------------------------
     // Pinned-track download progress (SAF-stat probe; no network — CROSS-01).
     //
@@ -358,12 +419,21 @@ class BrowserViewModel(private val container: AppContainer) : ViewModel() {
                     } else {
                         StatsView.empty()
                     }
+                    // Quick task 260430-vtb Bug 2: feed pinnedAt into the
+                    // RecentlyDownloaded ordering. StateFlow read is
+                    // non-suspending so this doesn't introduce a join point.
+                    val pinnedAtMap = if (mode == TrackSortMode.RecentlyDownloaded) {
+                        pinnedAtById.value
+                    } else {
+                        emptyMap()
+                    }
                     emit(
                         TrackSorter.sort(
                             tracks = all,
                             mode = mode,
                             perTrackPlays = stats.perTrackPlays,
                             perTrackLastTs = stats.perTrackLastTs,
+                            perTrackPinnedAt = pinnedAtMap,
                         ),
                     )
                 }

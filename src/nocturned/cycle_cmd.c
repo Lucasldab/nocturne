@@ -42,12 +42,24 @@ int cycle_cmd_main(struct cli_args *args)
     }
 
     /* ingest is best-effort: phone may not have produced any new JSONL,
-     * which is not an error. The handler exits 0 on a no-op. */
+     * which is not an error. The handler exits 0 on a no-op.
+     *
+     * 2026-05-01: per-file failures used to abort the entire cycle
+     * (manifest never published, Syncthing stuck out-of-sync). One bad
+     * action / parse error / DB transaction collision should NOT kill
+     * resolve+rotate+publish. Treat ingest non-zero as a warning and
+     * continue — the operator can investigate via journalctl. The lock
+     * collision case (NOCT_EXIT_LOCK_BUSY) IS still fatal: a parallel
+     * writer means we can't safely proceed. */
     fprintf(stderr, "cycle: [2/5] ingest\n");
     rc = ingest_cmd_main(args);
-    if (rc != NOCT_EXIT_OK) {
-        fprintf(stderr, "cycle: ingest failed (rc=%d), aborting\n", rc);
+    if (rc == NOCT_EXIT_LOCK_BUSY) {
+        fprintf(stderr, "cycle: ingest lock-busy (rc=%d), aborting\n", rc);
         return rc;
+    }
+    if (rc != NOCT_EXIT_OK) {
+        fprintf(stderr, "cycle: ingest had per-file errors (rc=%d), continuing\n", rc);
+        /* fall through to resolve so manifest still publishes */
     }
 
     fprintf(stderr, "cycle: [3/5] resolve\n");

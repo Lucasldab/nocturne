@@ -183,14 +183,33 @@ int delete_track_everywhere(struct nocturne_db *db, const char *sha,
 }
 
 /* Resolve album_id → list of track shas. Caller frees `shas` (an array of
- * strdup'd strings) and the array itself. Returns count, -1 on error. */
+ * strdup'd strings) and the array itself. Returns count, 0 on no-match.
+ *
+ * NOTE 2026-05-01: daemon's `tracks` schema currently has no `album_id`
+ * column — it stores `album_artist` and `album` strings. The phone derives
+ * its album_id as `sha256hex("$album_artist $album.lowercase()")` (see
+ * phone CatalogImporter.kt). The two id surfaces don't line up, so any
+ * incoming album-unit action silently degrades to a no-op here rather than
+ * crashing the entire ingest pipeline. STATE.md Phase-9-candidate covers
+ * the proper fix (schema migration adding album_id, OR daemon-side hash
+ * derivation matching the phone). Until then: log + return 0 so the cycle
+ * doesn't abort and the JSONL offset still advances. */
 static long long album_track_shas(struct sqlite3 *raw, const char *album_id,
                                   char ***shas_out)
 {
+    *shas_out = NULL;
     sqlite3_stmt *st = NULL;
-    if (sqlite3_prepare_v2(raw,
+    int prep_rc = sqlite3_prepare_v2(raw,
             "SELECT sha256 FROM tracks WHERE album_id=? ORDER BY sha256",
-            -1, &st, NULL) != SQLITE_OK) return -1;
+            -1, &st, NULL);
+    if (prep_rc != SQLITE_OK) {
+        /* Most common case today: column doesn't exist. Degrade gracefully. */
+        fprintf(stderr,
+            "actions: album lookup unsupported (album_id column missing); "
+            "skipping album action for id=%.16s... (rc=%d)\n",
+            album_id ? album_id : "<null>", prep_rc);
+        return 0;
+    }
     sqlite3_bind_text(st, 1, album_id, -1, SQLITE_TRANSIENT);
     char **arr = NULL;
     long long n = 0, cap = 0;

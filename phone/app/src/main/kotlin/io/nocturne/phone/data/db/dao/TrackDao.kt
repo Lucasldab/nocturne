@@ -8,6 +8,7 @@ import androidx.room.Query
 import androidx.room.Upsert
 import io.nocturne.phone.data.db.LetterAnchor
 import io.nocturne.phone.data.db.entity.TrackEntity
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TrackDao {
@@ -37,11 +38,36 @@ interface TrackDao {
     @Query("SELECT * FROM tracks ORDER BY title COLLATE NOCASE")
     fun pagedAll(): PagingSource<Int, TrackEntity>
 
+    /**
+     * Room-Flow alphabetical track list. Same ORDER BY as [pagedAll] / [listAll]
+     * so letter-rail row indices line up. Used by BrowserViewModel.tracksAlphabetical
+     * — Flow ensures Room's table-change notifications reach Compose so isResident
+     * flips (catalog reconciler post-pin-pull) re-render the open screen
+     * (quick task 260430-wt0 Bug 1).
+     */
+    @Query("SELECT * FROM tracks ORDER BY title COLLATE NOCASE")
+    fun flowAll(): Flow<List<TrackEntity>>
+
     @Query("SELECT * FROM tracks WHERE albumId = :albumId ORDER BY discNumber, trackNumber")
     fun pagedByAlbum(albumId: String): PagingSource<Int, TrackEntity>
 
+    /**
+     * Non-paged Flow of tracks for an album. Used by AlbumDetailScreen
+     * (quick task 260430-wt0 Bug 4) — albums are bounded (~30 tracks typically),
+     * Pager warm-up was the cold-load latency cause.
+     */
+    @Query("SELECT * FROM tracks WHERE albumId = :albumId ORDER BY discNumber, trackNumber")
+    fun tracksByAlbumFlow(albumId: String): Flow<List<TrackEntity>>
+
     @Query("SELECT * FROM tracks WHERE albumArtistId = :artistId ORDER BY year, album, discNumber, trackNumber")
     fun pagedByArtist(artistId: String): PagingSource<Int, TrackEntity>
+
+    /**
+     * Non-paged Flow of tracks for an artist. Used by ArtistDetailScreen
+     * (quick task 260430-wt0 Bug 4). ORDER BY matches [pagedByArtist].
+     */
+    @Query("SELECT * FROM tracks WHERE albumArtistId = :artistId ORDER BY year, album, discNumber, trackNumber")
+    fun tracksByArtistFlow(artistId: String): Flow<List<TrackEntity>>
 
     @Query("SELECT * FROM tracks WHERE genreId = :genreId ORDER BY title COLLATE NOCASE")
     fun pagedByGenre(genreId: String): PagingSource<Int, TrackEntity>

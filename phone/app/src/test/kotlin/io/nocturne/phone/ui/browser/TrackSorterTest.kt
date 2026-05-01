@@ -22,6 +22,7 @@ class TrackSorterTest {
         id: String,
         title: String,
         dateAdded: String = "",
+        isResident: Boolean = false,
     ): TrackEntity = TrackEntity(
         id = id,
         title = title,
@@ -41,7 +42,7 @@ class TrackSorterTest {
         mtimeNs = 0L,
         dateAdded = dateAdded,
         path = "",
-        isResident = false,
+        isResident = isResident,
         searchBlob = "",
     )
 
@@ -131,9 +132,9 @@ class TrackSorterTest {
         // Quick task 260430-vtb: dateAdded is now parsed as ISO-8601 UTC
         // (matching the daemon's scan.c emit shape). Bare "YYYY-MM-DD" no
         // longer parses; switched fixture to canonical "YYYY-MM-DDTHH:MM:SSZ".
-        val newA = mkTrack("1", "Zulu", dateAdded = "2026-04-30T10:00:00Z")
-        val newB = mkTrack("2", "Alpha", dateAdded = "2026-04-30T10:00:00Z")
-        val older = mkTrack("3", "Mike", dateAdded = "2026-04-15T10:00:00Z")
+        val newA = mkTrack("1", "Zulu", dateAdded = "2026-04-30T10:00:00Z", isResident = true)
+        val newB = mkTrack("2", "Alpha", dateAdded = "2026-04-30T10:00:00Z", isResident = true)
+        val older = mkTrack("3", "Mike", dateAdded = "2026-04-15T10:00:00Z", isResident = true)
         val sorted = TrackSorter.sort(
             tracks = listOf(newA, older, newB),
             mode = TrackSortMode.RecentlyDownloaded,
@@ -157,8 +158,8 @@ class TrackSorterTest {
         // recent ISO-8601 dateAdded; the user just pinned `recent` so it must
         // outrank `older` despite the dateAdded tie. Pin epoch is AFTER the
         // shared dateAdded so max(pinnedMs, addedMs) = pinnedMs.
-        val recent = mkTrack("r", "Recent", dateAdded = "2026-04-30T10:00:00Z")
-        val older = mkTrack("o", "Older", dateAdded = "2026-04-30T10:00:00Z")
+        val recent = mkTrack("r", "Recent", dateAdded = "2026-04-30T10:00:00Z", isResident = true)
+        val older = mkTrack("o", "Older", dateAdded = "2026-04-30T10:00:00Z", isResident = true)
         val recentMs = java.time.Instant.parse("2026-04-30T10:00:00Z").toEpochMilli()
         val pinnedAt = mapOf("r" to (recentMs + 30_000L)) // 30s after dateAdded
         val sorted = TrackSorter.sort(
@@ -172,8 +173,8 @@ class TrackSorterTest {
     @Test
     fun recently_downloaded_unpinned_falls_back_to_dateAdded() {
         // No pin overlay -> behavior identical to pre-fix dateAdded ordering.
-        val newer = mkTrack("n", "Newer", dateAdded = "2026-04-30T10:00:00Z")
-        val older = mkTrack("o", "Older", dateAdded = "2026-04-15T10:00:00Z")
+        val newer = mkTrack("n", "Newer", dateAdded = "2026-04-30T10:00:00Z", isResident = true)
+        val older = mkTrack("o", "Older", dateAdded = "2026-04-15T10:00:00Z", isResident = true)
         val sorted = TrackSorter.sort(
             tracks = listOf(older, newer),
             mode = TrackSortMode.RecentlyDownloaded,
@@ -188,8 +189,8 @@ class TrackSorterTest {
         // over a parseable-but-older real timestamp. We assert that `broken`
         // beats `good` when its pin epoch is greater than good's parsed
         // dateAdded.
-        val broken = mkTrack("b", "Broken", dateAdded = "not-an-iso")
-        val good = mkTrack("g", "Good", dateAdded = "2026-04-30T10:00:00Z")
+        val broken = mkTrack("b", "Broken", dateAdded = "not-an-iso", isResident = true)
+        val good = mkTrack("g", "Good", dateAdded = "2026-04-30T10:00:00Z", isResident = true)
         val goodMs = java.time.Instant.parse("2026-04-30T10:00:00Z").toEpochMilli()
         val pinnedAt = mapOf("b" to (goodMs + 60_000L)) // 1 min after good
         val sorted = TrackSorter.sort(
@@ -198,6 +199,52 @@ class TrackSorterTest {
             perTrackPinnedAt = pinnedAt,
         )
         assertEquals(listOf("b", "g"), sorted.map { it.id })
+    }
+
+    // -------------------------------------------------------------------------
+    // Quick task 260430-wt0 Bug 3: resident-only filter on RecentlyDownloaded.
+    //
+    // "Recently Downloaded" = tracks currently on the phone, ordered by when
+    // they arrived. Non-resident catalog rows (visible-but-not-on-disk) must
+    // be filtered out before sorting; other sort modes are unchanged.
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun recently_downloaded_filters_out_non_resident_tracks() {
+        val resident = mkTrack("r", "Resident", dateAdded = "2026-04-30T10:00:00Z", isResident = true)
+        val ghost = mkTrack("g", "Ghost", dateAdded = "2026-04-30T10:00:00Z", isResident = false)
+        val sorted = TrackSorter.sort(
+            tracks = listOf(resident, ghost),
+            mode = TrackSortMode.RecentlyDownloaded,
+        )
+        assertEquals(listOf("r"), sorted.map { it.id })
+        assertTrue("ghost must be absent", sorted.none { it.id == "g" })
+    }
+
+    @Test
+    fun recently_downloaded_orders_among_resident_only() {
+        // Three resident tracks with descending dateAdded + one non-resident
+        // with the newest dateAdded that must NOT take index 0.
+        val newest = mkTrack("n", "Newest", dateAdded = "2026-04-30T10:00:00Z", isResident = true)
+        val middle = mkTrack("m", "Middle", dateAdded = "2026-04-20T10:00:00Z", isResident = true)
+        val oldest = mkTrack("o", "Oldest", dateAdded = "2026-04-10T10:00:00Z", isResident = true)
+        val ghost = mkTrack("g", "Ghost", dateAdded = "2026-05-01T10:00:00Z", isResident = false)
+        val sorted = TrackSorter.sort(
+            tracks = listOf(oldest, ghost, newest, middle),
+            mode = TrackSortMode.RecentlyDownloaded,
+        )
+        assertEquals(listOf("n", "m", "o"), sorted.map { it.id })
+    }
+
+    @Test
+    fun recently_downloaded_empty_when_no_resident_tracks() {
+        val a = mkTrack("a", "Alpha", dateAdded = "2026-04-30T10:00:00Z", isResident = false)
+        val b = mkTrack("b", "Bravo", dateAdded = "2026-04-29T10:00:00Z", isResident = false)
+        val sorted = TrackSorter.sort(
+            tracks = listOf(a, b),
+            mode = TrackSortMode.RecentlyDownloaded,
+        )
+        assertTrue("expected empty list when no resident tracks", sorted.isEmpty())
     }
 
     @Test

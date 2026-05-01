@@ -80,7 +80,11 @@ fun LetterScrollRail(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
-    val alpha = remember { Animatable(0.35f) }
+    // Baseline 0 = rail fully invisible at rest. Appears only while the user
+    // is actively scrolling (or interacting with the rail itself), then
+    // fades back to invisible after 1500ms idle. Per user request — too
+    // intrusive at the previous 0.35 baseline.
+    val alpha = remember { Animatable(0f) }
     val railHeightPx = remember { mutableIntStateOf(0) }
     val lastTargetIdx = remember { mutableIntStateOf(-1) }
 
@@ -88,10 +92,10 @@ fun LetterScrollRail(
         if (listState.isScrollInProgress) {
             alpha.snapTo(1f)
         } else {
-            // 1500ms idle decay back to faded baseline.
+            // 1500ms idle → fade fully out (0f).
             delay(1500L)
             alpha.animateTo(
-                targetValue = 0.35f,
+                targetValue = 0f,
                 animationSpec = tween(durationMillis = 400),
             )
         }

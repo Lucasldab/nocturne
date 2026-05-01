@@ -55,14 +55,11 @@ class BrowserViewModel(private val container: AppContainer) : ViewModel() {
         initialLoadSize = 100,
     )
 
-    val albums: Flow<PagingData<AlbumEntity>> =
-        Pager(cfg) { container.db.albumDao().pagedAll() }.flow.cachedIn(viewModelScope)
-
-    val artists: Flow<PagingData<ArtistEntity>> =
-        Pager(cfg) { container.db.artistDao().pagedAll() }.flow.cachedIn(viewModelScope)
-
-    val tracks: Flow<PagingData<TrackEntity>> =
-        Pager(cfg) { container.db.trackDao().pagedAll() }.flow.cachedIn(viewModelScope)
+    // Note: top-level alphabetical browse axes (tracks / albums / artists) used
+    // to be Pager-backed but were swapped to non-paged StateFlows below
+    // (tracksAlphabetical / albumsAll / artistsAll) for quick task 260430-vtb
+    // Bug 1 + Bug 3 — Pager+scrollToItem can't reach indices outside the
+    // loaded paging window. Detail-screen and genre-tab Pagers stay paged.
 
     val genres: Flow<PagingData<GenreEntity>> =
         Pager(cfg) { container.db.genreDao().pagedAll() }.flow.cachedIn(viewModelScope)

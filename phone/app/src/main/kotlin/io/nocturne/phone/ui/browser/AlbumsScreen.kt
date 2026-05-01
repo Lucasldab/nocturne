@@ -14,9 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.paging.compose.itemContentType
-import androidx.paging.compose.itemKey
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.nocturne.phone.data.AppContainer
 import io.nocturne.phone.ui.browser.components.AlbumRow
 import io.nocturne.phone.ui.browser.components.LetterScrollRail
@@ -29,15 +27,18 @@ fun AlbumsScreen(
     modifier: Modifier = Modifier,
     container: AppContainer? = null,
 ) {
-    val pagingItems = vm.albums.collectAsLazyPagingItems()
+    // Quick task 260430-vtb (Bug 1): swapped from Pager → non-paged StateFlow.
+    // Pager+scrollToItem(target) silently swallowed seeks past the loaded
+    // window; non-paged List lets LetterScrollRail snap to any letter.
+    val albumsList by vm.albumsAll.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     var letterMap by remember { mutableStateOf<Map<Char, Int>>(emptyMap()) }
 
-    // Re-query letter anchors when item count changes (initial load + post-import
-    // refresh). null container = preview/test render — skip the DAO call.
-    // The +1 shift accounts for the SectionLabel header at LazyColumn index 0.
-    LaunchedEffect(pagingItems.itemCount, container) {
-        if (container != null && pagingItems.itemCount > 0) {
+    // Re-query letter anchors when the list size changes (initial load +
+    // post-import refresh). null container = preview/test render — skip the
+    // DAO call. The +1 shift accounts for the SectionLabel header at index 0.
+    LaunchedEffect(albumsList.size, container) {
+        if (container != null && albumsList.isNotEmpty()) {
             letterMap = container.db.albumDao().letterFirstIndex()
                 .associate { it.letter.first() to (it.rowIndex + 1) }
         }
@@ -53,14 +54,14 @@ fun AlbumsScreen(
             modifier = Modifier.fillMaxSize(),
         ) {
             item(key = "section-label", contentType = "label") {
-                SectionLabel("${pagingItems.itemCount} albums")
+                SectionLabel("${albumsList.size} albums")
             }
             items(
-                count = pagingItems.itemCount,
-                key = pagingItems.itemKey { it.id },
-                contentType = pagingItems.itemContentType { "album" },
-            ) { index ->
-                val album = pagingItems[index] ?: return@items
+                count = albumsList.size,
+                key = { idx -> albumsList[idx].id },
+                contentType = { "album" },
+            ) { idx ->
+                val album = albumsList[idx]
                 AlbumRow(
                     album = album,
                     onTap = { onNavigate(album.id) },

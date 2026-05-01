@@ -143,7 +143,15 @@ fun LetterScrollRail(
             .pointerInput(letterIndex) {
                 detectTapGestures(onTap = { offset -> handleY(offset.y) })
             },
-        verticalArrangement = Arrangement.Center,
+        // SpaceEvenly distributes letters across the FULL rail height so the
+        // Y / 27 math in handleY actually maps to the visible letter under
+        // the finger. Arrangement.Center previously clustered letters in the
+        // middle of the rail with empty space above/below — finger-Y was
+        // computed against the full rail height but glyphs were only in the
+        // middle, so taps near the top targeted '#' (computed at y≈0) but
+        // visually '#' was halfway down the rail. The mismatch was the
+        // user-reported "considers the # button way above the actual UI #".
+        verticalArrangement = Arrangement.SpaceEvenly,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         for ((idx, char) in LetterIndex.LETTERS.withIndex()) {
@@ -155,13 +163,15 @@ fun LetterScrollRail(
                 else -> NocturneOnSurfaceMuted
             }
             val perGlyphAlpha = if (populated) 1f else 0.25f
-            // No per-letter clickable — the parent Column owns one pointerInput
-            // that handles tap (jump) AND drag (scrub). Per-letter clickables
-            // would steal events from the drag gesture.
+            // Modifier.weight(1f) ensures every letter Box gets an equal
+            // share of the rail height, regardless of glyph metrics. This
+            // makes the per = total/27 math in handleY exact: the box at
+            // index N occupies y in [N*per, (N+1)*per). No per-letter
+            // clickable — the parent Column's pointerInput owns tap+drag.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 2.dp)
+                    .weight(1f)
                     .alpha(perGlyphAlpha),
                 contentAlignment = Alignment.Center,
             ) {

@@ -98,6 +98,10 @@ fun TracksScreen(
                         onAddToQueue = { onAddToQueue(track) },
                         onUnsync = { vm.unsyncTrack(track.id) },
                         onDelete = { vm.deleteTrack(track.id) },
+                        // Hide per-track numbers while scrolling so they
+                        // don't overlap with the letter rail. Visible at
+                        // rest.
+                        hideTrackNumber = listState.isScrollInProgress,
                     )
                 }
             }
@@ -149,6 +153,10 @@ fun TracksScreen(
                         onAddToQueue = { onAddToQueue(track) },
                         onUnsync = { vm.unsyncTrack(track.id) },
                         onDelete = { vm.deleteTrack(track.id) },
+                        // Hide per-track numbers while scrolling so they
+                        // don't overlap with the letter rail. Visible at
+                        // rest.
+                        hideTrackNumber = listState.isScrollInProgress,
                     )
                 }
             }

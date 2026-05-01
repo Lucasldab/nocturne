@@ -502,6 +502,23 @@ static int handle_pin(json_t *root, struct nocturne_db *db,
         return -1;
     }
     stats->pins_upserted++;
+
+    /* Re-pinning a track clears any prior unsync override. Without this,
+     * a track that was once unsync'd stays excluded from the manifest
+     * (resolve_cmd's WHERE NOT EXISTS filter against unsync_overrides)
+     * even after the user explicitly pins it again — the silent
+     * "I pinned it but it won't download" symptom. Track-only: album-
+     * unit pins/unsyncs aren't supported by the override table anyway. */
+    if (pinned && !strcmp(unit, "track")) {
+        sqlite3_stmt *del = NULL;
+        if (sqlite3_prepare_v2(db_handle(db),
+                "DELETE FROM unsync_overrides WHERE sha256=?",
+                -1, &del, NULL) == SQLITE_OK) {
+            sqlite3_bind_text(del, 1, id, -1, SQLITE_TRANSIENT);
+            sqlite3_step(del);
+            sqlite3_finalize(del);
+        }
+    }
     return 0;
 }
 

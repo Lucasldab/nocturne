@@ -4,10 +4,10 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
@@ -60,6 +60,11 @@ object LetterIndex {
  * crossfade animation primitives that are banned by the Phase 6 grep gate
  * in browser/system/player code. The single Animatable<Float> +
  * Modifier.alpha pattern is the project precedent.
+ *
+ * Each letter is wrapped in a full-rail-width Box so the tappable target is
+ * (rail-width × row-height) rather than the glyph's intrinsic bounds. On a
+ * 16dp-wide rail with 27 letters, the glyph-only hit area was ~6×10dp with
+ * 1dp dead-zones that swallowed real-device taps (quick task 260430-wt0 Bug 2).
  */
 @Composable
 fun LetterScrollRail(
@@ -107,19 +112,23 @@ fun LetterScrollRail(
             } else {
                 Modifier
             }
-            Text(
-                text = char.toString(),
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = JetBrainsMono,
-                ),
-                color = glyphColor,
-                textAlign = TextAlign.Center,
+            Box(
                 modifier = Modifier
-                    .height(IntrinsicSize.Min)
-                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp)
                     .alpha(perGlyphAlpha)
                     .then(tapModifier),
-            )
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = char.toString(),
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = JetBrainsMono,
+                    ),
+                    color = glyphColor,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
     }
 }

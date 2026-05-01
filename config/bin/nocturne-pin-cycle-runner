@@ -12,6 +12,7 @@ set -euo pipefail
 META="${NOCTURNE_META_DIR:-$HOME/sync/nocturne/meta}"
 MANIFEST="${NOCTURNE_MANIFEST:-$HOME/.local/share/nocturne/manifest.json}"
 NOCTURNED="${NOCTURNED:-nocturned}"
+LIBRARY_PATH="${NOCTURNE_LIBRARY:-$HOME/music}"
 
 # Belt-and-suspenders: kill any rogue `nocturned watch` not owned by
 # nocturne-watch.service. systemd's ExecStartPre=systemctl stop ... only
@@ -69,4 +70,4 @@ if [ "$needs_cycle" -eq 0 ]; then
     exit 0
 fi
 
-exec "$NOCTURNED" cycle
+exec "$NOCTURNED" cycle "$LIBRARY_PATH"

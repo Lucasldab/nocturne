@@ -47,8 +47,9 @@ class LetterIndexTest {
         assertEquals('Z', LetterIndex.letterOf("Z"))
     }
 
-    @Test fun letters_set_contains_27_with_hash_last() {
+    @Test fun letters_set_contains_27_with_hash_first() {
         assertEquals(27, LetterIndex.LETTERS.size)
-        assertEquals('#', LetterIndex.LETTERS.last())
+        assertEquals('#', LetterIndex.LETTERS.first())
+        assertEquals('Z', LetterIndex.LETTERS.last())
     }
 }

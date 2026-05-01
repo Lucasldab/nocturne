@@ -51,9 +51,6 @@ fun ArtistsScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            // Reserve LetterScrollRail width on the right so trailing
-            // ArtistRow content doesn't render under the rail.
-            contentPadding = PaddingValues(end = 40.dp),
         ) {
             item(key = "section-label", contentType = "label") {
                 SectionLabel("${artistsList.size} artists")

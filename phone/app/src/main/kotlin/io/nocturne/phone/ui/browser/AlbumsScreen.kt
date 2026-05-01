@@ -54,9 +54,6 @@ fun AlbumsScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            // Reserve space on the right for LetterScrollRail (40dp wide)
-            // so AlbumRow's trailing trackCount text doesn't render under it.
-            contentPadding = PaddingValues(end = 40.dp),
         ) {
             item(key = "section-label", contentType = "label") {
                 SectionLabel("${albumsList.size} albums")

@@ -51,7 +51,13 @@ class AlbumArtRepository(
 
     /**
      * Returns a small bitmap for the album, or null if no embedded artwork is
-     * available. Never throws — failures cache a null result.
+     * available. Never throws.
+     *
+     * Only successful loads are cached. A null result (cover sidecar not yet
+     * synced from desktop) is NOT cached, so the next call retries — once
+     * Syncthing delivers the file, the next composition picks it up without
+     * requiring a kill+reopen of the app. Pre-fix, null was cached forever
+     * which produced the "needed to kill the app to see covers" symptom.
      */
     suspend fun load(albumId: String): Bitmap? {
         cache.get(albumId)?.let { return it.bitmap }
@@ -59,7 +65,7 @@ class AlbumArtRepository(
         lock.withLock {
             cache.get(albumId)?.let { return it.bitmap }
             val bmp = withContext(Dispatchers.IO) { readArt(albumId) }
-            cache.put(albumId, Cached(bmp))
+            if (bmp != null) cache.put(albumId, Cached(bmp))
             return bmp
         }
     }

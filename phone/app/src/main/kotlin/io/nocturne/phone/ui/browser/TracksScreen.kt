@@ -72,10 +72,6 @@ fun TracksScreen(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
-                // Reserve LetterScrollRail width on the right (alpha branch
-                // shows the rail) so trailing PinChip / track count don't
-                // render under it.
-                contentPadding = PaddingValues(end = 40.dp),
             ) {
                 item(key = "sort-toggle", contentType = "sort-toggle") {
                     TrackSortToggle(

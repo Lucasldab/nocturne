@@ -108,9 +108,12 @@ fun LetterScrollRail(
         val per = total.toFloat() / letters.size
         val raw = (y / per).toInt().coerceIn(0, letters.size - 1)
         if (raw == lastTargetIdx.intValue) return
+        // Update visual feedback regardless of whether the bucket has rows —
+        // user sees their finger position track even when dragging through
+        // empty letters (e.g. Q, X, Z in a small library).
+        lastTargetIdx.intValue = raw
         val char = letters[raw]
         val target = letterIndex[char] ?: return
-        lastTargetIdx.intValue = raw
         scope.launch {
             alpha.snapTo(1f)
             listState.scrollToItem(target)
@@ -119,9 +122,10 @@ fun LetterScrollRail(
 
     Column(
         modifier = modifier
-            // 28dp (was 16dp) gives a thumb-sized hit area — testing at 16dp
-            // showed real-device taps landing on dead-zones / adjacent letters.
-            .width(28.dp)
+            // 40dp (was 28dp) — round-2 ship at 28dp still produced "great
+            // difficulty hitting the right letter" on real device. Going
+            // wider trades a thicker rail for actually-tappable letters.
+            .width(40.dp)
             .fillMaxHeight()
             .alpha(alpha.value)
             .onSizeChanged { railHeightPx.intValue = it.height }
@@ -142,18 +146,18 @@ fun LetterScrollRail(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        for (char in LetterIndex.LETTERS) {
+        for ((idx, char) in LetterIndex.LETTERS.withIndex()) {
             val populated = char in letterIndex
-            val glyphColor = if (populated) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                NocturneOnSurfaceMuted
+            val active = idx == lastTargetIdx.intValue
+            val glyphColor = when {
+                active -> MaterialTheme.colorScheme.primary
+                populated -> MaterialTheme.colorScheme.onSurface
+                else -> NocturneOnSurfaceMuted
             }
             val perGlyphAlpha = if (populated) 1f else 0.25f
-            // No per-letter clickable now — the parent Column owns a single
-            // pointerInput that handles both tap (jump to letter under finger)
-            // and drag (scrub through letters as the finger moves). Per-letter
-            // clickables would steal events from the drag gesture.
+            // No per-letter clickable — the parent Column owns one pointerInput
+            // that handles tap (jump) AND drag (scrub). Per-letter clickables
+            // would steal events from the drag gesture.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()

@@ -427,6 +427,36 @@ static int handle_action(json_t *root, struct nocturne_db *db,
     if (event_ts_out && ts > *event_ts_out) *event_ts_out = ts;
     if (dry_run) return 0;
 
+    /* LWW gate for track-unit unsync: skip if there's a newer pin event for
+     * this track. Without this, the per-cycle ingest order (pins → actions)
+     * lets a stale unsync action overwrite a fresher pin: handle_pin sets
+     * pinned=1 and deletes the override during pin processing, then this
+     * handler runs unsync_track which flips pinned=0 and re-adds the
+     * override — even though the user's pin is more recent than the
+     * unsync. Track-only check; album-unit actions always apply (they're
+     * a no-op in the current daemon anyway per album_track_shas). */
+    if (!is_delete && !strcmp(unit, "track")) {
+        sqlite3_stmt *q = NULL;
+        if (sqlite3_prepare_v2(db_handle(db),
+                "SELECT ts FROM pins WHERE unit='track' AND id=?",
+                -1, &q, NULL) == SQLITE_OK) {
+            sqlite3_bind_text(q, 1, id, -1, SQLITE_TRANSIENT);
+            long long pin_ts = 0;
+            if (sqlite3_step(q) == SQLITE_ROW) {
+                pin_ts = sqlite3_column_int64(q, 0);
+            }
+            sqlite3_finalize(q);
+            if (pin_ts > ts) {
+                fprintf(stderr,
+                    "ingest: unsync action for %.16s... skipped — "
+                    "pin event is newer (pin_ts=%lld > action_ts=%lld)\n",
+                    id, pin_ts, ts);
+                stats->pins_upserted++;
+                return 0;
+            }
+        }
+    }
+
     struct action_stats astats = {0};
     int rc;
     if (!strcmp(unit, "album")) {

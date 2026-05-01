@@ -331,8 +331,10 @@ class BrowserViewModel(private val container: AppContainer) : ViewModel() {
             val dao = container.db.pinDao()
             val now = System.currentTimeMillis()
             val existing = dao.flowAllPinned().first().firstOrNull { it.id == id && it.unit == unit }
+            val nextPinned: Boolean
             if (existing == null) {
-                // Brand-new pin.
+                // Brand-new pin (always going to true).
+                nextPinned = true
                 dao.upsert(
                     PinEntity(
                         id = id,
@@ -343,9 +345,20 @@ class BrowserViewModel(private val container: AppContainer) : ViewModel() {
                     ),
                 )
             } else {
-                dao.setPinned(id = id, pinned = !existing.pinned, ts = now)
+                nextPinned = !existing.pinned
+                dao.setPinned(id = id, pinned = nextPinned, ts = now)
             }
             container.pinsWriter.drain()
+            // Pin-chip OFF transition for a track also emits an unsync action
+            // so the daemon adds an unsync_override and demotes the file —
+            // overrides recent_plays / top_played / loved auto-buckets that
+            // would otherwise keep the track resident. Per user request:
+            // pin-chip off should mean "get this off my phone for good",
+            // matching the long-press → unsync semantic. Re-pinning later
+            // clears the override automatically (handle_pin daemon code).
+            if (!nextPinned && unit == "track") {
+                container.actionsWriter.emitUnsyncTrack(id)
+            }
         }
     }
 

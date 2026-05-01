@@ -102,6 +102,10 @@ fun TracksScreen(
                         onAddToQueue = { onAddToQueue(track) },
                         onUnsync = { vm.unsyncTrack(track.id) },
                         onDelete = { vm.deleteTrack(track.id) },
+                        // Flat library list — per-album track numbers are
+                        // meaningless out of context. Hide them here; album
+                        // detail keeps the default true.
+                        showTrackNumber = false,
                     )
                 }
             }
@@ -153,6 +157,10 @@ fun TracksScreen(
                         onAddToQueue = { onAddToQueue(track) },
                         onUnsync = { vm.unsyncTrack(track.id) },
                         onDelete = { vm.deleteTrack(track.id) },
+                        // Flat library list — per-album track numbers are
+                        // meaningless out of context. Hide them here; album
+                        // detail keeps the default true.
+                        showTrackNumber = false,
                     )
                 }
             }

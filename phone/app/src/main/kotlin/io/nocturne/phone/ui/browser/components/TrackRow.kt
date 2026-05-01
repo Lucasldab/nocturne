@@ -66,6 +66,7 @@ fun TrackRow(
     onAddToQueue: () -> Unit = {},
     onUnsync: () -> Unit = {},
     onDelete: () -> Unit = {},
+    showTrackNumber: Boolean = true,
 ) {
     var showActionsSheet by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     val rowAlpha = if (track.isResident) 1f else NON_RESIDENT_ALPHA
@@ -108,13 +109,15 @@ fun TrackRow(
                         ),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(
-                        text = track.trackNumber?.toString()?.padStart(2, '0') ?: "  ",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.width(28.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
+                    if (showTrackNumber) {
+                        Text(
+                            text = track.trackNumber?.toString()?.padStart(2, '0') ?: "  ",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.width(28.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = track.title,

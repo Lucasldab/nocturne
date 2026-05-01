@@ -390,6 +390,21 @@ static void link_album_covers(const char *archive_audio_path,
             continue;  /* sidecar already present — leave it alone */
         }
 
+        /* Ensure the destination directory exists. The audio promote
+         * created resident/<artist>/<album> via mkparents on the audio
+         * file path — but if rotate is being called for cover sidecar
+         * propagation OUTSIDE the promote path (e.g. backfill loop on
+         * a track whose resident dir was somehow lost), the directory
+         * might not exist yet, and link() / open() would fail with
+         * ENOENT. Belt-and-suspenders mkparents on the dst sidecar. */
+        if (mkparents(dst) != 0) {
+            fprintf(stderr,
+                "rotate: cover sidecar mkparents(%s) failed: %s\n",
+                dst, strerror(errno));
+            free(src); free(dst);
+            continue;
+        }
+
         int rc = do_link(src, dst);
         if (rc != 0 && errno == EXDEV) {
             if (copy_only(src, dst) != 0) {
@@ -399,8 +414,8 @@ static void link_album_covers(const char *archive_audio_path,
             }
         } else if (rc != 0 && errno != EEXIST) {
             fprintf(stderr,
-                "rotate: cover sidecar link(%s, %s) failed: %s\n",
-                src, dst, strerror(errno));
+                "rotate: cover sidecar link(%s, %s) failed: %s (errno=%d)\n",
+                src, dst, strerror(errno), errno);
         }
         free(src); free(dst);
     }
@@ -753,6 +768,7 @@ int rotate_run_ex(struct nocturne_db *db, const char *library_root,
         if (rc == 0 && out->errors == before) out->removed++;
     }
 
+    fprintf(stderr, "rotate: backfill cover sidecars (transcode_on=%d)\n", transcode_on);
     /* Cover sidecar backfill: walk every track that is currently resident
      * (post-add, post-remove) and ensure cover.jpg-style sidecars exist next
      * to the resident audio file. Idempotent — link_album_covers skips when
@@ -775,8 +791,12 @@ int rotate_run_ex(struct nocturne_db *db, const char *library_root,
                 "JOIN residency_state r ON r.sha256 = t.sha256 "
                 "WHERE r.location = 'resident'";
         sqlite3_stmt *stmt = NULL;
-        if (sqlite3_prepare_v2(raw, sql_resident_with_paths, -1, &stmt, NULL) == SQLITE_OK) {
+        int prep_rc = sqlite3_prepare_v2(raw, sql_resident_with_paths, -1, &stmt, NULL);
+        fprintf(stderr, "rotate: backfill prep rc=%d\n", prep_rc);
+        if (prep_rc == SQLITE_OK) {
+            int row_count = 0;
             while (sqlite3_step(stmt) == SQLITE_ROW) {
+                row_count++;
                 const unsigned char *track_path = sqlite3_column_text(stmt, 0);
                 const unsigned char *xcode_path = sqlite3_column_text(stmt, 1);
                 if (!track_path) continue;
@@ -797,6 +817,7 @@ int rotate_run_ex(struct nocturne_db *db, const char *library_root,
                     }
                 }
             }
+            fprintf(stderr, "rotate: backfill scanned %d rows\n", row_count);
             sqlite3_finalize(stmt);
         }
     }

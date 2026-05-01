@@ -2,6 +2,7 @@ package io.nocturne.phone.ui.browser
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -14,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.nocturne.phone.data.AppContainer
 import io.nocturne.phone.data.db.entity.TrackEntity
@@ -70,6 +72,10 @@ fun TracksScreen(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
+                // Reserve LetterScrollRail width on the right (alpha branch
+                // shows the rail) so trailing PinChip / track count don't
+                // render under it.
+                contentPadding = PaddingValues(end = 40.dp),
             ) {
                 item(key = "sort-toggle", contentType = "sort-toggle") {
                     TrackSortToggle(

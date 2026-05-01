@@ -142,6 +142,64 @@ class TrackSorterTest {
         assertEquals(listOf("Alpha", "Zulu", "Mike"), sorted.map { it.title })
     }
 
+    // -------------------------------------------------------------------------
+    // Quick task 260430-vtb Bug 2: pinnedAt overlay on RecentlyDownloaded.
+    //
+    // The bulk catalog rescan stamped every track's dateAdded with a fresh
+    // timestamp, drowning out the user's mental model of "this just landed
+    // on my phone via pin". Overlay PinDao.pinnedAt onto the dateAdded
+    // ordering key so freshly-pinned tracks float to the top.
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun recently_downloaded_pinned_track_outranks_bulk_rescan_dateAdded() {
+        // Realistic shape: bulk catalog rescan stamped both rows with the SAME
+        // recent ISO-8601 dateAdded; the user just pinned `recent` so it must
+        // outrank `older` despite the dateAdded tie. Pin epoch is AFTER the
+        // shared dateAdded so max(pinnedMs, addedMs) = pinnedMs.
+        val recent = mkTrack("r", "Recent", dateAdded = "2026-04-30T10:00:00Z")
+        val older = mkTrack("o", "Older", dateAdded = "2026-04-30T10:00:00Z")
+        val recentMs = java.time.Instant.parse("2026-04-30T10:00:00Z").toEpochMilli()
+        val pinnedAt = mapOf("r" to (recentMs + 30_000L)) // 30s after dateAdded
+        val sorted = TrackSorter.sort(
+            tracks = listOf(older, recent),
+            mode = TrackSortMode.RecentlyDownloaded,
+            perTrackPinnedAt = pinnedAt,
+        )
+        assertEquals(listOf("r", "o"), sorted.map { it.id })
+    }
+
+    @Test
+    fun recently_downloaded_unpinned_falls_back_to_dateAdded() {
+        // No pin overlay -> behavior identical to pre-fix dateAdded ordering.
+        val newer = mkTrack("n", "Newer", dateAdded = "2026-04-30T10:00:00Z")
+        val older = mkTrack("o", "Older", dateAdded = "2026-04-15T10:00:00Z")
+        val sorted = TrackSorter.sort(
+            tracks = listOf(older, newer),
+            mode = TrackSortMode.RecentlyDownloaded,
+            perTrackPinnedAt = emptyMap(),
+        )
+        assertEquals(listOf("n", "o"), sorted.map { it.id })
+    }
+
+    @Test
+    fun recently_downloaded_unparseable_dateAdded_pin_overlay_still_wins() {
+        // Defensive: malformed dateAdded falls back to MIN; pinnedAt still wins
+        // over a parseable-but-older real timestamp. We assert that `broken`
+        // beats `good` when its pin epoch is greater than good's parsed
+        // dateAdded.
+        val broken = mkTrack("b", "Broken", dateAdded = "not-an-iso")
+        val good = mkTrack("g", "Good", dateAdded = "2026-04-30T10:00:00Z")
+        val goodMs = java.time.Instant.parse("2026-04-30T10:00:00Z").toEpochMilli()
+        val pinnedAt = mapOf("b" to (goodMs + 60_000L)) // 1 min after good
+        val sorted = TrackSorter.sort(
+            tracks = listOf(good, broken),
+            mode = TrackSortMode.RecentlyDownloaded,
+            perTrackPinnedAt = pinnedAt,
+        )
+        assertEquals(listOf("b", "g"), sorted.map { it.id })
+    }
+
     @Test
     fun persisted_keys_round_trip_through_from_persisted_key() {
         TrackSortMode.values().forEach { mode ->

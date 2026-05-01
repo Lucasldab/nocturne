@@ -14,9 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.paging.compose.itemContentType
-import androidx.paging.compose.itemKey
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.nocturne.phone.data.AppContainer
 import io.nocturne.phone.ui.browser.components.ArtistRow
 import io.nocturne.phone.ui.browser.components.LetterScrollRail
@@ -29,12 +27,15 @@ fun ArtistsScreen(
     modifier: Modifier = Modifier,
     container: AppContainer? = null,
 ) {
-    val pagingItems = vm.artists.collectAsLazyPagingItems()
+    // Quick task 260430-vtb (Bug 1): swapped from Pager → non-paged StateFlow.
+    // Pager+scrollToItem silently swallowed seeks past the loaded window;
+    // non-paged List lets LetterScrollRail snap to any letter.
+    val artistsList by vm.artistsAll.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     var letterMap by remember { mutableStateOf<Map<Char, Int>>(emptyMap()) }
 
-    LaunchedEffect(pagingItems.itemCount, container) {
-        if (container != null && pagingItems.itemCount > 0) {
+    LaunchedEffect(artistsList.size, container) {
+        if (container != null && artistsList.isNotEmpty()) {
             letterMap = container.db.artistDao().letterFirstIndex()
                 .associate { it.letter.first() to (it.rowIndex + 1) }
         }
@@ -50,14 +51,14 @@ fun ArtistsScreen(
             modifier = Modifier.fillMaxSize(),
         ) {
             item(key = "section-label", contentType = "label") {
-                SectionLabel("${pagingItems.itemCount} artists")
+                SectionLabel("${artistsList.size} artists")
             }
             items(
-                count = pagingItems.itemCount,
-                key = pagingItems.itemKey { it.id },
-                contentType = pagingItems.itemContentType { "artist" },
-            ) { index ->
-                val artist = pagingItems[index] ?: return@items
+                count = artistsList.size,
+                key = { idx -> artistsList[idx].id },
+                contentType = { "artist" },
+            ) { idx ->
+                val artist = artistsList[idx]
                 ArtistRow(artist = artist, onTap = { onNavigate(artist.id) })
             }
         }

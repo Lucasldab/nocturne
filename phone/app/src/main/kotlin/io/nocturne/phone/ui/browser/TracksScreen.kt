@@ -15,9 +15,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.paging.compose.itemContentType
-import androidx.paging.compose.itemKey
 import io.nocturne.phone.data.AppContainer
 import io.nocturne.phone.data.db.entity.TrackEntity
 import io.nocturne.phone.ui.browser.components.LetterScrollRail
@@ -44,19 +41,22 @@ fun TracksScreen(
 
     if (sortMode == TrackSortMode.Alphabetical) {
         // -----------------------------------------------------------------
-        // Alphabetical: existing paged path + LetterScrollRail.
+        // Alphabetical: non-paged tracksAlphabetical StateFlow + LetterScrollRail.
         //
-        // Sort-toggle is added as the first list item; section-label is
-        // second. The letter rail's row-index map therefore needs a +2
-        // offset (sort-toggle + section-label) to land on the first row of
-        // each letter bucket — quick task 260430-po0 used +1 (section-label
-        // only); this update preserves the rail's behavior.
+        // Quick task 260430-vtb (Bug 1 + Bug 3): swapped from Pager so
+        // LetterScrollRail.scrollToItem(target) lands on a real row even
+        // when the target index is past the would-have-been-loaded paging
+        // window, and so cold-start render no longer waits on Pager warm-up.
+        //
+        // Sort-toggle is the first list item; section-label is second.
+        // Letter rail row-index map keeps the +2 offset (sort-toggle +
+        // section-label).
         // -----------------------------------------------------------------
-        val pagingItems = vm.tracks.collectAsLazyPagingItems()
+        val tracksList by vm.tracksAlphabetical.collectAsStateWithLifecycle()
         var letterMap by remember { mutableStateOf<Map<Char, Int>>(emptyMap()) }
 
-        LaunchedEffect(pagingItems.itemCount, container) {
-            if (container != null && pagingItems.itemCount > 0) {
+        LaunchedEffect(tracksList.size, container) {
+            if (container != null && tracksList.isNotEmpty()) {
                 letterMap = container.db.trackDao().letterFirstIndex()
                     .associate { it.letter.first() to (it.rowIndex + 2) }
             }
@@ -78,14 +78,14 @@ fun TracksScreen(
                     )
                 }
                 item(key = "section-label", contentType = "label") {
-                    SectionLabel("${pagingItems.itemCount} tracks")
+                    SectionLabel("${tracksList.size} tracks")
                 }
                 items(
-                    count = pagingItems.itemCount,
-                    key = pagingItems.itemKey { it.id },
-                    contentType = pagingItems.itemContentType { "track" },
-                ) { index ->
-                    val track = pagingItems[index] ?: return@items
+                    count = tracksList.size,
+                    key = { idx -> tracksList[idx].id },
+                    contentType = { "track" },
+                ) { idx ->
+                    val track = tracksList[idx]
                     TrackRow(
                         track = track,
                         isPinned = pinnedIds.contains(track.id),

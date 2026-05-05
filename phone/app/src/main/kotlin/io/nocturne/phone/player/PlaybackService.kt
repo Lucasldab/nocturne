@@ -299,6 +299,21 @@ class PlaybackService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
         mediaSession
 
+    // Media3 1.10 still crashes when a background start (e.g. MediaButton
+    // broadcast on cold boot) lands with no playback to perform: onStartCommand
+    // routes to stopSelfSafely, which calls startForeground() with a tombstone
+    // notification to satisfy the FGS-must-promote contract — Android 12+
+    // denies the promotion and throws. Swallow the denial and stop cleanly.
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        return try {
+            super.onStartCommand(intent, flags, startId)
+        } catch (e: android.app.ForegroundServiceStartNotAllowedException) {
+            android.util.Log.w("nocturne", "FGS promotion denied during graceful stop — ignoring", e)
+            stopSelf()
+            START_NOT_STICKY
+        }
+    }
+
     override fun onTaskRemoved(rootIntent: Intent?) {
         // User swiped the app away from recents. Only stop the service if the
         // queue is genuinely empty — leaving it alive while paused preserves

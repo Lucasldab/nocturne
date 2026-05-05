@@ -69,3 +69,7 @@ phone/**/*.iml
 # Agent / IDE runtime state
 .claude/
 .planning/
+
+# Local SQLite runtime artifacts
+/*.sqlite
+/*.db

@@ -64,6 +64,13 @@ class JsonlFileWriter(
         } catch (e: IOException) {
             Log.w("JsonlFileWriter", "append failed for $relativePath: ${e.message}")
             false
+        } catch (e: SecurityException) {
+            // Stale SAF grant — pre-0.4.40 builds only persisted READ. AppRoot's
+            // upgrade check clears the URI so FirstRunScreen re-prompts; here we
+            // just drop the event so the writer never escalates the SecurityException
+            // into an app-killing crash mid-playback.
+            Log.w("JsonlFileWriter", "SAF write denied for $relativePath: ${e.message}")
+            false
         }
     }
 

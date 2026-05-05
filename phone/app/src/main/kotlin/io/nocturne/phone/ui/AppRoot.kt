@@ -61,6 +61,29 @@ fun AppRoot(app: NocturneApp) {
         }
     }
 
+    // 0.4.40 SAF write-grant upgrade: pre-0.4.40 only persisted READ on the
+    // meta tree, so first JSONL append from Phase 6 stats writers crashed
+    // with SecurityException ("requires MANAGE_DOCUMENTS"). Detect a stale
+    // READ-only grant on the persisted URI, release it, and clear the
+    // pref — AppRoot then re-routes to FirstRunScreen which now takes
+    // READ|WRITE on re-pick.
+    LaunchedEffect(metaTreeUri) {
+        val current = metaTreeUri
+        if (current == null || current == LOADING_SENTINEL) return@LaunchedEffect
+        val cr = container.appContext.contentResolver
+        val match = cr.persistedUriPermissions.firstOrNull { it.uri.toString() == current }
+        if (match != null && !match.isWritePermission) {
+            runCatching {
+                cr.releasePersistableUriPermission(
+                    Uri.parse(current),
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            }
+            container.syncPrefs.clearMetaTreeUri()
+        }
+    }
+
     // v0.4.6: cold-start reconcile flipped isResident for newly-pinned
     // tracks but only on first composition.
     // v0.4.7: 45s mtime poll while composed.

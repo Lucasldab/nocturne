@@ -27,6 +27,12 @@ import io.nocturne.phone.ui.theme.NocturneTheme
  * theme and a single SAF folder-picker button. On the launcher's callback,
  * we MUST call `takePersistableUriPermission` BEFORE returning the URI so
  * the permission survives reboots (Pitfall 29).
+ *
+ * Both READ + WRITE flags are persisted: Phase 6 stats writers (JsonlFileWriter,
+ * .nocturne-deviceid) append into this tree. A READ-only grant raises
+ * `SecurityException: requires android.permission.MANAGE_DOCUMENTS` on first
+ * write. Pre-0.4.40 builds shipped READ-only — the AppRoot upgrade check
+ * detects that case and re-routes here for a re-pick.
  */
 @Composable
 fun FirstRunScreen(onFolderPicked: (Uri) -> Unit) {
@@ -35,7 +41,7 @@ fun FirstRunScreen(onFolderPicked: (Uri) -> Unit) {
         if (uri != null) {
             context.contentResolver.takePersistableUriPermission(
                 uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
             )
             onFolderPicked(uri)
         }

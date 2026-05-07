@@ -696,6 +696,27 @@ static int move_one(struct nocturne_db *db, const char *library_root,
     return already ? 1 : 0;
 }
 
+/* Ensure <library_root>/resident/.nomedia exists. Syncthing's `sync-files`
+ * folder is rooted at resident/, so this empty sentinel rides over to the
+ * phone and tells Android's MediaScanner to skip the entire subtree —
+ * cover.jpg sidecars stop appearing in Photos/Gallery. Best-effort: log on
+ * unexpected error, never bump out->errors. */
+static void ensure_resident_nomedia(const char *library_root)
+{
+    char path[1024];
+    if ((size_t)snprintf(path, sizeof(path), "%s/resident/.nomedia",
+                         library_root) >= sizeof(path)) return;
+    int fd = open(path, O_WRONLY | O_CREAT | O_CLOEXEC, 0644);
+    if (fd < 0) {
+        if (errno != EEXIST) {
+            fprintf(stderr, "rotate: ensure_resident_nomedia(%s): %s\n",
+                    path, strerror(errno));
+        }
+        return;
+    }
+    close(fd);
+}
+
 int rotate_run(struct nocturne_db *db, const char *library_root,
                struct rotate_stats *out)
 {
@@ -707,6 +728,7 @@ int rotate_run_ex(struct nocturne_db *db, const char *library_root,
 {
     if (!db || !library_root || !out) return -1;
     memset(out, 0, sizeof(*out));
+    ensure_resident_nomedia(library_root);
     int transcode_on = (tc && tc->enabled);
 
     char iso_now[40];

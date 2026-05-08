@@ -61,31 +61,37 @@ See `docs/install.md` and `docs/phone-setup.md` for first-run setup.
 ## Pin-as-download (real-time)
 
 Phone-side pin tap → JSONL written → Syncthing-meta pull → desktop runs
-`nocturned cycle` → `manifest.json` + audio file pushed back. Two systemd
-user units close the loop without polling:
+`nocturned cycle` → `manifest.json` + audio file pushed back. The desktop
+side is four systemd user units that share the SQLite single-writer lock:
 
-```ini
-# ~/.config/systemd/user/nocturne-pin-cycle.path
-[Path]
-PathChanged=%h/sync/nocturne/meta/stats
-PathModified=%h/sync/nocturne/meta/pins-phone-<deviceid>.jsonl
-PathModified=%h/sync/nocturne/meta/likes-phone-<deviceid>.jsonl
-Unit=nocturne-pin-cycle.service
+| Unit                        | Role                                                       |
+|-----------------------------|------------------------------------------------------------|
+| `nocturne-watch.service`    | Long-lived inotify watcher on `~/music`; keeps DB current  |
+| `nocturne-cycle.timer`      | Fires `nocturne-cycle.service` every 15 min                |
+| `nocturne-pin-cycle.path`   | Watches `~/sync/nocturne/meta` for phone-side JSONL writes |
+| `nocturne-pin-cycle.service`| Debounces, drains Syncthing `.tmp`, runs `nocturned cycle` |
 
-[Install]
-WantedBy=default.target
+The watcher holds the writer lock for its lifetime; the cycle services
+stop it via `ExecStartPre` and restart it via `ExecStartPost` so the
+pipeline can take the lock for one pass. The pin-cycle runner script
+re-stops the watcher after its 5 s debounce and retries on lock-busy
+to defeat the start/stop race when both services fire near-simultaneously.
+
+Canonical units and the runner script are checked into the repo:
+
+```sh
+sudo install -m 0755 build/nocturned /usr/local/bin/nocturned
+install -m 0755 config/bin/nocturne-pin-cycle-runner ~/.local/bin/
+install -Dm 0644 config/systemd/user/*.{service,timer,path} \
+    -t ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now \
+    nocturne-watch.service \
+    nocturne-cycle.timer \
+    nocturne-pin-cycle.path
 ```
 
-```ini
-# ~/.config/systemd/user/nocturne-pin-cycle.service
-[Service]
-Type=oneshot
-ExecStart=/usr/bin/sleep 5
-ExecStart=%h/.local/bin/nocturned cycle %h/music
-```
-
-`systemctl --user daemon-reload && systemctl --user enable --now nocturne-pin-cycle.path`.
-Pin → resident-on-phone latency: ~30–60s end-to-end, dominated by the
+Pin → resident-on-phone latency: ~30–60 s end-to-end, dominated by the
 Syncthing roundtrip.
 
 ## License

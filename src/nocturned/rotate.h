@@ -13,6 +13,7 @@ struct rotate_stats {
     long long removed;
     long long already_applied; /* link returned EEXIST + same inode */
     long long fallback_copies; /* EXDEV fallbacks */
+    long long respawned;       /* DB said resident but file missing → re-promoted */
     long long errors;
 };
 

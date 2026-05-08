@@ -306,6 +306,52 @@ static int upsert_residency_archive_clear_transcode(struct sqlite3 *raw,
     return rc == SQLITE_DONE ? 0 : -1;
 }
 
+static char *lookup_transcode_path(struct sqlite3 *raw, const char *sha);
+
+/* Drop residency rows from `set` whose expected on-disk audio file is
+ * missing. Each drop is counted in stats->respawned, the DB row is left
+ * untouched (promote_transcode / move_one will overwrite it), and the
+ * track flows back through the ADD loop on this same rotate pass — so a
+ * single cycle heals the gap instead of waiting for a manual rebuild.
+ *
+ * Why: residency_state.location='resident' is a DB-only assertion. If
+ * the resident file disappears out of band (low-disk cleanup, manual rm,
+ * partial prior rotate, fs error during transcode write), the previous
+ * code would skip the track forever because set_contains(&resident,sha)
+ * returned true. Effect: pinned tracks the phone never receives because
+ * Syncthing has nothing to send. Discovered 2026-05-07 with 49/62 pinned
+ * tracks broken on disk.
+ *
+ * Filter is in-order so the sorted-set invariant survives. */
+static void filter_resident_present(struct sqlite3 *raw,
+                                    struct sha_set *set,
+                                    int transcode_on,
+                                    struct rotate_stats *out)
+{
+    size_t write_idx = 0;
+    for (size_t i = 0; i < set->n; i++) {
+        char *sha = set->items[i];
+        char *path = transcode_on
+            ? lookup_transcode_path(raw, sha)
+            : lookup_track_path(raw, sha);
+        struct stat st;
+        int present = (path && stat(path, &st) == 0 && S_ISREG(st.st_mode));
+        if (!present) {
+            fprintf(stderr,
+                "rotate: %s residency='resident' but file missing (%s); "
+                "will re-promote\n",
+                sha, path ? path : "(no path)");
+            out->respawned++;
+            free(sha);
+            free(path);
+            continue;
+        }
+        free(path);
+        set->items[write_idx++] = sha;
+    }
+    set->n = write_idx;
+}
+
 /* Read the current transcode_path for a sha (NULL if absent). Caller frees. */
 static char *lookup_transcode_path(struct sqlite3 *raw, const char *sha)
 {
@@ -747,6 +793,11 @@ int rotate_run_ex(struct nocturne_db *db, const char *library_root,
             &resident) != 0) {
         set_free(&manifest); set_free(&resident); return -1;
     }
+
+    /* Heal the residency set against the actual filesystem before diffing.
+     * Anything DB-resident but missing on disk gets dropped here so the
+     * ADD loop re-promotes it instead of skipping forever. */
+    filter_resident_present(raw, &resident, transcode_on, out);
 
     /* Diff. */
     for (size_t i = 0; i < manifest.n; i++) {

@@ -70,4 +70,43 @@ if [ "$needs_cycle" -eq 0 ]; then
     exit 0
 fi
 
-exec "$NOCTURNED" cycle "$LIBRARY_PATH"
+# Final lock arbitration. ExecStartPre stopped nocturne-watch.service at
+# the top of this run, but a concurrent nocturne-cycle.service that
+# finished during our 5s debounce will have queued
+# `systemctl start --no-block nocturne-watch.service` from its
+# ExecStartPost — bringing the watcher (and the single-writer SQLite
+# lock) back online before we get to scan. Result before this re-stop:
+# 76 of 93 pin-cycle runs in 24h aborted with rc=4 / NOPERMISSION,
+# pinned tracks silently failed to publish for hours.
+#
+# Re-stop synchronously, then poll the pidfile for up to ~10s. After
+# that, retry `nocturned cycle` itself if the brief TOCTOU window
+# between our last check and nocturned's own flock loses to another
+# starter — `cycle` exits 4 (NOCT_EXIT_LOCK_BUSY) on contention.
+PIDFILE="${HOME}/.cache/nocturne/nocturned.pid"
+NOCT_EXIT_LOCK_BUSY=4
+
+wait_for_lock_free() {
+    for _i in $(seq 1 10); do
+        if [ ! -e "$PIDFILE" ]; then return 0; fi
+        holder=$(cat "$PIDFILE" 2>/dev/null)
+        if [ -z "$holder" ] || ! kill -0 "$holder" 2>/dev/null; then return 0; fi
+        sleep 1
+    done
+    return 1
+}
+
+for _attempt in 1 2 3; do
+    systemctl --user stop nocturne-watch.service 2>/dev/null || true
+    wait_for_lock_free || true
+    "$NOCTURNED" cycle "$LIBRARY_PATH"
+    rc=$?
+    if [ "$rc" -ne "$NOCT_EXIT_LOCK_BUSY" ]; then
+        exit "$rc"
+    fi
+    echo "pin-cycle-runner: lock contention (attempt $_attempt); retrying"
+    sleep 2
+done
+
+echo "pin-cycle-runner: gave up after 3 lock-contention retries"
+exit "$NOCT_EXIT_LOCK_BUSY"

@@ -320,6 +320,17 @@ static int handle_play(json_t *root, const char *src_relpath,
     int rc = sqlite3_step(g_cache.insert_play);
     free(src);
     if (rc != SQLITE_DONE) {
+        int xrc = sqlite3_extended_errcode(db_handle(db));
+        /* FK violation = play event references a track sha256 that was never
+         * scanned on this side (file deleted/re-hashed before the phone JSONL
+         * reached us). Treat as a per-line skip so ingest can advance past it
+         * instead of stalling the whole pipeline. The play stat is lost; the
+         * track itself is unaffected. */
+        if (xrc == SQLITE_CONSTRAINT_FOREIGNKEY) {
+            fprintf(stderr, "ingest: orphan play (no tracks row for %s); skipped\n",
+                    track);
+            return 1;
+        }
         fprintf(stderr, "ingest: insert play failed: %s\n",
                 sqlite3_errmsg(db_handle(db)));
         return -1;

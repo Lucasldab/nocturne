@@ -1,7 +1,8 @@
 #!/bin/bash
 # Debounce + gate wrapper invoked by nocturne-pin-cycle.service.
-# Runs `nocturned cycle` only when a phone-side pins JSONL is actually
-# newer than the last published manifest.json.
+# Runs the cycle only when a phone-side pins JSONL is actually newer
+# than the last published manifest.json, then hands off to the shared
+# nocturne-cycle-run for lock arbitration + retry.
 #
 # Gate logic uses nanosecond mtime (RACE-01 Option A) to avoid the
 # wall-second tie that silently swallows pins on slow Wi-Fi transfers.
@@ -11,24 +12,8 @@ set -euo pipefail
 
 META="${NOCTURNE_META_DIR:-$HOME/sync/nocturne/meta}"
 MANIFEST="${NOCTURNE_MANIFEST:-$HOME/.local/share/nocturne/manifest.json}"
-NOCTURNED="${NOCTURNED:-nocturned}"
 LIBRARY_PATH="${NOCTURNE_LIBRARY:-$HOME/music}"
-
-# Belt-and-suspenders: kill any rogue `nocturned watch` not owned by
-# nocturne-watch.service. systemd's ExecStartPre=systemctl stop ... only
-# affects unit-managed processes. A manually-launched `nocturned watch`
-# (e.g. from a terminal that later exited and orphaned the process to
-# systemd-user) keeps the SQLite single-writer flock and silently breaks
-# every cycle at the scan step with rc=4 / NOPERMISSION.
-# Regression discovered 2026-04-30: pinned tracks failed to download for
-# a day before this guard was added.
-managed_pid=$(systemctl --user show -p MainPID --value nocturne-watch.service 2>/dev/null || echo 0)
-for _pid in $(pgrep -f "^/usr/local/bin/nocturned watch" 2>/dev/null); do
-    if [ "$_pid" != "$managed_pid" ]; then
-        echo "pin-cycle-runner: killing rogue nocturned watch (pid=$_pid; managed=$managed_pid)"
-        kill "$_pid" 2>/dev/null || true
-    fi
-done
+CYCLE_RUN="${HOME}/.local/bin/nocturne-cycle-run"
 
 # 5s debounce: give Syncthing time to finish before we probe.
 sleep 5
@@ -70,43 +55,8 @@ if [ "$needs_cycle" -eq 0 ]; then
     exit 0
 fi
 
-# Final lock arbitration. ExecStartPre stopped nocturne-watch.service at
-# the top of this run, but a concurrent nocturne-cycle.service that
-# finished during our 5s debounce will have queued
-# `systemctl start --no-block nocturne-watch.service` from its
-# ExecStartPost — bringing the watcher (and the single-writer SQLite
-# lock) back online before we get to scan. Result before this re-stop:
-# 76 of 93 pin-cycle runs in 24h aborted with rc=4 / NOPERMISSION,
-# pinned tracks silently failed to publish for hours.
-#
-# Re-stop synchronously, then poll the pidfile for up to ~10s. After
-# that, retry `nocturned cycle` itself if the brief TOCTOU window
-# between our last check and nocturned's own flock loses to another
-# starter — `cycle` exits 4 (NOCT_EXIT_LOCK_BUSY) on contention.
-PIDFILE="${HOME}/.cache/nocturne/nocturned.pid"
-NOCT_EXIT_LOCK_BUSY=4
-
-wait_for_lock_free() {
-    for _i in $(seq 1 10); do
-        if [ ! -e "$PIDFILE" ]; then return 0; fi
-        holder=$(cat "$PIDFILE" 2>/dev/null)
-        if [ -z "$holder" ] || ! kill -0 "$holder" 2>/dev/null; then return 0; fi
-        sleep 1
-    done
-    return 1
-}
-
-for _attempt in 1 2 3; do
-    systemctl --user stop nocturne-watch.service 2>/dev/null || true
-    wait_for_lock_free || true
-    "$NOCTURNED" cycle "$LIBRARY_PATH"
-    rc=$?
-    if [ "$rc" -ne "$NOCT_EXIT_LOCK_BUSY" ]; then
-        exit "$rc"
-    fi
-    echo "pin-cycle-runner: lock contention (attempt $_attempt); retrying"
-    sleep 2
-done
-
-echo "pin-cycle-runner: gave up after 3 lock-contention retries"
-exit "$NOCT_EXIT_LOCK_BUSY"
+# Hand off to the shared arbiter. It owns the rogue-watch kill, the
+# synchronous watcher re-stop, the pidfile poll, and the rc=4 retry
+# loop — the same hardening (commit 1bf204b) the timer path now shares.
+# `exec` so the arbiter's exit code propagates as this unit's result.
+exec "$CYCLE_RUN" "$LIBRARY_PATH"

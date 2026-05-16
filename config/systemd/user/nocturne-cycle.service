@@ -9,8 +9,13 @@ Type=oneshot
 # Stop the inotify watcher first — it holds the single-writer PID lock for
 # its lifetime, which would otherwise block the cycle pipeline. The leading
 # `-` makes "watch isn't running" a non-fatal pre-condition.
+#
+# ExecStart is the shared nocturne-cycle-run wrapper (not raw `nocturned
+# cycle`): it re-stops the watcher synchronously and retries on rc=4 if a
+# concurrent pin-cycle's `start --no-block` revives the watcher inside the
+# TOCTOU window. Same hardening the pin path got in commit 1bf204b.
 ExecStartPre=-/usr/bin/systemctl --user stop nocturne-watch.service
-ExecStart=/usr/local/bin/nocturned cycle %h/music
+ExecStart=%h/.local/bin/nocturne-cycle-run %h/music
 ExecStartPost=-/usr/bin/systemctl --user start --no-block nocturne-watch.service
 Nice=10
 IOSchedulingClass=best-effort

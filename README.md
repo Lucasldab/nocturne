@@ -81,6 +81,7 @@ Canonical units and the runner script are checked into the repo:
 
 ```sh
 sudo install -m 0755 build/nocturned /usr/local/bin/nocturned
+install -m 0755 config/bin/nocturne-cycle-run ~/.local/bin/
 install -m 0755 config/bin/nocturne-pin-cycle-runner ~/.local/bin/
 install -Dm 0644 config/systemd/user/*.{service,timer,path} \
     -t ~/.config/systemd/user/

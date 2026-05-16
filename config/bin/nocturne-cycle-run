@@ -1,0 +1,76 @@
+#!/bin/bash
+# Shared lock-arbitration + retry wrapper around `nocturned cycle`.
+#
+# Both cycle drivers — nocturne-cycle.service (15-min timer) and
+# nocturne-pin-cycle.service (phone-pin driven, via
+# nocturne-pin-cycle-runner) — must wrest the SQLite single-writer
+# flock away from the long-lived `nocturned watch` before they can
+# scan. systemd's ExecStartPre=`systemctl stop nocturne-watch.service`
+# only covers unit-managed processes and races a concurrent driver's
+# ExecStartPost=`systemctl start --no-block nocturne-watch.service`,
+# which revives the watcher (and the flock) in the TOCTOU window
+# before nocturned grabs it — yielding rc=4 / NOCT_EXIT_LOCK_BUSY.
+#
+# This hardening originally lived only in nocturne-pin-cycle-runner
+# (commit 1bf204b). The timer path was left calling `nocturned cycle`
+# raw and aborted ~5x/wk with `scan failed (rc=4)`. Extracted here so
+# BOTH paths share one proven implementation.
+#
+# Usage: nocturne-cycle-run [LIBRARY_PATH]
+set -euo pipefail
+
+NOCTURNED="${NOCTURNED:-nocturned}"
+LIBRARY_PATH="${1:-${NOCTURNE_LIBRARY:-$HOME/music}}"
+PIDFILE="${HOME}/.cache/nocturne/nocturned.pid"
+NOCT_EXIT_LOCK_BUSY=4
+
+# Belt-and-suspenders: kill any rogue `nocturned watch` not owned by
+# nocturne-watch.service. `systemctl stop` only affects unit-managed
+# processes; a manually-launched `nocturned watch` (e.g. orphaned to
+# systemd-user when its terminal exits) keeps the SQLite single-writer
+# flock and silently breaks every cycle at scan with rc=4/NOPERMISSION.
+# Regression discovered 2026-04-30: pinned tracks failed to download
+# for a day before this guard was added.
+managed_pid=$(systemctl --user show -p MainPID --value nocturne-watch.service 2>/dev/null || echo 0)
+for _pid in $(pgrep -f "^/usr/local/bin/nocturned watch" 2>/dev/null); do
+    if [ "$_pid" != "$managed_pid" ]; then
+        echo "nocturne-cycle-run: killing rogue nocturned watch (pid=$_pid; managed=$managed_pid)"
+        kill "$_pid" 2>/dev/null || true
+    fi
+done
+
+wait_for_lock_free() {
+    for _i in $(seq 1 10); do
+        if [ ! -e "$PIDFILE" ]; then return 0; fi
+        holder=$(cat "$PIDFILE" 2>/dev/null)
+        if [ -z "$holder" ] || ! kill -0 "$holder" 2>/dev/null; then return 0; fi
+        sleep 1
+    done
+    return 1
+}
+
+# Re-stop the watcher synchronously, poll the pidfile for up to ~10s,
+# then run the cycle. Retry the cycle itself on rc=4: the brief TOCTOU
+# window between our last pidfile check and nocturned's own flock can
+# still lose to another starter. 3 attempts has covered every observed
+# contention burst.
+#
+# `rc=0; ... || rc=$?` (not `...; rc=$?`) is deliberate: under
+# `set -e` a bare failing command exits the script before `rc=$?`
+# runs, so the original pin-runner's retry loop was dead code on the
+# very rc=4 it meant to handle. Capturing via `||` keeps `set -e` from
+# firing and makes the retry actually work.
+for _attempt in 1 2 3; do
+    systemctl --user stop nocturne-watch.service 2>/dev/null || true
+    wait_for_lock_free || true
+    rc=0
+    "$NOCTURNED" cycle "$LIBRARY_PATH" || rc=$?
+    if [ "$rc" -ne "$NOCT_EXIT_LOCK_BUSY" ]; then
+        exit "$rc"
+    fi
+    echo "nocturne-cycle-run: lock contention (attempt $_attempt); retrying"
+    sleep 2
+done
+
+echo "nocturne-cycle-run: gave up after 3 lock-contention retries"
+exit "$NOCT_EXIT_LOCK_BUSY"

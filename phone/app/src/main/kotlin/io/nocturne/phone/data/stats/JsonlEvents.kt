@@ -60,3 +60,16 @@ data class ActionEvent(
     val id: String,
     val action: String,                                // "unsync" or "delete"
 )
+
+/**
+ * Phone-initiated download request. Daemon's `download` subcommand reads
+ * these and shells out to flacget. Field order frozen — see
+ * src/nocturned/download.c handle_request_line.
+ */
+@Serializable
+data class DownloadRequestEvent(
+    val v: Int,
+    val id: String,                                    // UUID
+    val query: String,                                 // search query or URL
+    val ts: Long,                                      // requestedAt epoch-ms
+)

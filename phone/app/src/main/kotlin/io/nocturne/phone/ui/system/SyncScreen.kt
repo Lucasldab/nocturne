@@ -32,9 +32,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import io.nocturne.phone.data.AppContainer
 import io.nocturne.phone.data.catalog.CatalogReconciler
 import io.nocturne.phone.data.catalog.ManifestReconciler
+import io.nocturne.phone.data.db.entity.DownloadEntity
 import io.nocturne.phone.ui.browser.BrowserViewModel
 import io.nocturne.phone.ui.settings.RelativeTimeFormatter
 import kotlinx.coroutines.launch
@@ -219,6 +221,15 @@ fun SyncScreen(container: AppContainer, browserVm: BrowserViewModel? = null) {
             }
         }
 
+        // -------------------------------------------------------------------
+        // $ download — phone-initiated request to flacget on the desktop.
+        // Writes downloads-phone-<dev>.jsonl via DownloadsWriter; the daemon's
+        // `download` subcommand shells flacget per request and echoes status
+        // back through downloads-desktop.jsonl which DownloadStatusReader tails.
+        // -------------------------------------------------------------------
+        SectionHeader("download")
+        DownloadSection(container = container)
+
         SectionHeader("note")
         // Compose has no built-in dashed border without a custom DrawScope;
         // a 1dp solid border + the explanatory text below is sufficient.
@@ -236,6 +247,131 @@ fun SyncScreen(container: AppContainer, browserVm: BrowserViewModel? = null) {
             )
         }
     }
+}
+
+@Composable
+private fun DownloadSection(container: AppContainer) {
+    val vm: DownloadsViewModel = viewModel(factory = DownloadsVMFactory(container))
+    val recent by vm.recent.collectAsStateWithLifecycle()
+    var query by remember { mutableStateOf("") }
+
+    // Periodic 5s status poll, scoped to this section's visibility.
+    LaunchedEffect(Unit) { vm.pollLoop() }
+
+    Column(modifier = Modifier.fillMaxWidth().padding(top = 4.dp)) {
+        // Terminal-style input. Prefix "$ " is rendered separately so it
+        // looks like a typed prompt rather than part of the value.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "$ ",
+                style = monoStyle(13),
+                color = MaterialTheme.colorScheme.primary,
+            )
+            androidx.compose.material3.OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(end = 8.dp),
+                singleLine = true,
+                placeholder = {
+                    Text(
+                        text = "artist - title  /  spotify url",
+                        style = monoStyle(12),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                textStyle = monoStyle(13).copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
+                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                    unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+                ),
+            )
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp)
+                .clickable(enabled = query.isNotBlank()) {
+                    vm.submit(query)
+                    query = ""
+                }
+                .padding(vertical = 8.dp),
+        ) {
+            Text(
+                text = "$ submit",
+                style = monoStyle(13),
+                color = if (query.isBlank()) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+            )
+        }
+
+        if (recent.isEmpty()) {
+            Text(
+                text = "no requests yet",
+                style = monoStyle(12),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        } else {
+            // Cap the rendered list — the underlying StateFlow already limits
+            // to 50, but the UI further trims to 10 most-recent so the section
+            // doesn't dominate the Sync screen. Older rows remain in the DB.
+            recent.take(10).forEach { DownloadRow(it) }
+        }
+    }
+}
+
+@Composable
+private fun DownloadRow(row: DownloadEntity) {
+    val stateColor = when (row.state) {
+        "running" -> MaterialTheme.colorScheme.primary
+        "done"    -> MaterialTheme.colorScheme.primary
+        "error"   -> MaterialTheme.colorScheme.error
+        else      -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = row.state,
+                style = monoStyle(11),
+                color = stateColor,
+                modifier = Modifier.width(70.dp),
+            )
+            Text(
+                text = row.query,
+                style = monoStyle(12),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        val msg = row.message
+        if (!msg.isNullOrBlank() && row.state == "error") {
+            Text(
+                text = msg,
+                style = monoStyle(11),
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(start = 70.dp, top = 2.dp),
+            )
+        }
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+    )
 }
 
 @Composable

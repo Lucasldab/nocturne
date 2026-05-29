@@ -12,6 +12,8 @@ Copy these into `~/.config/systemd/user/`, reload, enable.
 | `nocturne-cycle.timer` | Fires `nocturne-cycle.service` every 15 minutes. Pairs with watch to drive the catalog/manifest publish loop. |
 | `nocturne-pin-cycle.service` | Wrapper that runs cycle when phone JSONL writes land in the meta dir. Same lock-handover dance as cycle. |
 | `nocturne-pin-cycle.path` | Path watcher that fires `nocturne-pin-cycle.service` on changes inside `~/sync/nocturne/meta/`. |
+| `nocturne-download.service` | Runs `nocturned download` to dispatch phone-side download requests via `flacget`. Holds its own lockfile — independent of the cycle lock. |
+| `nocturne-download.path` | Watches the meta dir and fires `nocturne-download.service`. Loop-safe: the dispatcher's id-set dedup makes spurious fires no-ops. |
 
 The service's `ExecStart` calls `~/.local/bin/nocturne-pin-cycle-runner` — a
 shell wrapper in `config/bin/` that implements the 5 s debounce, waits for
@@ -46,9 +48,17 @@ systemctl --user daemon-reload
 systemctl --user enable --now \
     nocturne-watch.service \
     nocturne-cycle.timer \
-    nocturne-pin-cycle.path
+    nocturne-pin-cycle.path \
+    nocturne-download.path
 systemctl --user list-timers | grep nocturne
 ```
+
+The `nocturne-download.path` unit fires `nocturned download` on every meta
+dir change. The dispatcher reads `downloads-phone-*.jsonl`, dedups against
+terminal-state entries it has already written to `downloads-desktop.jsonl`,
+then shells out to `~/.local/bin/flacget` once per fresh request. `flacget`
+itself calls `nocturned cycle` at the end so the new track flows into the
+phone's catalog via the normal pin/Syncthing path.
 
 Verify watch is up:
 

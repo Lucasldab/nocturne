@@ -5,6 +5,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import io.nocturne.phone.data.db.dao.AlbumDao
 import io.nocturne.phone.data.db.dao.ArtistDao
+import io.nocturne.phone.data.db.dao.DownloadDao
 import io.nocturne.phone.data.db.dao.GenreDao
 import io.nocturne.phone.data.db.dao.LikeDao
 import io.nocturne.phone.data.db.dao.PinDao
@@ -13,6 +14,7 @@ import io.nocturne.phone.data.db.dao.TrackDao
 import io.nocturne.phone.data.db.entity.AlbumEntity
 import io.nocturne.phone.data.db.entity.ArtistEntity
 import io.nocturne.phone.data.db.entity.Converters
+import io.nocturne.phone.data.db.entity.DownloadEntity
 import io.nocturne.phone.data.db.entity.GenreEntity
 import io.nocturne.phone.data.db.entity.LikeEntity
 import io.nocturne.phone.data.db.entity.PinEntity
@@ -28,8 +30,9 @@ import io.nocturne.phone.data.db.entity.TrackFts
         TrackFts::class,
         PinEntity::class,
         LikeEntity::class,
+        DownloadEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -41,4 +44,5 @@ abstract class NocturneDatabase : RoomDatabase() {
     abstract fun searchDao(): SearchDao
     abstract fun pinDao(): PinDao
     abstract fun likeDao(): LikeDao
+    abstract fun downloadDao(): DownloadDao
 }

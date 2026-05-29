@@ -68,3 +68,29 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
         )
     }
 }
+
+/**
+ * v=4 -> v=5: introduce the `downloads` request log.
+ *
+ * One row per `$ download` submit. State machine matches DownloadEntity:
+ * pending → queued (drained to JSONL) → running → done / error
+ * (echoed from desktop status JSONL).
+ */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `downloads` (
+                `id` TEXT NOT NULL,
+                `query` TEXT NOT NULL,
+                `requestedAt` INTEGER NOT NULL,
+                `state` TEXT NOT NULL DEFAULT 'pending',
+                `message` TEXT,
+                `synced` INTEGER NOT NULL DEFAULT 0,
+                `statusUpdatedAt` INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent(),
+        )
+    }
+}

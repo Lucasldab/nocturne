@@ -1,0 +1,23 @@
+[Unit]
+Description=Watch meta dir for phone download requests; trigger flacget dispatcher
+After=default.target
+
+[Path]
+# Same surface as nocturne-pin-cycle.path — `.path` units can't filter to
+# specific filename patterns (no globs in PathChanged), so we watch the
+# whole meta dir and let the download command's id-set dedup make spurious
+# fires a no-op. A change to downloads-phone-<dev>.jsonl is what we care
+# about; changes to stats/, pins-, likes-, or our own writes to
+# downloads-desktop.jsonl will also fire and resolve in microseconds when
+# there's nothing new to dispatch.
+#
+# Loop guard: the download command only appends to downloads-desktop.jsonl
+# when there's a fresh request id. Once an id is "done" or "error" the
+# next no-op run skips it without writing, so the self-trigger chain
+# terminates after at most ~2 spurious fires per real request.
+PathChanged=%h/sync/nocturne/meta
+
+Unit=nocturne-download.service
+
+[Install]
+WantedBy=default.target

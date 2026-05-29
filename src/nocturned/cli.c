@@ -57,7 +57,16 @@ void cli_print_usage(FILE *f)
         "                    resident files, blacklist sha (refused on future\n"
         "                    re-imports), DELETE tracks row + cascades. Pass\n"
         "                    --album for album-level. --yes skips confirmation.\n"
-        "\n"
+        "  download [--meta-dir <path>]\n"
+        "                    Process phone-initiated download requests from\n"
+        "                    downloads-phone-*.jsonl by shelling out to\n"
+        "                    ~/.local/bin/flacget. Status reports back via\n"
+        "                    downloads-desktop.jsonl. Holds its own lockfile;\n"
+        "                    safe to run alongside cycle.\n"
+        "\n");
+    /* Split into a second fprintf so neither string literal exceeds the
+     * C99 4095-byte cap (-Woverlength-strings). */
+    fprintf(f,
         "Options:\n"
         "  -h, --help              Print this help and exit\n"
         "  -V, --version           Print version and exit\n"
@@ -109,6 +118,7 @@ static enum nocturned_subcommand subcommand_from_string(const char *s)
     if (!strcmp(s, "discover")) return CMD_DISCOVER;
     if (!strcmp(s, "unsync")) return CMD_UNSYNC;
     if (!strcmp(s, "delete")) return CMD_DELETE;
+    if (!strcmp(s, "download")) return CMD_DOWNLOAD;
     if (!strcmp(s, "help"))    return CMD_HELP;
     if (!strcmp(s, "version")) return CMD_VERSION;
     return CMD_NONE;

@@ -39,6 +39,7 @@ int transcode_migrate_cmd_main(struct cli_args *args);
 int discover_cmd_main(struct cli_args *args);
 int unsync_cmd_main(struct cli_args *args);
 int delete_cmd_main(struct cli_args *args);
+int download_cmd_main(struct cli_args *args);
 
 /* Each subcommand handler owns its own lock acquisition (scan_cmd.c,
  * watch_cmd.c, resolve_cmd.c, publish_cmd.c). main.c is now pure dispatch. */
@@ -82,6 +83,7 @@ int main(int argc, char **argv)
     case CMD_DISCOVER: return discover_cmd_main(&args);
     case CMD_UNSYNC: return unsync_cmd_main(&args);
     case CMD_DELETE: return delete_cmd_main(&args);
+    case CMD_DOWNLOAD: return download_cmd_main(&args);
     case CMD_NONE:
     default:
         cli_print_usage(stderr);

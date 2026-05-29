@@ -1,0 +1,27 @@
+[Unit]
+Description=nocturne — process phone-initiated download requests via flacget
+Documentation=man:nocturned(1)
+After=default.target syncthing.service
+Wants=syncthing.service
+
+[Service]
+Type=oneshot
+# Independent of the cycle / pin-cycle / watch lock — `nocturned download`
+# acquires its own lockfile (nocturned-download.pid). NO ExecStartPre to
+# stop watch: stopping watch here would race with flacget's own
+# `nocturned cycle` call which expects watch back up by the time it runs.
+#
+# `download` is idempotent: requests already in terminal state (done/error)
+# are skipped via the desktop-status id-set, so re-firing on every meta
+# change is cheap (no-op runs return immediately).
+ExecStart=/usr/local/bin/nocturned download --meta-dir %h/sync/nocturne/meta
+# flacget itself nice's to background; this wrapper inherits that.
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+StandardOutput=journal
+StandardError=journal
+
+# RC=4 (lock busy) means another `nocturned download` is already running
+# the dispatcher — treat as success so systemd doesn't retry.
+SuccessExitStatus=4

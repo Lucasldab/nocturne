@@ -6,13 +6,16 @@ import io.nocturne.phone.data.catalog.AlbumArtRepository
 import io.nocturne.phone.data.catalog.CatalogImporter
 import io.nocturne.phone.data.db.MIGRATION_2_3
 import io.nocturne.phone.data.db.MIGRATION_3_4
+import io.nocturne.phone.data.db.MIGRATION_4_5
 import io.nocturne.phone.data.db.NocturneDatabase
 import io.nocturne.phone.data.prefs.SyncPrefs
 import io.nocturne.phone.data.stats.ActionsWriter
+import io.nocturne.phone.data.stats.DownloadsWriter
 import io.nocturne.phone.data.stats.JsonlFileWriter
 import io.nocturne.phone.data.stats.LikesWriter
 import io.nocturne.phone.data.stats.PinsWriter
 import io.nocturne.phone.data.stats.StatsWriter
+import io.nocturne.phone.data.sync.DownloadStatusReader
 import io.nocturne.phone.data.sync.SyncProgressRepository
 import io.nocturne.phone.player.QueueRepository
 
@@ -44,7 +47,7 @@ class AppContainer(
             // destructive migration would silently wipe PLAY-10 data on schema bump.
             // Phase 6 (D-19): MIGRATION_3_4 atomically adds the `pinned` column on
             // pins + creates the new `likes` table.
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .build()
     }
 
@@ -80,6 +83,17 @@ class AppContainer(
     // emit*; daemon ingests on next cycle.
     val actionsWriter: ActionsWriter by lazy {
         ActionsWriter(syncPrefs, jsonlFileWriter)
+    }
+
+    // Phone-initiated download request drain. Writes pending Room rows
+    // (`state = "pending"`) to `downloads-phone-<deviceid>.jsonl`; the
+    // desktop daemon's `download` subcommand consumes the JSONL and shells
+    // out to flacget. Status echoes back via downloadStatusReader.
+    val downloadsWriter: DownloadsWriter by lazy {
+        DownloadsWriter(db.downloadDao(), syncPrefs, jsonlFileWriter)
+    }
+    val downloadStatusReader: DownloadStatusReader by lazy {
+        DownloadStatusReader(applicationContext, db.downloadDao(), syncPrefs)
     }
 
     // Embedded album-art reader (cached). AlbumRow uses this to render real

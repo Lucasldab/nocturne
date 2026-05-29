@@ -32,7 +32,8 @@ enum nocturned_subcommand {
     CMD_TRANSCODE_MIGRATE,
     CMD_DISCOVER,
     CMD_UNSYNC,
-    CMD_DELETE
+    CMD_DELETE,
+    CMD_DOWNLOAD
 };
 
 /* Parsed argv for the daemon. Strings are pointers into argv (no ownership). */

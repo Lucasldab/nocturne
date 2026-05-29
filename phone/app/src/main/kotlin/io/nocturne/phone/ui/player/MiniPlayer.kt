@@ -4,6 +4,7 @@ import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -62,6 +64,7 @@ fun MiniPlayer(
     controller: MediaController,
     onTap: () -> Unit,
     modifier: Modifier = Modifier,
+    onLongPress: (() -> Unit)? = null,
 ) {
     var metadata by remember { mutableStateOf(controller.mediaMetadata) }
     var positionMs by remember { mutableLongStateOf(controller.currentPosition) }
@@ -118,7 +121,18 @@ fun MiniPlayer(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(44.dp)
-                .clickable(onClick = onTap)
+                .then(
+                    if (onLongPress != null) {
+                        Modifier.pointerInput(onTap, onLongPress) {
+                            detectTapGestures(
+                                onTap = { onTap() },
+                                onLongPress = { onLongPress() },
+                            )
+                        }
+                    } else {
+                        Modifier.clickable(onClick = onTap)
+                    },
+                )
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {

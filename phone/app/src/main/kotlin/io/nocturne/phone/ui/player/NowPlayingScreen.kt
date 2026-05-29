@@ -63,6 +63,7 @@ import androidx.media3.ui.compose.material3.buttons.ShuffleButton
 import androidx.media3.ui.compose.material3.indicator.PositionAndDurationText
 import androidx.media3.ui.compose.material3.indicator.ProgressSlider
 import io.nocturne.phone.player.PlayerViewModel
+import io.nocturne.phone.ui.browser.components.TrackActionsSheet
 import io.nocturne.phone.ui.theme.NocturneTheme
 
 /**
@@ -274,13 +275,32 @@ private fun NowPlayingBody(
 
             Spacer(Modifier.height(16.dp))
 
+            // Long-press a queue row opens the same TrackActionsSheet
+            // (unsync & unload / delete) used by track rows in the catalog and
+            // the mini-player long-press. State hosted at the screen level so
+            // the modal sheet renders above the sticky transport block.
+            var queueSheetTrack by remember {
+                mutableStateOf<Pair<String, String>?>(null) // (trackId, displayTitle)
+            }
+
             // 4. Queue — fills remaining space inside the scrollable upper region.
             QueueSection(
                 controller = controller,
                 currentIndex = currentIndex,
                 playerVm = playerVm,
+                onLongPressTrack = { id, title -> queueSheetTrack = id to title },
                 modifier = Modifier.weight(1f),
             )
+
+            queueSheetTrack?.let { (id, title) ->
+                TrackActionsSheet(
+                    displayName = title,
+                    isAlbum = false,
+                    onUnsync = { playerVm.unsyncTrack(id) },
+                    onDelete = { playerVm.deleteTrack(id) },
+                    onDismiss = { queueSheetTrack = null },
+                )
+            }
         }
 
         // 5. Sticky bottom transport block.

@@ -1,7 +1,10 @@
 package io.nocturne.phone.ui.player
 
 import androidx.annotation.OptIn
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,7 +15,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -25,6 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.MediaItem
@@ -39,6 +47,13 @@ import io.nocturne.phone.ui.theme.NocturnePrimary
  * UI-SPEC Surface 3. LazyColumn of queue items; the row at currentIndex
  * gets a 2dp leading border in primary color via Modifier.drawBehind. No
  * AnimatedVisibility, no animateContentSize.
+ *
+ * Per-row affordances:
+ *   - tap         → seek to that index + play
+ *   - long-press  → [onLongPressTrack] (host opens TrackActionsSheet)
+ *   - swipe       → remove from queue via controller.removeMediaItem(idx).
+ *                   Disabled on the currently-playing row to prevent an
+ *                   accidental skip+drop.
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -47,6 +62,7 @@ fun QueueSection(
     currentIndex: Int,
     modifier: Modifier = Modifier,
     playerVm: PlayerViewModel? = null,
+    onLongPressTrack: ((trackId: String, displayTitle: String) -> Unit)? = null,
 ) {
     val items = remember { mutableStateOf<List<MediaItem>>(emptyList()) }
 
@@ -77,6 +93,7 @@ fun QueueSection(
                 key = { it.mediaId },
             ) { item ->
                 val idx = items.value.indexOf(item)
+                val isCurrent = idx == currentIndex
                 // Resolve title/artist from the DB by mediaId — the live
                 // MediaItem.mediaMetadata can lag or inherit from the previously
                 // active item when ExoPlayer skips a missing-file row.
@@ -89,16 +106,74 @@ fun QueueSection(
                         dbArtist = track?.artist?.firstOrNull()
                     }
                 }
-                QueueRow(
-                    title = dbTitle ?: item.mediaMetadata.title?.toString().orEmpty(),
-                    artist = dbArtist ?: item.mediaMetadata.artist?.toString().orEmpty(),
-                    isCurrent = idx == currentIndex,
-                    onTap = {
-                        controller.seekToDefaultPosition(idx)
-                        controller.play()
-                    },
-                )
+                val displayTitle = dbTitle ?: item.mediaMetadata.title?.toString().orEmpty()
+                val displayArtist = dbArtist ?: item.mediaMetadata.artist?.toString().orEmpty()
+
+                val row: @Composable () -> Unit = {
+                    QueueRow(
+                        title = displayTitle,
+                        artist = displayArtist,
+                        isCurrent = isCurrent,
+                        onTap = {
+                            controller.seekToDefaultPosition(idx)
+                            controller.play()
+                        },
+                        onLongPress = onLongPressTrack?.let { cb ->
+                            { cb(item.mediaId, displayTitle) }
+                        },
+                    )
+                }
+
+                if (isCurrent) {
+                    // Don't allow swiping the actively playing track —
+                    // accidental skip+drop is a worse UX than "select another
+                    // row first to swipe this one".
+                    row()
+                } else {
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = { value ->
+                            if (value == SwipeToDismissBoxValue.EndToStart ||
+                                value == SwipeToDismissBoxValue.StartToEnd) {
+                                // Re-read the live index from the controller —
+                                // `idx` was captured at composition time and
+                                // can be stale by a frame if a prior swipe
+                                // already reshaped the queue.
+                                val liveIdx = (0 until controller.mediaItemCount)
+                                    .firstOrNull { controller.getMediaItemAt(it).mediaId == item.mediaId }
+                                if (liveIdx != null) controller.removeMediaItem(liveIdx)
+                                true
+                            } else false
+                        },
+                    )
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        backgroundContent = { SwipeBackground(dismissState.dismissDirection) },
+                        content = { row() },
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun SwipeBackground(direction: SwipeToDismissBoxValue) {
+    val end = direction == SwipeToDismissBoxValue.EndToStart
+    val start = direction == SwipeToDismissBoxValue.StartToEnd
+    val showLabel = end || start
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(if (showLabel) MaterialTheme.colorScheme.errorContainer else Color.Transparent)
+            .padding(horizontal = 16.dp),
+        contentAlignment = if (end) Alignment.CenterEnd else Alignment.CenterStart,
+    ) {
+        if (showLabel) {
+            Text(
+                text = "$ remove",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
         }
     }
 }
@@ -109,11 +184,23 @@ private fun QueueRow(
     artist: String,
     isCurrent: Boolean,
     onTap: () -> Unit,
+    onLongPress: (() -> Unit)? = null,
 ) {
+    val baseGesture: Modifier = if (onLongPress != null) {
+        Modifier.pointerInput(onTap, onLongPress) {
+            detectTapGestures(
+                onTap = { onTap() },
+                onLongPress = { onLongPress() },
+            )
+        }
+    } else {
+        Modifier.clickable(onClick = onTap)
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onTap)
+            .background(MaterialTheme.colorScheme.background)
+            .then(baseGesture)
             .then(
                 if (isCurrent) Modifier.drawBehind {
                     drawRect(

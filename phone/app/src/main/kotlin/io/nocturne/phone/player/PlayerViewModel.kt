@@ -95,6 +95,33 @@ class PlayerViewModel(
     suspend fun getTrack(id: String): TrackEntity? =
         container.db.trackDao().byId(id)
 
+    /**
+     * Long-press unsync from the mini-player / queue. Mirrors
+     * BrowserViewModel.unsyncTrack — optimistically flips the pin row + emits
+     * the action JSONL so the daemon demotes the file.
+     */
+    fun unsyncTrack(trackId: String) {
+        viewModelScope.launch {
+            container.db.pinDao().setPinned(
+                id = trackId,
+                pinned = false,
+                ts = System.currentTimeMillis(),
+            )
+            container.actionsWriter.emitUnsyncTrack(trackId)
+        }
+    }
+
+    /**
+     * Long-press delete from the mini-player / queue. Mirrors
+     * BrowserViewModel.deleteTrack — fire-and-forget; daemon handles archive
+     * removal + sha blacklist on next ingest pass.
+     */
+    fun deleteTrack(trackId: String) {
+        viewModelScope.launch {
+            container.actionsWriter.emitDeleteTrack(trackId)
+        }
+    }
+
     fun playSingleTrack(track: TrackEntity) {
         val c = _controller.value ?: return  // not yet connected
         if (!track.isResident) {

@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import io.nocturne.phone.ui.browser.components.NocturneBottomNav
+import io.nocturne.phone.ui.browser.components.TrackActionsSheet
 import io.nocturne.phone.ui.player.MiniPlayer
 import io.nocturne.phone.ui.player.NowPlayingScreen
 import io.nocturne.phone.ui.settings.SettingsScreen
@@ -88,6 +89,12 @@ fun BrowserRoot(
     // process death / rotation should reset to browse for predictability.
     var inUtility by remember { mutableStateOf(false) }
     var activeUtility by remember { mutableStateOf("rotation") }
+    // Long-press on the mini-player surfaces the same TrackActionsSheet used by
+    // track rows in the catalog. State lives at this level so the sheet can
+    // render above the entire shell (incl. nav bar + mini-player).
+    var miniSheetTrack by remember {
+        mutableStateOf<io.nocturne.phone.data.db.entity.TrackEntity?>(null)
+    }
     // System back exits utility mode rather than the app — utility is an
     // overlay state, not a navigation destination.
     BackHandler(enabled = inUtility) { inUtility = false }
@@ -201,9 +208,16 @@ fun BrowserRoot(
                 // the mini stays anchored above the system gesture inset.
                 Column(modifier = Modifier.fillMaxWidth()) {
                     if (hasMediaItem && activeController != null) {
+                        val sheetScope = androidx.compose.runtime.rememberCoroutineScope()
                         MiniPlayer(
                             controller = activeController,
                             onTap = { nav.navigate(Routes.NOW_PLAYING) },
+                            onLongPress = {
+                                val id = activeController.currentMediaItem?.mediaId ?: return@MiniPlayer
+                                sheetScope.launch {
+                                    miniSheetTrack = playerVm.getTrack(id)
+                                }
+                            },
                         )
                     }
                     // 1dp top hairline #837A6C above the bottom nav. Warmer
@@ -384,6 +398,15 @@ fun BrowserRoot(
         // Mini-player + nav-bar are now stacked in the Scaffold bottomBar slot
         // above (no longer overlaid via Box.align so they can't visually clash
         // with the NavigationBar or the gesture inset).
+        miniSheetTrack?.let { t ->
+            TrackActionsSheet(
+                displayName = t.title,
+                isAlbum = false,
+                onUnsync = { playerVm.unsyncTrack(t.id) },
+                onDelete = { playerVm.deleteTrack(t.id) },
+                onDismiss = { miniSheetTrack = null },
+            )
+        }
     }
 }
 

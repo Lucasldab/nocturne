@@ -61,9 +61,20 @@ done
 echo "==> generating syncthing config in $ST_HOME"
 syncthing generate --home "$ST_HOME" >/dev/null 2>&1
 
-# Patch GUI address to ephemeral port.
-sed -i "s|<address>127.0.0.1:8384</address>|<address>127.0.0.1:$ST_GUI_PORT</address>|" \
+# Patch GUI address to our ephemeral port. syncthing v1 generated the GUI
+# on the fixed :8384; v2's `generate` assigns a random port, so match the
+# gui <address> by pattern (the listen addresses are `dynamic`, so the only
+# host:port <address> is the GUI one) rather than a literal port.
+sed -i -E "s|<address>127\.0\.0\.1:[0-9]+</address>|<address>127.0.0.1:$ST_GUI_PORT</address>|" \
     "$ST_HOME/config.xml"
+
+# Force the GUI onto HTTPS. nocturned's syncthing_api.c hardcodes https for
+# the production REST path (http only for its own test mock), so the daemon's
+# rescan POST in step 4 only reaches a TLS GUI. syncthing v1 `generate`
+# defaulted the GUI to tls="true"; v2 flipped the default to tls="false"
+# (plain http), which is what broke this fixture. Restore the https the
+# daemon expects.
+sed -i -E 's|(<gui [^>]*)tls="false"|\1tls="true"|' "$ST_HOME/config.xml"
 
 # Spawn syncthing.
 echo "==> starting syncthing on 127.0.0.1:$ST_GUI_PORT"

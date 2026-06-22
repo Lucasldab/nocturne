@@ -268,6 +268,19 @@ int doctor_collect_with_override(struct nocturne_db *db,
 
     collect_orphans(raw, r);
 
+    /* No-FK orphan rows: pins/likes/unsync_overrides keyed on a sha256 that
+     * no longer has a tracks row. Pre-v8 these leaked on every track delete
+     * (no FK, no cascade). The v8 trigger stops new ones; this surfaces any
+     * that predate it or arrive via some unforeseen path. */
+    r->orphan_meta_count = pragma_count(raw,
+        "SELECT "
+        "  (SELECT COUNT(*) FROM pins  WHERE unit='track' "
+        "       AND id NOT IN (SELECT sha256 FROM tracks)) "
+        "+ (SELECT COUNT(*) FROM likes WHERE unit='track' "
+        "       AND id NOT IN (SELECT sha256 FROM tracks)) "
+        "+ (SELECT COUNT(*) FROM unsync_overrides "
+        "       WHERE sha256 NOT IN (SELECT sha256 FROM tracks))");
+
     load_scan_meta(raw, r);
     if (r->last_scan_at_iso) {
         long t = parse_iso_utc(r->last_scan_at_iso);
@@ -302,6 +315,7 @@ int doctor_collect_with_override(struct nocturne_db *db,
     int issues = 0;
     if (r->parse_failed_count > 0) issues++;
     if (r->orphan_count > 0) issues++;
+    if (r->orphan_meta_count > 0) issues++;
     if (r->inotify_headroom >= 0 && r->inotify_headroom < 100) issues++;
     if (r->mount_free_percent >= 0 && r->mount_free_percent < 5) issues++;
     if (r->last_scan_age_seconds >= 0 && r->last_scan_age_seconds > 86400 * 7) issues++;
@@ -370,6 +384,8 @@ void doctor_print_text(const struct doctor_report *r, FILE *f)
     for (size_t i = 0; i < r->orphan_samples_n; i++) {
         fprintf(f, "    - %s\n", r->orphan_samples[i]);
     }
+    fprintf(f, "Orphan meta rows (pins/likes/unsync for deleted tracks): %ld\n",
+            r->orphan_meta_count);
     fputc('\n', f);
 
     fprintf(f, "inotify:\n");
@@ -428,6 +444,7 @@ void doctor_print_json(const struct doctor_report *r, FILE *f)
     emit_string_array(f, r->parse_failed_samples, r->parse_failed_samples_n);
     fputc(',', f);
     fprintf(f, "\"orphan_count\":%ld,", r->orphan_count);
+    fprintf(f, "\"orphan_meta_count\":%ld,", r->orphan_meta_count);
     fprintf(f, "\"orphan_samples\":");
     emit_string_array(f, r->orphan_samples, r->orphan_samples_n);
     fputc(',', f);

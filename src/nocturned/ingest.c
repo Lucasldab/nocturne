@@ -530,6 +530,24 @@ static int handle_pin(json_t *root, struct nocturne_db *db,
         snprintf(iso + k, sizeof(iso) - k, ".%03lldZ", ms);
     }
 
+    /* Refuse to (re-)pin a blacklisted track. Its files + tracks row are
+     * already gone ("didn't like it"), so an INSERT here would create an
+     * orphan pin the AFTER DELETE trigger can never reach (no delete fires
+     * on an insert) — re-opening the orphan-pin hole from the phone side.
+     * Track-unit only (blacklist is per-sha). Idempotent no-op: the JSONL
+     * offset still advances; we just don't write or count it. */
+    if (!strcmp(unit, "track")) {
+        sqlite3_stmt *bl = NULL;
+        int blacklisted = 0;
+        if (sqlite3_prepare_v2(db_handle(db),
+                "SELECT 1 FROM track_blacklist WHERE sha256=?", -1, &bl, NULL) == SQLITE_OK) {
+            sqlite3_bind_text(bl, 1, id, -1, SQLITE_TRANSIENT);
+            blacklisted = (sqlite3_step(bl) == SQLITE_ROW);
+            sqlite3_finalize(bl);
+        }
+        if (blacklisted) return 0;
+    }
+
     if (prep(db, &g_cache.upsert_pin, SQL_UPSERT_PIN) != 0) return -1;
     sqlite3_bind_text (g_cache.upsert_pin, 1, unit, -1, SQLITE_TRANSIENT);
     sqlite3_bind_text (g_cache.upsert_pin, 2, id, -1, SQLITE_TRANSIENT);

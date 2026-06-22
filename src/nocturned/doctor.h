@@ -15,9 +15,11 @@ struct doctor_report {
     size_t parse_failed_samples_n;
 
     /* orphans */
-    long orphan_count;
+    long orphan_count;             /* tracks rows whose file is missing on disk */
     char **orphan_samples;
     size_t orphan_samples_n;
+    long orphan_meta_count;        /* pins/likes/unsync_overrides rows whose
+                                    * sha256 has no tracks row (no-FK leak) */
 
     /* inotify */
     long inotify_max_user_watches; /* -1 if unreadable */

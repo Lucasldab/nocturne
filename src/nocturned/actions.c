@@ -18,8 +18,13 @@
  *   - Read tracks.path (archive) and residency_state.transcode_path (resident)
  *   - unlink both files (ENOENT is fine)
  *   - INSERT INTO track_blacklist (sha, reason='didnt_like', added_at)
- *   - DELETE FROM tracks WHERE sha256=? (cascades pins/likes/plays/residency
- *     via existing FKs)
+ *   - DELETE FROM tracks WHERE sha256=? — cascades plays/residency_state/
+ *     manifest_current/weekly_discovery_picks (ON DELETE CASCADE) and clears
+ *     the no-FK companions pins/likes/unsync_overrides via the AFTER DELETE
+ *     trigger added in schema v8. Without that cleanup a deleted-while-pinned
+ *     track left a stale pins.pinned=1 row the phone treated as pinned
+ *     forever (orphan-pin bug, 2026-06-13). The trigger covers every delete
+ *     path — this CLI/ingest action AND the scan unseen-sweep/re-hash deletes.
  *   - scan.c on next walk refuses to insert a row for any blacklisted sha,
  *     so re-imports (e.g. streamrip re-running the same Spotify CSV) skip
  *
@@ -148,9 +153,24 @@ int delete_track_everywhere(struct nocturne_db *db, const char *sha,
         }
     }
 
-    /* Blacklist FIRST so subsequent scans refuse to re-add even if the row
-     * delete races a concurrent scan tick. */
+    /* Blacklist + tracks-row delete as one atomic unit. SAVEPOINT (not
+     * BEGIN) so it nests safely: this runs bare from the `delete` CLI but
+     * already inside ingest's BEGIN IMMEDIATE when driven by phone JSONL.
+     * Blacklist FIRST so a racing scan tick can't re-add the sha in the gap
+     * between delete and commit.
+     *
+     * The DELETE FROM tracks fans out automatically: plays/residency_state/
+     * manifest_current/weekly_discovery_picks via ON DELETE CASCADE, and the
+     * no-FK companions pins/likes/unsync_overrides via the AFTER DELETE
+     * trigger trg_tracks_after_delete_cleanup (schema v8) — same statement,
+     * same transaction, so no orphan rows survive regardless of call path. */
     {
+        if (sqlite3_exec(raw, "SAVEPOINT del_track", NULL, NULL, NULL) != SQLITE_OK) {
+            free(archive_path); free(transcode_path);
+            out->errors++; return -1;
+        }
+        int failed = 0;
+
         sqlite3_stmt *st = NULL;
         sqlite3_prepare_v2(raw,
             "INSERT INTO track_blacklist (sha256, reason, added_at) "
@@ -159,22 +179,24 @@ int delete_track_everywhere(struct nocturne_db *db, const char *sha,
             -1, &st, NULL);
         sqlite3_bind_text(st, 1, sha, -1, SQLITE_TRANSIENT);
         sqlite3_bind_text(st, 2, iso, -1, SQLITE_TRANSIENT);
-        sqlite3_step(st);
+        if (sqlite3_step(st) != SQLITE_DONE) failed = 1;
         sqlite3_finalize(st);
-    }
 
-    /* Cascade DELETE on tracks row. FKs in pins/likes/plays/residency_state/
-     * manifest_current/weekly_discovery_picks all use ON DELETE CASCADE. */
-    {
-        sqlite3_stmt *st = NULL;
-        sqlite3_prepare_v2(raw, "DELETE FROM tracks WHERE sha256=?", -1, &st, NULL);
-        sqlite3_bind_text(st, 1, sha, -1, SQLITE_TRANSIENT);
-        if (sqlite3_step(st) != SQLITE_DONE) {
+        if (!failed) {
+            st = NULL;
+            sqlite3_prepare_v2(raw, "DELETE FROM tracks WHERE sha256=?", -1, &st, NULL);
+            sqlite3_bind_text(st, 1, sha, -1, SQLITE_TRANSIENT);
+            if (sqlite3_step(st) != SQLITE_DONE) failed = 1;
             sqlite3_finalize(st);
+        }
+
+        if (failed) {
+            sqlite3_exec(raw, "ROLLBACK TO del_track", NULL, NULL, NULL);
+            sqlite3_exec(raw, "RELEASE del_track", NULL, NULL, NULL);
             free(archive_path); free(transcode_path);
             out->errors++; return -1;
         }
-        sqlite3_finalize(st);
+        sqlite3_exec(raw, "RELEASE del_track", NULL, NULL, NULL);
     }
 
     out->touched++;

@@ -34,7 +34,7 @@ cp tests/fixtures/clean_id3v24.mp3        "$LIB/Artist1/Album1/01.mp3"
 cp tests/fixtures/clean_all.flac          "$LIB/Artist2/Album2/01.flac"
 cp tests/fixtures/missing_album_artist.flac "$LIB/Artist3/AlbumA/01.flac"
 
-echo "==> [1/9] scan library"
+echo "==> [1/11] scan library"
 "$BIN" scan "$LIB" | tee "$WORK/scan.log"
 TRACK_COUNT=$(sqlite3 "$DB" "SELECT COUNT(*) FROM tracks;")
 [ "$TRACK_COUNT" -ge 3 ] || { echo "FAIL: only $TRACK_COUNT tracks scanned, need 3+"; exit 1; }
@@ -49,7 +49,7 @@ echo "    SHA1=${SHA1:0:12} SHA2=${SHA2:0:12} SHA3=${SHA3:0:12}"
 
 # 3. Snapshot the manifest BEFORE ingest. resolve exits 1 in cold-
 #    start mode (documented; not a regression).
-echo "==> [2/9] resolve + publish (pre-ingest baseline)"
+echo "==> [2/11] resolve + publish (pre-ingest baseline)"
 "$BIN" resolve >/dev/null 2>&1 || true
 "$BIN" publish --out "$META" >/dev/null
 test -f "$META/manifest.json" || { echo "FAIL: pre-ingest manifest not written"; exit 1; }
@@ -78,31 +78,31 @@ printf '{"v":1,"ts":%s,"unit":"track","id":"%s","liked":true}\n' \
 printf '{"v":1,"ts":%s,"unit":"track","id":"%s","pinned":true}\n' \
     "$NOW_MS" "$SHA3" > "$META/pins-phone-T1.jsonl"
 
-echo "==> [3/9] ingest #1"
+echo "==> [3/11] ingest #1"
 "$BIN" ingest --meta-dir "$META" 2>&1 | tee "$WORK/ingest1.log"
 grep -qE 'plays=50' "$WORK/ingest1.log" || { echo "FAIL: plays not ingested"; exit 1; }
 grep -qE 'likes=1'  "$WORK/ingest1.log" || { echo "FAIL: like not ingested"; exit 1; }
 grep -qE 'pins=1'   "$WORK/ingest1.log" || { echo "FAIL: pin not ingested"; exit 1; }
 
-echo "==> [4/9] ingest #2 (idempotency: INGEST-02)"
+echo "==> [4/11] ingest #2 (idempotency: INGEST-02)"
 "$BIN" ingest --meta-dir "$META" 2>&1 | tee "$WORK/ingest2.log"
 grep -qE 'plays=0 likes=0 pins=0 offsets_advanced=0' "$WORK/ingest2.log" \
     || { echo "FAIL: re-run not idempotent"; exit 1; }
 
-echo "==> [5/9] resolve + publish (post-ingest)"
+echo "==> [5/11] resolve + publish (post-ingest)"
 "$BIN" resolve | tee "$WORK/resolve.log"
 "$BIN" publish --out "$META" >/dev/null
 cp "$META/manifest.json" "$WORK/manifest-after.json"
 
 # 5. Manifest assertions.
-echo "==> [6/9] manifest changed (before != after)"
+echo "==> [6/11] manifest changed (before != after)"
 if cmp -s "$WORK/manifest-before.json" "$WORK/manifest-after.json"; then
     echo "FAIL: manifest unchanged after ingest"
     exit 1
 fi
 echo "    manifest differs from baseline"
 
-echo "==> [7/9] resident set contains SHA1 / SHA2 / SHA3"
+echo "==> [7/11] resident set contains SHA1 / SHA2 / SHA3"
 jq -e --arg s "$SHA1" '.resident[] | select(.id == $s)' "$WORK/manifest-after.json" >/dev/null \
     || { echo "FAIL: SHA1 not in resident set after 50 plays"; exit 1; }
 jq -e --arg s "$SHA2" '.resident[] | select(.id == $s)' "$WORK/manifest-after.json" >/dev/null \
@@ -111,7 +111,7 @@ jq -e --arg s "$SHA3" '.resident[] | select(.id == $s)' "$WORK/manifest-after.js
     || { echo "FAIL: SHA3 (pinned) not in resident set"; exit 1; }
 echo "    all 3 sha256s in resident set"
 
-echo "==> [8/9] bucket attribution"
+echo "==> [8/11] bucket attribution"
 # SHA1 should carry top_played; SHA2 should carry loved; SHA3 should
 # carry manual_pins. recent_adds may also attach to all three (every
 # scanned track is a recent add); that's fine.
@@ -126,8 +126,36 @@ jq -e --arg s "$SHA3" '.resident[] | select(.id == $s) | .buckets | index("manua
     || { echo "FAIL: SHA3 not attributed to manual_pins"; exit 1; }
 echo "    SHA1∈top_played, SHA2∈loved, SHA3∈manual_pins"
 
-echo "==> [9/9] ingest_offsets persisted (sanity)"
+echo "==> [9/11] ingest_offsets persisted (sanity)"
 OFFROWS=$(sqlite3 "$DB" "SELECT COUNT(*) FROM ingest_offsets;")
 [ "$OFFROWS" = "3" ] || { echo "FAIL: 3 ingest_offsets rows expected, got $OFFROWS"; exit 1; }
+
+# Orphan-pin regression (2026-06-13): deleting a track that is currently
+# pinned must clear its pins row. pins/likes/unsync_overrides have no FK to
+# tracks, so the DELETE FROM tracks cascade does NOT reach them — the schema
+# v8 AFTER DELETE trigger (trg_tracks_after_delete_cleanup) clears them in
+# the same statement, on every delete path. Without it the phone keeps
+# showing a deleted track as pinned forever. SHA3 is pinned from step 3.
+echo "==> [10/11] delete pinned SHA3 clears its pins row (orphan-pin trigger)"
+PINS_BEFORE=$(sqlite3 "$DB" "SELECT COUNT(*) FROM pins WHERE unit='track' AND id='$SHA3';")
+[ "$PINS_BEFORE" = "1" ] || { echo "FAIL: expected 1 pins row for SHA3 pre-delete, got $PINS_BEFORE"; exit 1; }
+"$BIN" delete "$SHA3" --yes | tee "$WORK/delete.log"
+PINS_AFTER=$(sqlite3 "$DB" "SELECT COUNT(*) FROM pins WHERE unit='track' AND id='$SHA3';")
+[ "$PINS_AFTER" = "0" ] || { echo "FAIL: orphan pin left after delete ($PINS_AFTER rows for SHA3)"; exit 1; }
+TRK_AFTER=$(sqlite3 "$DB" "SELECT COUNT(*) FROM tracks WHERE sha256='$SHA3';")
+[ "$TRK_AFTER" = "0" ] || { echo "FAIL: tracks row survived delete"; exit 1; }
+BL_AFTER=$(sqlite3 "$DB" "SELECT COUNT(*) FROM track_blacklist WHERE sha256='$SHA3';")
+[ "$BL_AFTER" = "1" ] || { echo "FAIL: SHA3 not blacklisted after delete"; exit 1; }
+echo "    pins cleared, track deleted, blacklisted"
+
+# Re-pin guard: a phone pin event for the now-blacklisted SHA3 must be a
+# no-op (no new orphan pin row), since the trigger can't reach an INSERT.
+echo "==> [11/11] re-pin of blacklisted SHA3 is a no-op (no new orphan pin)"
+printf '{"v":1,"ts":%s,"unit":"track","id":"%s","pinned":true}\n' \
+    "$(( NOW_MS + 1000 ))" "$SHA3" > "$META/pins-phone-T2.jsonl"
+"$BIN" ingest --meta-dir "$META" 2>&1 | tee "$WORK/ingest3.log"
+PINS_REPIN=$(sqlite3 "$DB" "SELECT COUNT(*) FROM pins WHERE unit='track' AND id='$SHA3';")
+[ "$PINS_REPIN" = "0" ] || { echo "FAIL: re-pin of blacklisted sha created an orphan pin ($PINS_REPIN rows)"; exit 1; }
+echo "    blacklisted re-pin ignored"
 
 echo "test_integration_ingest: OK"

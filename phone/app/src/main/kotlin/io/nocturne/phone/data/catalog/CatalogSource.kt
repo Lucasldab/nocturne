@@ -18,6 +18,11 @@ interface CatalogSource {
 
     /** Returns null if manifest.json is absent (cold-start case). */
     fun openManifest(): InputStream?
+
+    /** Home feed inputs; null when the desktop has not published them yet. */
+    fun openDiscovery(): InputStream? = null
+
+    fun openRecommendations(): InputStream? = null
 }
 
 /**
@@ -44,6 +49,16 @@ class SafCatalogSource(
 
     override fun openManifest(): InputStream? {
         val f = findChild("manifest.json") ?: return null
+        return context.contentResolver.openInputStream(f.uri)
+    }
+
+    override fun openDiscovery(): InputStream? {
+        val f = findChild("discovery.json") ?: return null
+        return context.contentResolver.openInputStream(f.uri)
+    }
+
+    override fun openRecommendations(): InputStream? {
+        val f = findChild("recommendations.json") ?: return null
         return context.contentResolver.openInputStream(f.uri)
     }
 }

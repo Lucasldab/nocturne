@@ -1,0 +1,75 @@
+# Build and publish a signed APK when a version tag is pushed.
+#
+# Exists because no machine here can build one any more: the Android toolchain
+# died with sillybox, and rebuilding it on the server would be wrong anyway —
+# hearth is a 2015 Xeon busy serving photos and music, and the phone plugs into
+# the laptop, not the server. CI needs no local toolchain at all and publishes
+# straight to Releases, which Obtainium already watches.
+#
+# Required repository secrets:
+#   KEYSTORE_BASE64    base64 of keystore/nocturne-release.jks
+#   KEYSTORE_PASSWORD  its store password (key password is the same)
+# Generate the base64 with:  base64 -w0 ~/keystore/nocturne-release.jks
+
+name: Release APK
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # needed to attach the APK to the release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # AGP 8.13 supports JDK 17/21. NOT 26 — the Arch default would break it.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Restore keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::KEYSTORE_BASE64 secret is not set — the APK would be"
+            echo "::error::signed with a throwaway debug key and could not update"
+            echo "::error::the installed app. Refusing to publish."
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/nocturne-release.jks"
+
+      - name: Build signed release APK
+        working-directory: phone
+        env:
+          NOCTURNE_KEYSTORE: ${{ runner.temp }}/nocturne-release.jks
+          NOCTURNE_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Confirm it is really signed with our key
+        run: |
+          APK=$(find phone/app/build/outputs/apk/release -name '*.apk' | head -1)
+          echo "apk: $APK"
+          "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$APK" \
+            | grep -i 'signer #1 certificate DN' || true
+
+      - name: Attach to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: phone/app/build/outputs/apk/release/*.apk
+          fail_on_unmatched_files: true
+
+      - name: Keep the artefact even if the release step is skipped
+        uses: actions/upload-artifact@v4
+        with:
+          name: nocturne-phone-apk
+          path: phone/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error

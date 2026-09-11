@@ -255,6 +255,7 @@ fun BrowserRoot(
                     // Map active route to its tab so the selected state survives
                     // navigation into detail screens (album / artist detail).
                     val activeTabRoute: String? = when {
+                        currentRoute == Routes.HOME -> Routes.HOME
                         currentRoute == Routes.ALBUMS -> Routes.ALBUMS
                         currentRoute == Routes.ARTISTS -> Routes.ARTISTS
                         currentRoute == Routes.TRACKS -> Routes.TRACKS

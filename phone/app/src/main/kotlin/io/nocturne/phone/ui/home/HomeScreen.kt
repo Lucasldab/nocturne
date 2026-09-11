@@ -69,11 +69,7 @@ fun HomeScreen(vm: HomeViewModel) {
             val q = rec.query ?: rec.name
             FeedRow(
                 title = rec.topTrack ?: rec.name,
-                subtitle = if (rec.topTrack != null) {
-                    rec.name
-                } else {
-                    rec.comment.ifBlank { "artist" }
-                },
+                subtitle = if (rec.topTrack != null) rec.name else rec.comment,
                 // "because you listen to X" is the whole point — show the seed.
                 trailing = rec.because.firstOrNull()?.let { "← $it" } ?: "",
                 requested = q in state.requested,
@@ -131,21 +127,17 @@ private fun FeedRow(
                 overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            if (subtitle.isNotBlank()) {
+            // One line, not two. Three-line rows showed ~10 items per screen and
+            // repeated "never played" down the whole list, which carries no
+            // information when every pick shares a reason.
+            val detail = listOf(subtitle, trailing)
+                .filter { it.isNotBlank() }
+                .joinToString("  ·  ")
+            if (detail.isNotBlank()) {
                 Text(
-                    text = subtitle,
+                    text = detail,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (trailing.isNotBlank()) {
-                Text(
-                    text = trailing,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

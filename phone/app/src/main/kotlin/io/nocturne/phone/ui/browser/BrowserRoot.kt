@@ -41,6 +41,8 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
+import io.nocturne.phone.ui.home.HomeScreen
+import io.nocturne.phone.ui.home.HomeVMFactory
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.text.SpanStyle
@@ -96,8 +98,8 @@ fun BrowserRoot(
     LaunchedEffect(Unit) {
         val restored = nav.currentBackStackEntryFlow.first()
         if (restored.destination.route == Routes.NOW_PLAYING) {
-            if (!nav.popBackStack(Routes.ALBUMS, false)) {
-                nav.navigate(Routes.ALBUMS) { popUpTo(0) }
+            if (!nav.popBackStack(Routes.HOME, false)) {
+                nav.navigate(Routes.HOME) { popUpTo(0) }
             }
         }
     }
@@ -309,9 +311,14 @@ fun BrowserRoot(
             }
             NavHost(
                 navController = nav,
-                startDestination = Routes.ALBUMS,
+                startDestination = Routes.HOME,
                 modifier = Modifier.padding(padding),
             ) {
+                // Home / For You — Discovery picks and recommendations, the
+                // surfaces the resolver has been computing with nowhere to show.
+                composable(Routes.HOME) {
+                    HomeScreen(viewModel(factory = HomeVMFactory(container)))
+                }
                 composable(Routes.ALBUMS) {
                     AlbumsScreen(vm, onNavigate = { id -> nav.navigate(Routes.albumDetail(id)) }, container = container)
                 }

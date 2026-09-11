@@ -48,6 +48,7 @@ fun NocturneBottomNav(
     onTab: (String) -> Unit,
 ) {
     val tabs = listOf(
+        Tab(Routes.HOME, "H", "Home"),
         Tab(Routes.ALBUMS, "A", "Albums"),
         Tab(Routes.ARTISTS, "A", "Artists"),
         Tab(Routes.TRACKS, "T", "Tracks"),

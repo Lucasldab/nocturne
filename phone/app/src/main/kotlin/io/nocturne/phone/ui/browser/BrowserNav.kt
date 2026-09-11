@@ -7,6 +7,7 @@ package io.nocturne.phone.ui.browser
  * in the back stack.
  */
 object Routes {
+    const val HOME = "home"
     const val ALBUMS = "albums"
     const val ARTISTS = "artists"
     const val TRACKS = "tracks"

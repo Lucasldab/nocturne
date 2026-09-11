@@ -49,10 +49,13 @@ fun HomeScreen(vm: HomeViewModel) {
         items(state.picks, key = { it.id.ifBlank { it.query } }) { pick ->
             FeedRow(
                 title = pick.title,
-                subtitle = listOf(pick.artist, pick.album)
+                // Reason before album: the line truncates from the right, and a
+                // long compilation title was eating "never played" down to
+                // "neve…". The album is the least important part here.
+                subtitle = listOf(pick.artist, pick.reason.replace("_", " "))
                     .filter { it.isNotBlank() }
                     .joinToString("  ·  "),
-                trailing = pick.reason.replace("_", " "),
+                trailing = pick.album,
                 requested = pick.query in state.requested,
                 onTap = { vm.fetch(pick.query) },
             )

@@ -30,13 +30,55 @@ android {
         unitTests.isIncludeAndroidResources = true
     }
 
+    // Release signing. Without this, Gradle falls back to the per-machine debug
+    // keystore — which is how the key that signed every release up to
+    // v0.4.41-dev died with sillybox, leaving no way to update the installed
+    // app. Android refuses an update signed by a different key, so the keystore
+    // is now a durable artefact: keep it backed up or this happens again.
+    //
+    // Resolved from the environment so the same build works locally and in CI:
+    //   NOCTURNE_KEYSTORE           path to the .jks  (default ~/keystore/...)
+    //   NOCTURNE_KEYSTORE_PASSWORD  store password
+    //   NOCTURNE_KEY_ALIAS          default "nocturne"
+    //   NOCTURNE_KEY_PASSWORD       defaults to the store password
+    // Absent those, the block stays unconfigured and debug signing applies, so
+    // a plain `assembleDebug` on a fresh clone still works.
+    signingConfigs {
+        create("release") {
+            val ksPath = System.getenv("NOCTURNE_KEYSTORE")
+                ?: "${System.getProperty("user.home")}/keystore/nocturne-release.jks"
+            val ksPass = System.getenv("NOCTURNE_KEYSTORE_PASSWORD")
+            if (ksPass != null && file(ksPath).exists()) {
+                storeFile = file(ksPath)
+                storePassword = ksPass
+                keyAlias = System.getenv("NOCTURNE_KEY_ALIAS") ?: "nocturne"
+                keyPassword = System.getenv("NOCTURNE_KEY_PASSWORD") ?: ksPass
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
         }
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // Only sign when the keystore actually resolved; otherwise leave the
+            // variant unsigned rather than failing a developer's local build.
+            signingConfigs.getByName("release").storeFile?.let {
+                signingConfig = signingConfigs.getByName("release")
+            }
+            // R8 DISABLED DELIBERATELY (2026-09-11). Every shipped release up to
+            // v0.4.41-dev was built with `assembleDebug` per the README, so R8
+            // has almost certainly never run against this app — and
+            // proguard-rules.pro is 87 bytes while Room, Compose and Media3 all
+            // rely on reflection. That combination builds cleanly and crashes at
+            // runtime. Obtainium auto-installs whatever lands in Releases, so an
+            // untested minified build would ship straight to the phone.
+            //
+            // Re-enable once a minified build has actually been installed and
+            // exercised, with the keep rules those libraries need.
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

@@ -14,6 +14,7 @@ struct bucket_config {
 struct nocturne_config {
     char *library_root;          /* [library].path */
     char *sync_meta_root;        /* [sync_meta].path */
+    char *flacget_path;          /* [download].flacget_path */
     long long cap_bytes;         /* [cap].bytes; default 12 GiB */
     double cap_effective_ratio;  /* [cap].effective_ratio; default 0.70 */
     double hysteresis_ratio;     /* [resolver].hysteresis; default 0.10 */

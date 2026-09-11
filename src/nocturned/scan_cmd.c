@@ -34,8 +34,8 @@ static void err_to_stderr(const char *msg, void *ud)
 
 int scan_cmd_main(struct cli_args *args)
 {
-    if (!args || !args->library_path) {
-        fprintf(stderr, "nocturned scan: missing <library> path\n");
+    if (!args || !cli_resolve_library(args)) {
+        fprintf(stderr, "nocturned scan: no <library> path given and no [library].path in config\n");
         return 64; /* USAGE */
     }
 

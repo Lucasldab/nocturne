@@ -34,8 +34,8 @@ static void err_to_stderr(const char *msg, void *ud)
 
 int watch_cmd_main(struct cli_args *args)
 {
-    if (!args || !args->library_path) {
-        fprintf(stderr, "nocturned watch: missing <library> path\n");
+    if (!args || !cli_resolve_library(args)) {
+        fprintf(stderr, "nocturned watch: no <library> path given and no [library].path in config\n");
         return 64;  /* USAGE */
     }
 

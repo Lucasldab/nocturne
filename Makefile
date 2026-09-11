@@ -76,6 +76,14 @@ endif
 Q := $(if $(V),,@)
 
 # Dependency tracking
+# Version comes from git rather than a literal that goes stale (it read
+# 0.2.0-dev/phase-02 while the tags said v0.4.41-dev).
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo unknown)
+CFLAGS += -DNOCTURNE_VERSION=\"$(VERSION)\"
+
+# Never leave a half-written target behind for make to trust next run.
+.DELETE_ON_ERROR:
+
 CFLAGS += -MMD -MP
 
 # --- Test variables ---
@@ -227,8 +235,14 @@ SCHEMA_HDRS   := $(SCHEMA_SQL:schema/%.sql=src/nocturned/_schema_%.h)
 # `cd schema` keeps the xxd-generated symbol name short (just NNNN_init_sql)
 # instead of including the directory path. xxd prepends `__` automatically
 # when the filename starts with a digit; migrations.c depends on that.
+# Fail loudly if xxd is absent, and generate atomically: a failed redirect
+# used to leave a 0-byte header that make then considered up to date, so every
+# later build failed with a confusing "undeclared symbol" until `make clean`.
 src/nocturned/_schema_%.h: schema/%.sql
-	$(Q)cd schema && xxd -i $*.sql > ../src/nocturned/_schema_$*.h
+	$(Q)command -v xxd >/dev/null 2>&1 || { \
+		echo "error: xxd not found (Debian/Ubuntu: apt install xxd; Arch: pacman -S vim)" >&2; \
+		exit 1; }
+	$(Q)cd schema && xxd -i $*.sql > ../$@.tmp && mv ../$@.tmp ../$@
 
 # --- Nocturned production build rules ---
 $(BUILDDIR)/nocturned-obj/migrations.o: $(SCHEMA_HDRS)

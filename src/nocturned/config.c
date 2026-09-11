@@ -81,6 +81,7 @@ void config_free(struct nocturne_config *c)
     if (!c) return;
     free(c->library_root);
     free(c->sync_meta_root);
+    free(c->flacget_path);
     free(c->syncthing_desktop_name);
     free(c->syncthing_phone_name);
     free(c->syncthing_phone_sync_files);
@@ -234,6 +235,13 @@ static int apply_kv(struct nocturne_config *c,
         if (!strcmp(key, "path")) {
             free(c->sync_meta_root);
             c->sync_meta_root = as_str ? as_str : NULL;
+            if (!as_str) goto fail;
+            return 0;
+        }
+    } else if (!strcmp(section, "download")) {
+        if (!strcmp(key, "flacget_path")) {
+            free(c->flacget_path);
+            c->flacget_path = as_str ? as_str : NULL;
             if (!as_str) goto fail;
             return 0;
         }

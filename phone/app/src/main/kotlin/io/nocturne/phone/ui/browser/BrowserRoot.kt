@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -41,6 +42,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -80,6 +82,25 @@ fun BrowserRoot(
         onDispose { playerVm.disconnect() }
     }
     val nav = rememberNavController()
+
+    // Cold-start reset. `rememberNavController` persists the back stack across
+    // process death, and `onPlayStarted` pushes NOW_PLAYING — so an app that
+    // Android reclaimed while the player was open reopens on the player, with
+    // nothing playing. That contradicts the rule stated for `inUtility` below:
+    // process death should reset to browse for predictability. Anything still
+    // playing stays one tap away on the mini-player.
+    //
+    // Fires once, after the graph publishes its first entry (the flow suspends
+    // until the NavHost below has composed, so currentBackStackEntry is never
+    // read as null here).
+    LaunchedEffect(Unit) {
+        val restored = nav.currentBackStackEntryFlow.first()
+        if (restored.destination.route == Routes.NOW_PLAYING) {
+            if (!nav.popBackStack(Routes.ALBUMS, false)) {
+                nav.navigate(Routes.ALBUMS) { popUpTo(0) }
+            }
+        }
+    }
     var showSearch by remember { mutableStateOf(false) }
     // the System affordance is now an in-place utility
     // mode toggle (◇ → ◆) instead of a routed hub. `inUtility` flips the shell

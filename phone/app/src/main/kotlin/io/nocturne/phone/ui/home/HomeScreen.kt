@@ -38,6 +38,16 @@ import io.nocturne.phone.data.catalog.Recommendation
 fun HomeScreen(vm: HomeViewModel) {
     val state by vm.state.collectAsStateWithLifecycle()
 
+    // A reason carries information only where it DIFFERS. Ten consecutive rows
+    // reading "never played" is noise; the one saying "random" is the signal.
+    // So find the dominant reason and show it only on the exceptions.
+    val commonReason = state.picks
+        .groupingBy { it.reason }
+        .eachCount()
+        .maxByOrNull { it.value }
+        ?.key
+        .orEmpty()
+
     LazyColumn(modifier = Modifier.fillMaxWidth()) {
         item {
             Spacer(Modifier.height(8.dp))
@@ -52,9 +62,10 @@ fun HomeScreen(vm: HomeViewModel) {
                 // Reason before album: the line truncates from the right, and a
                 // long compilation title was eating "never played" down to
                 // "neve…". The album is the least important part here.
-                subtitle = listOf(pick.artist, pick.reason.replace("_", " "))
-                    .filter { it.isNotBlank() }
-                    .joinToString("  ·  "),
+                subtitle = listOf(
+                    pick.artist,
+                    if (pick.reason != commonReason) pick.reason.replace("_", " ") else "",
+                ).filter { it.isNotBlank() }.joinToString("  ·  "),
                 trailing = pick.album,
                 requested = pick.query in state.requested,
                 onTap = { vm.fetch(pick.query) },

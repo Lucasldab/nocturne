@@ -32,8 +32,8 @@ static void err_to_stderr(const char *msg, void *ud)
 
 int migrate_cmd_main(struct cli_args *args)
 {
-    if (!args || !args->library_path) {
-        fprintf(stderr, "nocturned migrate: missing <library> path\n");
+    if (!args || !cli_resolve_library(args)) {
+        fprintf(stderr, "nocturned migrate: no <library> path given and no [library].path in config\n");
         return NOCT_EXIT_USAGE;
     }
 

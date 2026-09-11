@@ -154,9 +154,10 @@ int download_cmd_main(struct cli_args *args)
         return 3;
     }
 
-    /* 4. Resolve flacget path — for now hard-coded to ~/.local/bin/flacget.
-     * Config knob can be added later if other deployments need it. */
-    char *flacget_path = default_flacget_path();
+    /* 4. Resolve flacget path: [download].flacget_path > ~/.local/bin/flacget. */
+    char *flacget_path = (cfg.flacget_path && *cfg.flacget_path)
+                             ? strdup(cfg.flacget_path)
+                             : default_flacget_path();
     if (!flacget_path) {
         fprintf(stderr, "nocturned download: cannot resolve flacget path\n");
         free(fallback_meta);

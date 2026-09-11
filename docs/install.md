@@ -48,7 +48,7 @@ make test SAN=1
 
 ## 3. Configure
 
-Create `~/.config/nocturne/nocturne.toml`:
+Create `~/.config/nocturne/config.toml`:
 
 ```toml
 [library]
@@ -156,7 +156,7 @@ Disable the privacy-leaking knobs:
 - Settings → Connections → uncheck "Enable NAT traversal"
 
 Copy your Syncthing device ID (top-right Identification panel) into
-`nocturne.toml` as `[syncthing] desktop_device_id`.
+`config.toml` as `[syncthing] desktop_device_id`.
 
 Generate the desktop-side folder XML:
 

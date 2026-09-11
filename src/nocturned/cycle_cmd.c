@@ -27,7 +27,7 @@ int cycle_cmd_main(struct cli_args *args)
 {
     int rc;
 
-    if (!args->library_path) {
+    if (!cli_resolve_library(args)) {
         fprintf(stderr,
             "nocturned cycle: library path required as positional arg\n"
             "  e.g. nocturned cycle /home/lucas/music\n");

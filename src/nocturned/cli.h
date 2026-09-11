@@ -76,4 +76,8 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
 void cli_print_usage(FILE *f);
 void cli_print_version(FILE *f);
 
+/* Resolve the library root: positional argv wins, else [library].path from
+ * the config file. Returns 1 on success, 0 when neither supplies one. */
+int cli_resolve_library(struct cli_args *args);
+
 #endif /* NOCTURNE_NOCTURNED_CLI_H */

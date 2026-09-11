@@ -10,6 +10,12 @@
 #define _GNU_SOURCE
 
 #include "cli.h"
+#include "config.h"
+#include "paths.h"
+
+#ifndef NOCTURNE_VERSION
+#define NOCTURNE_VERSION "unknown"
+#endif
 
 #include <getopt.h>
 #include <stdio.h>
@@ -95,7 +101,7 @@ void cli_print_usage(FILE *f)
 
 void cli_print_version(FILE *f)
 {
-    fprintf(f, "nocturned 0.2.0-dev (phase 02-daemon-foundation)\n");
+    fprintf(f, "nocturned %s\n", NOCTURNE_VERSION);
 }
 
 static enum nocturned_subcommand subcommand_from_string(const char *s)
@@ -252,4 +258,35 @@ enum nocturned_subcommand cli_parse(int argc, char **argv, struct cli_args *out)
     }
 
     return sub;
+}
+
+/*
+ * cli_resolve_library — fill args->library_path from [library].path when the
+ * caller gave no positional path.
+ *
+ * The systemd units used to pass the library as argv, which meant the path
+ * lived in two places (config.toml AND the unit files) and a host whose
+ * library was not ~/music needed unit overrides. Commands now fall back to
+ * the config file, so the unit files carry no path at all.
+ *
+ * Returns 1 when args->library_path is usable. The strdup is owned for the
+ * process lifetime: these are one-shot commands, and `watch` holds it until
+ * it exits.
+ */
+int cli_resolve_library(struct cli_args *args)
+{
+    if (!args) return 0;
+    if (args->library_path && *args->library_path) return 1;
+
+    struct nocturne_config cfg;
+    const char *cfg_path = args->config_path ? args->config_path
+                                             : paths_config_file();
+    if (config_load(cfg_path, &cfg) != 0) {
+        config_free(&cfg);
+        return 0;
+    }
+    if (cfg.library_root && *cfg.library_root)
+        args->library_path = strdup(cfg.library_root);
+    config_free(&cfg);
+    return args->library_path && *args->library_path;
 }

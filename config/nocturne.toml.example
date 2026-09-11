@@ -12,6 +12,11 @@
 # the library path positionally on the command line for scan/watch.
 # path = "/home/you/music/library"
 
+# [download] — the wrapper `nocturned download` execs once per phone-initiated
+# request. Optional; defaults to ~/.local/bin/flacget.
+[download]
+# flacget_path = "/home/you/.local/bin/flacget"
+
 [sync_meta]
 # Where the daemon writes catalog.json + manifest.json (Phase 3).
 # Default: ~/sync/music-meta

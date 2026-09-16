@@ -122,7 +122,7 @@ static const char *LOOKUP_BY_SHA_SQL =
     "SELECT 1 FROM tracks WHERE sha256=?";
 
 static const char *DELETE_UNSEEN_SQL =
-    "DELETE FROM tracks WHERE path LIKE ? AND last_seen_at < ?";
+    "DELETE FROM tracks WHERE substr(path, 1, length(?1)) = ?1 AND last_seen_at < ?2";
 
 static const char *COUNT_SQL =
     "SELECT COUNT(*) FROM tracks";
@@ -278,21 +278,21 @@ long track_repo_delete_unseen_under_root(struct nocturne_db *db,
     if (ensure_cache_for(db) != 0) return -1;
     if (prep(db, &g_cache.delete_unseen, DELETE_UNSEEN_SQL) != 0) return -1;
 
-    /* SQL LIKE pattern: prefix + '%'. We don't escape underscore/percent
-     * characters in the path because library_root is a real filesystem
-     * path the user supplied; misinterpretation here only widens the
-     * delete set, never narrows it dangerously, and the cutoff_iso guard
-     * prevents collateral damage on rows seen this scan. */
+    /* Exact, case-sensitive prefix match — NOT `LIKE`. LIKE folds ASCII
+     * case and treats `_` as a wildcard, so a subtree scan of
+     * "archive/Flawed Mangoes/X" swept rows under "archive/flawed mangoes/X"
+     * that it never walked. The cutoff_iso guard only protects rows seen
+     * by *this* walk, which a sibling dir's rows never are; their deletion
+     * then fired the after-delete trigger and dropped their pins/likes. */
     size_t pn = strlen(library_root);
-    char *pattern = malloc(pn + 3);
+    char *pattern = malloc(pn + 2);
     if (!pattern) return -1;
     memcpy(pattern, library_root, pn);
-    /* Ensure trailing slash before the wildcard so /home/library doesn't
-     * match /home/library-old/foo.mp3. */
+    /* Ensure trailing slash so /home/library doesn't match
+     * /home/library-old/foo.mp3. */
     if (pn == 0 || pattern[pn - 1] != '/') {
         pattern[pn++] = '/';
     }
-    pattern[pn++] = '%';
     pattern[pn] = '\0';
 
     sqlite3_stmt *s = g_cache.delete_unseen;

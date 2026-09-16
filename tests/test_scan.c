@@ -266,5 +266,74 @@ int main(int argc, char **argv)
         rm_rf(root); free(root);
     }
 
+    /* 9. Subtree sweep must not touch sibling dirs that only match the
+     *    prefix under LIKE semantics: a case-only variant ("Flawed Mangoes"
+     *    vs "flawed mangoes") and an underscore standing in for another
+     *    character ("A_B" vs "AxB"). Deleting those rows fires the
+     *    after-delete trigger and silently drops their pins. */
+    {
+        char *root = make_tmpdir("sibling");
+        char *src  = fix_path(fixdir, "clean_id3v24.mp3");
+        const char *dirs[] = { "Flawed Mangoes", "flawed mangoes", "A_B", "AxB" };
+        char *paths[4];
+        for (int i = 0; i < 4; i++) {
+            char *d = fix_path(root, dirs[i]);
+            mkdir(d, 0755);
+            paths[i] = fix_path(d, "track.mp3");
+            free(d);
+            /* Distinct trailing bytes so each file hashes to its own sha. */
+            copy_one(src, paths[i]);
+            FILE *f = fopen(paths[i], "ab");
+            if (f) {
+                char extra[1024];
+                for (size_t k = 0; k < sizeof(extra); k++) extra[k] = (char) ((k + i) & 0xff);
+                fwrite(extra, 1, sizeof(extra), f);
+                fclose(f);
+            }
+        }
+
+        char *dbp = tmp_db_path();
+        struct nocturne_db *db = db_open(dbp, NULL, NULL);
+        struct scan_stats s = {0};
+        scan_run(db, root, &s);
+        expect(track_repo_count(db) == 4, "sibling: full scan adds 4 rows");
+
+        char *lower_sha = select_text(db, paths[1], "sha256");
+        sqlite3_stmt *st = NULL;
+        sqlite3_prepare_v2(db_handle(db),
+            "INSERT INTO pins (unit, id, pinned, updated_at, ts) "
+            "VALUES ('track', ?, 1, '2026-09-11T11:00:55.707Z', 1789124455707)",
+            -1, &st, NULL);
+        sqlite3_bind_text(st, 1, lower_sha, -1, SQLITE_TRANSIENT);
+        sqlite3_step(st);
+        sqlite3_finalize(st);
+
+        /* Rescan one subtree of each pair. */
+        for (int i = 0; i < 4; i += 2) {
+            char *d = fix_path(root, dirs[i]);
+            memset(&s, 0, sizeof(s));
+            int rc = scan_run_subtree(db, root, d, &s);
+            expect(rc == 0 || rc == 1, "sibling: subtree scan returns 0/1");
+            expect(s.files_removed == 0, "sibling: subtree scan removes no sibling rows");
+            free(d);
+        }
+        expect(track_repo_count(db) == 4, "sibling: all 4 rows survive subtree scans");
+
+        long pins = 0;
+        sqlite3_prepare_v2(db_handle(db),
+            "SELECT COUNT(*) FROM pins WHERE id=?", -1, &st, NULL);
+        sqlite3_bind_text(st, 1, lower_sha, -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(st) == SQLITE_ROW) pins = sqlite3_column_int64(st, 0);
+        sqlite3_finalize(st);
+        expect(pins == 1, "sibling: pin on case-variant sibling survives");
+
+        free(lower_sha);
+        db_close(db);
+        unlink(dbp); free(dbp);
+        for (int i = 0; i < 4; i++) free(paths[i]);
+        free(src);
+        rm_rf(root); free(root);
+    }
+
     return test_finish(__FILE__);
 }

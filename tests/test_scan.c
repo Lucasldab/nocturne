@@ -335,5 +335,74 @@ int main(int argc, char **argv)
         rm_rf(root); free(root);
     }
 
+    /* 10. A file moved between dirs keeps its row (and pin) whichever
+     *     subtree the watcher rescans first. The source dir rescanned alone
+     *     can't know the file went elsewhere, so it must not delete; the
+     *     next full scan is what reconciles real deletions. */
+    {
+        char *root = make_tmpdir("move");
+        char *src  = fix_path(fixdir, "clean_id3v24.mp3");
+        char *da = fix_path(root, "A");
+        char *db_dir = fix_path(root, "B");
+        mkdir(da, 0755);
+        mkdir(db_dir, 0755);
+        char *pa = fix_path(da, "track.mp3");
+        char *pb = fix_path(db_dir, "track.mp3");
+        copy_one(src, pa);
+
+        char *dbp = tmp_db_path();
+        struct nocturne_db *db = db_open(dbp, NULL, NULL);
+        struct scan_stats s = {0};
+        scan_run(db, root, &s);
+        char *sha = select_text(db, pa, "sha256");
+        expect(sha != NULL, "move: row exists before the move");
+
+        sqlite3_stmt *st = NULL;
+        sqlite3_prepare_v2(db_handle(db),
+            "INSERT INTO pins (unit, id, pinned, updated_at, ts) "
+            "VALUES ('track', ?, 1, '2026-09-17T12:00:00.000Z', 1789646400000)",
+            -1, &st, NULL);
+        sqlite3_bind_text(st, 1, sha, -1, SQLITE_TRANSIENT);
+        sqlite3_step(st);
+        sqlite3_finalize(st);
+
+        rename(pa, pb);
+
+        /* Watcher drains the source dir first. */
+        memset(&s, 0, sizeof(s));
+        scan_run_subtree(db, root, da, &s);
+        expect(s.files_removed == 0, "move: source-dir subtree scan removes nothing");
+        expect(track_repo_count(db) == 1, "move: row survives source-dir scan");
+
+        memset(&s, 0, sizeof(s));
+        scan_run_subtree(db, root, db_dir, &s);
+        char *sha_b = select_text(db, pb, "sha256");
+        expect(sha_b && !strcmp(sha_b, sha), "move: row now at new path, same sha");
+
+        long pins = 0;
+        sqlite3_prepare_v2(db_handle(db),
+            "SELECT COUNT(*) FROM pins WHERE id=?", -1, &st, NULL);
+        sqlite3_bind_text(st, 1, sha, -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(st) == SQLITE_ROW) pins = sqlite3_column_int64(st, 0);
+        sqlite3_finalize(st);
+        expect(pins == 1, "move: pin survives the move");
+
+        /* A real deletion is still reconciled — by the full scan. */
+        unlink(pb);
+        memset(&s, 0, sizeof(s));
+        scan_run_subtree(db, root, db_dir, &s);
+        expect(track_repo_count(db) == 1, "move: subtree scan leaves a deleted row for the full scan");
+        memset(&s, 0, sizeof(s));
+        scan_run(db, root, &s);
+        expect(s.files_removed == 1 && track_repo_count(db) == 0,
+               "move: full scan removes the deleted row");
+
+        free(sha); free(sha_b);
+        db_close(db);
+        unlink(dbp); free(dbp);
+        free(pa); free(pb); free(da); free(db_dir); free(src);
+        rm_rf(root); free(root);
+    }
+
     return test_finish(__FILE__);
 }

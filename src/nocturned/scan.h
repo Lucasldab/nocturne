@@ -28,8 +28,9 @@ int scan_run(struct nocturne_db *db, const char *library_root,
  * debounced inotify event to apply incremental changes scoped to the
  * affected directory, leaving rows under sibling dirs untouched.
  *
- * Same return contract as scan_run; the deletion-reconciliation prefix is
- * narrowed to `subdir`. */
+ * Same return contract as scan_run, but never removes rows: a file missing
+ * from `subdir` may have moved to a dir not yet rescanned. Deletions are
+ * reconciled by the next full scan_run. */
 int scan_run_subtree(struct nocturne_db *db, const char *library_root,
                      const char *subdir, struct scan_stats *out);
 

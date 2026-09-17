@@ -7,8 +7,9 @@
  *   top_played  (priority 7)   COUNT(plays) DESC, phone-only, time-windowed
  *   recent_plays(priority 6)   played_at DESC, phone-only, distinct sha256
  *   loved       (priority 8)   liked=1 ORDER BY updated_at DESC
- *   exploration (priority 2)   tracks with no phone plays, deterministic
- *                              shuffle seeded by ISO-week (or config seed)
+ *   exploration (priority 2)   tracks with no phone plays, ranked by a
+ *                              per-track hash seeded by ISO-week (or config
+ *                              seed); lowest `count` ranks win
  *   manual_pins (priority 10)  pins.unit='track'/'album'
  *
  * Set-union dedup (RESOLVE-04): a sha256 reached via multiple buckets is
@@ -231,22 +232,46 @@ static const char *SQL_WEEKLY_DISCOVERY_PICKS =
     "LIMIT ?";
 
 /* For exploration we want all candidate sha256s (tracks with no phone
- * plays) ordered by sha256 ASC, then deterministic-shuffle in C. */
+ * plays); each is ranked in C by explore_rank(). */
 static const char *SQL_EXPLORATION_CANDIDATES =
     "SELECT t.sha256, t.size_bytes FROM tracks t "
     "WHERE NOT EXISTS (SELECT 1 FROM plays p "
     "                  WHERE p.sha256 = t.sha256 AND p.src LIKE 'phone-%') "
     "ORDER BY t.sha256 ASC";
 
-/* === deterministic exploration shuffle =================================== */
+/* === deterministic exploration ranking =================================== */
 
-/* xorshift64. Seed must be non-zero. */
-static uint64_t xorshift64(uint64_t *state)
+/* Each candidate's rank depends only on (seed, its own sha256), never on the
+ * rest of the candidate list. A whole-list shuffle reordered every pick
+ * whenever a single track was added, removed or first played, so each
+ * library change re-transferred the entire exploration bucket to the phone.
+ * With a per-track rank, a change only moves the pick at the margin; the
+ * weekly seed still rotates the whole bucket. */
+static uint64_t explore_rank(uint64_t seed, const char *sha)
 {
-    uint64_t x = *state;
-    x ^= x << 13; x ^= x >> 7; x ^= x << 17;
-    *state = x ? x : 0xDEADBEEFULL;
-    return *state;
+    uint64_t h = 0xcbf29ce484222325ULL;          /* FNV-1a 64 */
+    for (const unsigned char *p = (const unsigned char *) sha; *p; p++) {
+        h ^= *p;
+        h *= 0x100000001b3ULL;
+    }
+    uint64_t z = h ^ seed;                       /* splitmix64 finaliser */
+    z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+    return z ^ (z >> 31);
+}
+
+struct ranked {
+    uint64_t rank;
+    char *sha;
+    long long size;
+};
+
+static int cmp_ranked(const void *a, const void *b)
+{
+    const struct ranked *x = (const struct ranked *) a;
+    const struct ranked *y = (const struct ranked *) b;
+    if (x->rank != y->rank) return x->rank < y->rank ? -1 : 1;
+    return strcmp(x->sha, y->sha);
 }
 
 static unsigned long iso_week_seed(void)
@@ -439,42 +464,34 @@ int resolver_run(struct nocturne_db *db,
             }
             sqlite3_finalize(st);
         } else if (!strcmp(bc->source, "exploration_random")) {
-            /* Read all candidates; deterministic shuffle; take first count. */
+            /* Read all candidates; rank each by explore_rank(); take the
+             * lowest `count`. */
+            uint64_t seed = cfg->random_seed ? cfg->random_seed
+                                             : (uint64_t) iso_week_seed();
             sqlite3_stmt *st = NULL;
             sqlite3_prepare_v2(raw, SQL_EXPLORATION_CANDIDATES, -1, &st, NULL);
-            char **shas = NULL; long long *sizes = NULL; size_t n = 0, cap = 0;
+            struct ranked *rk = NULL; size_t n = 0, cap = 0;
             while (sqlite3_step(st) == SQLITE_ROW) {
                 const unsigned char *sha = sqlite3_column_text(st, 0);
-                long long sz = sqlite3_column_int64(st, 1);
                 if (!sha) continue;
                 if (n == cap) {
                     cap = cap ? cap * 2 : 16;
-                    shas = realloc(shas, cap * sizeof(*shas));
-                    sizes = realloc(sizes, cap * sizeof(*sizes));
+                    rk = realloc(rk, cap * sizeof(*rk));
                 }
-                shas[n] = strdup((const char *) sha);
-                sizes[n] = sz;
+                rk[n].sha = strdup((const char *) sha);
+                rk[n].size = sqlite3_column_int64(st, 1);
+                rk[n].rank = explore_rank(seed, rk[n].sha);
                 n++;
             }
             sqlite3_finalize(st);
 
-            /* Deterministic Fisher-Yates with xorshift64. */
-            uint64_t state = cfg->random_seed ? cfg->random_seed
-                                              : (uint64_t) iso_week_seed();
-            if (state == 0) state = 0xDEADBEEFULL;
-            for (size_t k = n; k > 1; k--) {
-                size_t j = (size_t) (xorshift64(&state) % k);
-                if (j != k - 1) {
-                    char *tmp_s = shas[j]; shas[j] = shas[k - 1]; shas[k - 1] = tmp_s;
-                    long long tmp_sz = sizes[j]; sizes[j] = sizes[k - 1]; sizes[k - 1] = tmp_sz;
-                }
-            }
+            qsort(rk, n, sizeof(*rk), cmp_ranked);
             int take = bc->count < (int) n ? bc->count : (int) n;
             for (int k = 0; k < take; k++) {
-                cand_add(&s, shas[k], sizes[k], bc->name);
+                cand_add(&s, rk[k].sha, rk[k].size, bc->name);
             }
-            for (size_t k = 0; k < n; k++) free(shas[k]);
-            free(shas); free(sizes);
+            for (size_t k = 0; k < n; k++) free(rk[k].sha);
+            free(rk);
         }
     }
 

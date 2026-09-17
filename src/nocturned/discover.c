@@ -31,7 +31,7 @@
 
 #include <sqlite3.h>
 
-/* xorshift64 — same as resolver.c. Seed must be non-zero. */
+/* xorshift64. Seed must be non-zero. */
 static uint64_t xorshift64(uint64_t *state)
 {
     uint64_t x = *state;

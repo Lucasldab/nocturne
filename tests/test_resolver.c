@@ -342,5 +342,75 @@ int main(int argc, char **argv)
         db_close(db); unlink(dbp); free(dbp);
     }
 
+    /* 15. Exploration is stable under candidate-set changes. Removing
+     *     tracks the bucket did not pick must not change its picks, and
+     *     removing one it did pick must replace exactly that one. A
+     *     whole-list shuffle reshuffled every pick on any library change,
+     *     re-transferring ~40 tracks to the phone each time. */
+    {
+        char *dbp = tmp_db_path();
+        struct nocturne_db *db = db_open(dbp, NULL, NULL);
+        for (int i = 0; i < 200; i++) {
+            char sha[32]; snprintf(sha, sizeof(sha), "expl%05d", i);
+            char path[64]; snprintf(path, sizeof(path), "/tmp/expl%d.mp3", i);
+            insert_track(db, sha, path, 1024, "2026-04-26T00:00:00Z");
+        }
+        struct nocturne_config cfg; config_default(&cfg);
+        cfg.random_seed = 12345;
+        int want = 0;
+        for (size_t i = 0; i < cfg.buckets_n; i++) {
+            if (strcmp(cfg.buckets[i].name, "exploration") != 0) cfg.buckets[i].count = 0;
+            else want = cfg.buckets[i].count;
+        }
+
+        struct manifest m1;
+        resolver_run(db, &cfg, &m1);
+        expect((int) m1.resident_n == want, "explore: bucket fills to its count");
+
+        /* Remove two tracks that were NOT picked. */
+        int removed = 0;
+        for (int i = 0; i < 200 && removed < 2; i++) {
+            char sha[32]; snprintf(sha, sizeof(sha), "expl%05d", i);
+            if (resident_index(&m1, sha) >= 0) continue;
+            char sql[128];
+            snprintf(sql, sizeof(sql), "DELETE FROM tracks WHERE sha256='%s'", sha);
+            exec_sql(db, sql);
+            removed++;
+        }
+        struct manifest m2;
+        resolver_run(db, &cfg, &m2);
+        int same = 0;
+        for (size_t i = 0; i < m2.resident_n; i++)
+            if (resident_index(&m1, m2.resident[i].sha256) >= 0) same++;
+        expect(m2.resident_n == m1.resident_n && same == (int) m1.resident_n,
+               "explore: removing unpicked tracks leaves picks unchanged");
+
+        /* Remove one track that WAS picked. */
+        char sql[128];
+        snprintf(sql, sizeof(sql), "DELETE FROM tracks WHERE sha256='%s'",
+                 m1.resident[0].sha256);
+        exec_sql(db, sql);
+        struct manifest m3;
+        resolver_run(db, &cfg, &m3);
+        same = 0;
+        for (size_t i = 0; i < m3.resident_n; i++)
+            if (resident_index(&m1, m3.resident[i].sha256) >= 0) same++;
+        expect((int) m3.resident_n == want && same == want - 1,
+               "explore: removing one pick replaces exactly one");
+
+        /* A different seed (next week) still rotates the bucket. */
+        cfg.random_seed = 67890;
+        struct manifest m4;
+        resolver_run(db, &cfg, &m4);
+        same = 0;
+        for (size_t i = 0; i < m4.resident_n; i++)
+            if (resident_index(&m3, m4.resident[i].sha256) >= 0) same++;
+        expect(same < want / 2, "explore: a new seed picks a mostly new set");
+
+        manifest_free(&m1); manifest_free(&m2); manifest_free(&m3); manifest_free(&m4);
+        config_free(&cfg);
+        db_close(db); unlink(dbp); free(dbp);
+    }
+
     return test_finish(__FILE__);
 }

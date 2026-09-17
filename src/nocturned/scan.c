@@ -372,8 +372,8 @@ static enum walk_result on_file(const struct tag_record *rec, void *ud)
  *   walk_root        — directory the walker descends into.
  *   deletion_prefix  — only rows whose path begins with this prefix are
  *                      considered for the unseen-sweep. Pass library_root
- *                      to clean the whole library; pass walk_root for
- *                      subtree-scoped reconciliation.
+ *                      to clean the whole library, or NULL to skip the
+ *                      sweep (subtree scans — see scan_run_subtree).
  *
  * scan_meta is updated only when scope == library (full scan). Subtree
  * scans don't write scan_meta because their scope is partial. */
@@ -384,7 +384,7 @@ static int scan_run_internal(struct nocturne_db *db,
                              int update_scan_meta,
                              struct scan_stats *out)
 {
-    if (!db || !library_root || !walk_root || !deletion_prefix || !out) return -1;
+    if (!db || !library_root || !walk_root || !out) return -1;
     memset(out, 0, sizeof(*out));
 
     struct timespec t0;
@@ -409,12 +409,14 @@ static int scan_run_internal(struct nocturne_db *db,
     }
 
     /* Reconcile deletions under the configured prefix. */
-    long deleted = track_repo_delete_unseen_under_root(db, deletion_prefix, ctx.iso_now);
-    if (deleted < 0) {
-        db_rollback(db);
-        return -1;
+    if (deletion_prefix) {
+        long deleted = track_repo_delete_unseen_under_root(db, deletion_prefix, ctx.iso_now);
+        if (deleted < 0) {
+            db_rollback(db);
+            return -1;
+        }
+        out->files_removed = (size_t) deleted;
     }
-    out->files_removed = (size_t) deleted;
 
     if (update_scan_meta) {
         sqlite3_stmt *stmt = NULL;
@@ -458,7 +460,12 @@ int scan_run(struct nocturne_db *db, const char *library_root,
 int scan_run_subtree(struct nocturne_db *db, const char *library_root,
                      const char *subdir, struct scan_stats *out)
 {
-    /* Subtree scans don't bump scan_meta (it tracks the full library). The
-     * deletion prefix is the subdir itself so siblings stay untouched. */
-    return scan_run_internal(db, library_root, subdir, subdir, 0, out);
+    /* Subtree scans don't bump scan_meta (it tracks the full library), and
+     * never sweep deletions. A file moved from dir A to dir B looks deleted
+     * to a scan of A alone; if the watcher drains A before B, a sweep would
+     * delete the row, and the after-delete trigger takes its pins and likes
+     * with it — the B scan then re-inserts it as a brand-new track. The full
+     * scan every cycle starts with walks everything before sweeping, so it
+     * sees the file at its new path and reconciles real deletions safely. */
+    return scan_run_internal(db, library_root, subdir, NULL, 0, out);
 }

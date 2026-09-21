@@ -188,6 +188,10 @@ static int load_terminal_ids(const char *meta_dir, struct idset *out)
     return 0;
 }
 
+/* flacget's exit code for "fetched, but beets would not file it"; the track
+ * sits in staging/skipped/ rather than the library. See flacget's docstring. */
+#define FLACGET_RC_NOT_FILED 3
+
 /* === exec flacget ========================================================
  *
  * fork/exec wrapper. Returns the child's exit status (0 on success), or
@@ -279,8 +283,17 @@ static int handle_request_line(const char *line, size_t llen,
         idset_add(done, id);
         stats->requests_processed_ok++;
     } else {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "flacget rc=%d", rc);
+        char buf[96];
+        if (rc == FLACGET_RC_NOT_FILED) {
+            /* Fetched and tagged, but beets refused to file it, so
+             * music-import parked it under staging/skipped/. The bytes are on
+             * hearth — this needs a human, not a re-download. Spell that out
+             * rather than leaving "rc=3" for someone to decode. */
+            snprintf(buf, sizeof(buf),
+                     "not filed by beets — parked in staging/skipped");
+        } else {
+            snprintf(buf, sizeof(buf), "flacget rc=%d", rc);
+        }
         status_append(meta_dir, id, "error", buf);
         idset_add(done, id);
         stats->requests_processed_err++;

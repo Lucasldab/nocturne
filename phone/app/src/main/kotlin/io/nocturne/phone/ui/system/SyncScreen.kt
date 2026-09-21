@@ -39,6 +39,7 @@ import io.nocturne.phone.data.catalog.ManifestReconciler
 import io.nocturne.phone.data.db.entity.DownloadEntity
 import io.nocturne.phone.ui.browser.BrowserViewModel
 import io.nocturne.phone.ui.settings.RelativeTimeFormatter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -158,9 +159,18 @@ fun SyncScreen(container: AppContainer, browserVm: BrowserViewModel? = null) {
                             ctx, uri, container.db, container.importer, container.syncPrefs,
                             container.queueRepository,
                         )
-                        if (catalog == null) {
-                            ManifestReconciler.reconcile(ctx, uri, container.db)
+                        // Always run the manifest leg. A catalog import
+                        // restamps isResident from the raw manifest without
+                        // checking the audio is on the phone, so skipping
+                        // verification here would leave in-flight tracks
+                        // looking resident until the next AppRoot tick.
+                        if (catalog != null) {
+                            ManifestReconciler.invalidateResidencyCache()
                         }
+                        ManifestReconciler.reconcile(
+                            ctx, uri, container.db,
+                            container.syncPrefs.musicTreeUri.first(),
+                        )
                         refreshing = false
                         lastRefreshLabel = "refreshed just now"
                     }

@@ -12,8 +12,9 @@ import io.nocturne.phone.data.db.dao.TrackDao
  * MediaSession.Callback.onPlaybackResumption (PLAY-04).
  *
  * Resilient against missing tracks: if TrackDao.byId returns null for a
- * persisted mediaId, that slot is silently skipped. The startIndex is
- * clamped to 0 if the original track is no longer in the resolved list.
+ * persisted mediaId, or the row is no longer resident, that slot is silently
+ * skipped. The startIndex is clamped to 0 if the original track is no longer
+ * in the resolved list.
  *
  * Called from PlaybackService on the serviceScope (IO dispatcher).
  */
@@ -42,6 +43,11 @@ object PlaybackResumption {
         val resolved = mutableListOf<Pair<Int, MediaItem>>()
         for ((originalIdx, mediaId) in saved.mediaIds.withIndex()) {
             val entity = trackDao.byId(mediaId) ?: continue // silently skip missing tracks
+            // Rotation can demote a track out of resident/ while the queue is
+            // parked. The catalog row survives, so a residency check is the
+            // only thing standing between a stale snapshot and ExoPlayer
+            // hitting a file that is no longer on the phone.
+            if (!entity.isResident) continue
             resolved.add(Pair(originalIdx, entity.toMediaItem(musicTreeUri = musicTreeUri)))
         }
 

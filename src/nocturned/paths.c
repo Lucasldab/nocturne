@@ -63,6 +63,17 @@ const char *paths_pidfile(void)
     return cached;
 }
 
+const char *paths_watch_pidfile(void)
+{
+    static char buf[1024];
+    static const char *cached = NULL;
+    if (cached) return cached;
+    cached = resolve_xdg(buf, sizeof(buf),
+                         "XDG_CACHE_HOME", ".cache",
+                         "nocturne/nocturned-watch.pid");
+    return cached;
+}
+
 const char *paths_config_file(void)
 {
     static char buf[1024];

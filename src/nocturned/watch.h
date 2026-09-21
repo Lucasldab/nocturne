@@ -8,6 +8,12 @@ struct nocturne_db;
 struct watch_opts {
     int debounce_ms;            /* default 1000 */
     int periodic_rescan_sec;    /* fallback when ENOSPC: default 300 */
+    /* Path to the single-writer DB lockfile (paths_pidfile()). The watcher
+     * acquires it around each scan and releases it immediately after, so
+     * short write commands — delete, unsync, cycle — can run against a live
+     * watcher instead of having to stop the service first. NULL disables
+     * per-scan locking, which is what the unit tests use. */
+    const char *writer_pidfile;
 };
 
 /* Long-running event loop. Returns 0 on graceful shutdown (SIGTERM/SIGINT),

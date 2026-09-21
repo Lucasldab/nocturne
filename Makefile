@@ -148,6 +148,8 @@ test-integration: $(BIN_NOCTURNED) $(FIXTURES_DIR)/.fixtures.stamp
 test-e2e-watch: $(BIN_NOCTURNED) $(FIXTURES_DIR)/.fixtures.stamp
 	@echo "==> Running tests/test_e2e_watch.sh"
 	@bash tests/test_e2e_watch.sh
+	@echo "==> Running tests/test_watch_writer_lock.sh"
+	@bash tests/test_watch_writer_lock.sh
 
 # Phase 3 hermetic integration: real local Syncthing under tmpdir.
 # Skips with exit 77 if `syncthing` not in PATH.

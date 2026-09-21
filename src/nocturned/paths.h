@@ -6,6 +6,10 @@
 /* Resolved at first call, cached thread-locally. Callers must not free. */
 const char *paths_db_file(void);     /* ${XDG_DATA_HOME:-$HOME/.local/share}/nocturne/nocturne.db */
 const char *paths_pidfile(void);     /* ${XDG_CACHE_HOME:-$HOME/.cache}/nocturne/nocturned.pid */
+/* Watcher-instance lock, held for the watcher's lifetime. Distinct from
+ * paths_pidfile(): that one is the single-writer DB lock, which the
+ * watcher now takes only around a scan so short write commands can run. */
+const char *paths_watch_pidfile(void);
 const char *paths_config_file(void); /* ${XDG_CONFIG_HOME:-$HOME/.config}/nocturne/config.toml */
 
 /* mkdir -p equivalent. Returns 0 on success or if already exists, -1 on

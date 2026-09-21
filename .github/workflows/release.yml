@@ -1,10 +1,11 @@
 # Build and publish a signed APK when a version tag is pushed.
 #
-# Exists because no machine here can build one any more: the Android toolchain
-# died with sillybox, and rebuilding it on the server would be wrong anyway —
-# hearth is a 2015 Xeon busy serving photos and music, and the phone plugs into
-# the laptop, not the server. CI needs no local toolchain at all and publishes
-# straight to Releases, which Obtainium already watches.
+# Exists because the Android toolchain died with sillybox and rebuilding it on
+# the server would be wrong anyway — hearth is a 2015 Xeon busy serving photos
+# and music, and the phone plugs into the laptop, not the server. CI needs no
+# local toolchain and publishes straight to Releases, which Obtainium watches.
+# (soot can build again as of 2026-09-21, but CI stays the release path: it is
+# reproducible and does not depend on a laptop being awake.)
 #
 # Required repository secrets:
 #   KEYSTORE_BASE64    base64 of keystore/nocturne-release.jks
@@ -19,7 +20,13 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Gate the APK on the unit tests. Obtainium auto-installs whatever lands in
+  # Releases, so a red suite must stop the build rather than ship past it.
+  test:
+    uses: ./.github/workflows/test.yml
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write        # needed to attach the APK to the release

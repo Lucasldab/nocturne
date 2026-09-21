@@ -112,17 +112,22 @@ fun AppRoot(app: NocturneApp) {
             )
             if (cat != null) {
                 lastReconciledCatalogMtime = cat
-                // Catalog import already applied manifest residency. Mark the
-                // manifest leg as up-to-date so the 45s loop doesn't re-run it.
-                io.nocturne.phone.data.catalog.ManifestReconciler
-                    .manifestMtime(container.appContext, uri)
-                    ?.let { lastReconciledMtime = it }
                 trackCount = container.db.trackDao().count()
-                return
+                // The import just restamped residency from the raw manifest,
+                // so the verified-set cache no longer describes the DB.
+                io.nocturne.phone.data.catalog.ManifestReconciler
+                    .invalidateResidencyCache()
+                // Fall through to the manifest leg rather than returning.
+                // CatalogImporter stamps isResident straight from
+                // manifest.resident[] without checking the audio is on the
+                // phone, so a catalog pass would otherwise undo the residency
+                // verification and put in-flight tracks back in shuffle
+                // queues. The extra ~25 KB parse is worth the correctness.
             }
         }
         val mtime = io.nocturne.phone.data.catalog.ManifestReconciler.reconcile(
             container.appContext, uri, container.db,
+            musicTreeUri.takeIf { it != LOADING_SENTINEL },
         )
         if (mtime != null) lastReconciledMtime = mtime
     }
@@ -158,7 +163,18 @@ fun AppRoot(app: NocturneApp) {
                 .manifestMtime(container.appContext, uri)
             val catalogChanged = catCurrent != null && catCurrent != lastReconciledCatalogMtime
             val manifestChanged = manCurrent != null && manCurrent != lastReconciledMtime
-            if (!catalogChanged && !manifestChanged) continue
+            if (!catalogChanged && !manifestChanged) {
+                // Neither JSON moved, but Syncthing may have finished (or
+                // removed) an audio file since the last tick. That changes
+                // residency without touching either mtime, so re-stat the
+                // declared set rather than skipping the tick outright.
+                io.nocturne.phone.data.catalog.ManifestReconciler.reverify(
+                    container.appContext,
+                    container.db,
+                    musicTreeUri.takeIf { it != LOADING_SENTINEL },
+                )
+                continue
+            }
             runReconcile(uri)
         }
     }

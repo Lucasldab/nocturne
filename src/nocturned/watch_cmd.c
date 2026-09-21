@@ -46,19 +46,30 @@ int watch_cmd_main(struct cli_args *args)
         return 3;
     }
 
-    const char *pidfile = paths_pidfile();
-    if (!pidfile) {
+    /* Two locks, deliberately.
+     *
+     * The watcher holds only the WATCHER-INSTANCE lock for its lifetime, which
+     * keeps a second watcher out. It does NOT hold the single-writer DB lock
+     * while idle — that is taken per scan inside watch_run. Holding the writer
+     * lock for the whole service lifetime meant `nocturned delete`, `unsync`
+     * and `cycle` failed with rc=4 whenever the watcher was up, which is why
+     * nocturne-cycle-run has to stop the service, poll the pidfile and retry.
+     * The watcher spends nearly all its time blocked in epoll_wait, so there
+     * was never a reason to hold a write lock across that. */
+    const char *watch_pidfile = paths_watch_pidfile();
+    const char *writer_pidfile = paths_pidfile();
+    if (!watch_pidfile || !writer_pidfile) {
         fprintf(stderr, "nocturned watch: cannot resolve pidfile path\n");
         return 1;
     }
     int busy_pid = 0;
-    struct nocturne_lock *lock = lock_acquire(pidfile, &busy_pid);
+    struct nocturne_lock *lock = lock_acquire(watch_pidfile, &busy_pid);
     if (!lock) {
         if (errno == EWOULDBLOCK) {
             fprintf(stderr,
-                    "nocturned: another instance is running (pid=%d); "
-                    "single-writer lock at %s\n",
-                    busy_pid, pidfile);
+                    "nocturned: another watcher is running (pid=%d); "
+                    "watcher-instance lock at %s\n",
+                    busy_pid, watch_pidfile);
             return 4;
         }
         fprintf(stderr, "nocturned watch: lock_acquire failed: %s\n", strerror(errno));
@@ -78,7 +89,8 @@ int watch_cmd_main(struct cli_args *args)
         return 3;
     }
 
-    struct watch_opts opts = { .debounce_ms = 1000, .periodic_rescan_sec = 300 };
+    struct watch_opts opts = { .debounce_ms = 1000, .periodic_rescan_sec = 300,
+                               .writer_pidfile = writer_pidfile };
     if (args->debounce_ms > 0) opts.debounce_ms = args->debounce_ms;
     if (args->periodic_rescan_sec > 0) opts.periodic_rescan_sec = args->periodic_rescan_sec;
 

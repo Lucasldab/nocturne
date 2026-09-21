@@ -21,6 +21,7 @@
 #include "watch.h"
 #include "scan.h"
 #include "db.h"
+#include "lock.h"
 
 #include <ctype.h>
 #include <dirent.h>
@@ -388,16 +389,48 @@ struct watch_state {
     int sfd;     /* signalfd */
     int tfd;     /* timerfd (periodic rescan) */
     int periodic_mode;
+    const char *writer_pidfile;  /* single-writer DB lock; NULL = don't lock */
 };
+
+/* Take the single-writer DB lock for the duration of one scan.
+ *
+ * The watcher used to hold this lock for its entire lifetime, which meant
+ * every short write command (delete, unsync, cycle) failed with rc=4 for as
+ * long as the service was up — the reason nocturne-cycle-run has to stop the
+ * watcher, poll the pidfile and retry three times before it can do anything.
+ * Scoping the lock to the two places the watcher actually writes lets those
+ * commands run against a live watcher.
+ *
+ * Returns NULL when locking is disabled (tests) or the lock is busy; the
+ * caller skips that scan. Skipping is safe: an inotify drain will fire again
+ * on the next event and the periodic full scan reconciles whatever was
+ * missed, which is the same path that covers a watcher restart.
+ */
+static struct nocturne_lock *writer_lock_acquire(struct watch_state *st, const char *what)
+{
+    if (!st->writer_pidfile) return NULL;
+    int busy_pid = 0;
+    struct nocturne_lock *l = lock_acquire(st->writer_pidfile, &busy_pid);
+    if (!l) {
+        log_line("%s: writer lock busy (pid=%d); skipping, will retry", what, busy_pid);
+    }
+    return l;
+}
 
 static void on_drain(const char *dir, void *ud)
 {
     struct watch_state *st = (struct watch_state *) ud;
+    struct nocturne_lock *wl = NULL;
+    if (st->writer_pidfile) {
+        wl = writer_lock_acquire(st, "subtree scan");
+        if (!wl) return;   /* contended — next event or periodic scan covers it */
+    }
     struct scan_stats stats = {0};
     int rc = scan_run_subtree(st->db, st->library_root, dir, &stats);
     log_line("subtree=%s seen=%zu added=%zu updated=%zu removed=%zu skipped=%zu rc=%d",
              dir, stats.files_seen, stats.files_added, stats.files_updated,
              stats.files_removed, stats.files_skipped_unchanged, rc);
+    if (wl) lock_release(wl);
 }
 
 int watch_run(struct nocturne_db *db, const char *library_root,
@@ -422,6 +455,7 @@ int watch_run(struct nocturne_db *db, const char *library_root,
 
     struct watch_state st = {0};
     st.db = db;
+    st.writer_pidfile = opts->writer_pidfile;
     st.library_root = library_root;
     wdm_init(&st.wdm);
     dq_init(&st.dq, opts->debounce_ms);
@@ -524,11 +558,20 @@ int watch_run(struct nocturne_db *db, const char *library_root,
                 uint64_t expirations = 0;
                 if (read(st.tfd, &expirations, sizeof(expirations)) > 0 && st.periodic_mode) {
                     log_line("periodic rescan");
-                    struct scan_stats stats = {0};
-                    scan_run(st.db, st.library_root, &stats);
-                    log_line("periodic seen=%zu added=%zu updated=%zu removed=%zu",
-                             stats.files_seen, stats.files_added,
-                             stats.files_updated, stats.files_removed);
+                    struct nocturne_lock *wl = NULL;
+                    int skip = 0;
+                    if (st.writer_pidfile) {
+                        wl = writer_lock_acquire(&st, "periodic rescan");
+                        if (!wl) skip = 1;
+                    }
+                    if (!skip) {
+                        struct scan_stats stats = {0};
+                        scan_run(st.db, st.library_root, &stats);
+                        log_line("periodic seen=%zu added=%zu updated=%zu removed=%zu",
+                                 stats.files_seen, stats.files_added,
+                                 stats.files_updated, stats.files_removed);
+                        if (wl) lock_release(wl);
+                    }
                 }
             } else if (fd == st.ifd) {
                 ssize_t got;

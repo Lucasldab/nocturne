@@ -34,7 +34,13 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      # packages: '' because the action's default ('tools platform-tools')
+      # installs the obsolete SDK `tools` package, which Google has withdrawn
+      # from the repository — sdkmanager then exits 1 and the job dies before
+      # any Gradle work. AGP downloads the platform and build-tools it needs.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
 
       - name: Run unit tests
         working-directory: phone

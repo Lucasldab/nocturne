@@ -1,0 +1,51 @@
+# Run the phone app's JVM unit tests.
+#
+# Exists because they were not run anywhere. `phone/app/src/test/` held 187
+# tests across 29 classes and neither CI nor any local machine executed them:
+# release.yml only ever called :app:assembleRelease, and soot had no Android
+# SDK at all. A residency bug shipped to the phone with an empty test slot
+# sitting next to the code it broke.
+#
+# Called two ways:
+#   - directly, on every push to main and every pull request
+#   - via workflow_call from release.yml, which gates the APK build on it
+#
+# Needs no secrets: unit tests never touch the keystore.
+
+name: Unit tests
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Must match release.yml. AGP 8.13 supports JDK 17/21, NOT 26.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Run unit tests
+        working-directory: phone
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
+      # Uploaded on failure too — the HTML report is the only way to see which
+      # assertion broke without re-running the job locally.
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: phone/app/build/reports/tests/testDebugUnitTest
+          if-no-files-found: warn

@@ -150,6 +150,8 @@ test-e2e-watch: $(BIN_NOCTURNED) $(FIXTURES_DIR)/.fixtures.stamp
 	@bash tests/test_e2e_watch.sh
 	@echo "==> Running tests/test_watch_writer_lock.sh"
 	@bash tests/test_watch_writer_lock.sh
+	@echo "==> Running tests/test_pin_cycle_runner.sh"
+	@bash tests/test_pin_cycle_runner.sh
 
 # Phase 3 hermetic integration: real local Syncthing under tmpdir.
 # Skips with exit 77 if `syncthing` not in PATH.

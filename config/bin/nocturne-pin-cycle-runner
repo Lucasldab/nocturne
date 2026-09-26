@@ -1,19 +1,37 @@
 #!/bin/bash
 # Debounce + gate wrapper invoked by nocturne-pin-cycle.service.
-# Runs the cycle only when a phone-side pins JSONL is actually newer
-# than the last published manifest.json, then hands off to the shared
+# Runs the cycle only when a phone-side pins/actions JSONL landed after
+# the last published manifest.json, then hands off to the shared
 # nocturne-cycle-run for lock arbitration + retry.
 #
-# Gate logic uses nanosecond mtime (RACE-01 Option A) to avoid the
-# wall-second tie that silently swallows pins on slow Wi-Fi transfers.
+# Gate logic uses nanosecond CTIME, not mtime. Syncthing copies the
+# phone's mtime onto the file it writes here, so a pin made at 18:30 that
+# only syncs at 00:18 (phone off the network) arrives with an mtime older
+# than every manifest published in between — the gate skipped it and the
+# pin waited for the 15-min timer. ctime is set by the kernel when the
+# file lands (Syncthing's rename) and can't be copied from the phone.
+# Nanoseconds still avoid the wall-second tie (RACE-01 Option A).
 # Also waits for Syncthing .tmp sentinels to drain (RACE-01 Option C)
 # so we never ingest a half-written JSONL.
 set -euo pipefail
 
 META="${NOCTURNE_META_DIR:-$HOME/sync/nocturne/meta}"
-MANIFEST="${NOCTURNE_MANIFEST:-$HOME/.local/share/nocturne/manifest.json}"
-LIBRARY_PATH="${NOCTURNE_LIBRARY:-$HOME/music}"
-CYCLE_RUN="${HOME}/.local/bin/nocturne-cycle-run"
+# The published manifest lives in the Syncthing meta dir (what the phone
+# consumes), NOT under ~/.local/share — that path never existed, so the
+# freshness gate's manifest_ns stayed 0 and EVERY meta-dir change (incl.
+# the desktop's own stats/ + catalog/manifest writes) forced a full
+# scan-to-publish (~2-3 min, GB-scale RSS), defeating the debounce and
+# widening the lock-contention window. Derive it from META.
+MANIFEST="${NOCTURNE_MANIFEST:-$META/manifest.json}"
+# NO default here. nocturned resolves the library from
+# ~/.config/nocturne/config.toml ([library].path); anything we pass as
+# argv[1] OVERRIDES that resolution. The old "$HOME/music" fallback did
+# exactly that and pointed at a directory which does not exist on hearth
+# (library is /srv/bulk/music), so every pin aborted at [1/5] scan with
+# rc=3. nocturne-cycle.service on the timer path passes no argument at
+# all, which is why it kept working — match it.
+LIBRARY_PATH="${NOCTURNE_LIBRARY:-}"
+CYCLE_RUN="${NOCTURNE_CYCLE_RUN:-${HOME}/.local/bin/nocturne-cycle-run}"
 
 # 5s debounce: give Syncthing time to finish before we probe.
 sleep 5
@@ -24,7 +42,7 @@ sleep 5
 # JSONL inode (RACE-02) and likely miss the new events.
 for _i in $(seq 1 10); do
     _found=0
-    for _f in "$META"/.syncthing.pins-phone-*.jsonl.tmp; do
+    for _f in "$META"/.syncthing.pins-phone-*.jsonl.tmp "$META"/.syncthing.actions-phone-*.jsonl.tmp; do
         [ -e "$_f" ] && _found=1 && break
     done
     [ "$_found" -eq 0 ] && break
@@ -32,18 +50,19 @@ for _i in $(seq 1 10); do
     sleep 2
 done
 
-# mtime_ns PATH — print mtime in nanoseconds since epoch.
-mtime_ns() {
-    python3 -c "import os, sys; print(os.stat(sys.argv[1]).st_mtime_ns)" "$1" 2>/dev/null || echo 0
+# ctime_ns PATH — print ctime (arrival on this host) in ns since epoch.
+ctime_ns() {
+    python3 -c "import os, sys; print(os.stat(sys.argv[1]).st_ctime_ns)" "$1" 2>/dev/null || echo 0
 }
 
 manifest_ns=0
-[ -f "$MANIFEST" ] && manifest_ns=$(mtime_ns "$MANIFEST")
+[ -f "$MANIFEST" ] && manifest_ns=$(ctime_ns "$MANIFEST")
 
 needs_cycle=0
-for _jsonl in "$META"/pins-phone-*.jsonl; do
+# actions-phone-* carries delete/unsync; it needs the same fast path.
+for _jsonl in "$META"/pins-phone-*.jsonl "$META"/actions-phone-*.jsonl; do
     [ -f "$_jsonl" ] || continue
-    _ns=$(mtime_ns "$_jsonl")
+    _ns=$(ctime_ns "$_jsonl")
     if [ "$_ns" -gt "$manifest_ns" ]; then
         needs_cycle=1
         break
@@ -59,4 +78,6 @@ fi
 # synchronous watcher re-stop, the pidfile poll, and the rc=4 retry
 # loop — the same hardening (commit 1bf204b) the timer path now shares.
 # `exec` so the arbiter's exit code propagates as this unit's result.
-exec "$CYCLE_RUN" "$LIBRARY_PATH"
+# Pass the path only when one was explicitly given; otherwise invoke with
+# no argument so nocturned falls through to config.toml.
+exec "$CYCLE_RUN" ${LIBRARY_PATH:+"$LIBRARY_PATH"}

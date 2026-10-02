@@ -94,10 +94,10 @@ int rotate_cmd_main(struct cli_args *args)
     fprintf(stdout,
         "rotate: to_add=%lld added=%lld to_remove=%lld removed=%lld "
         "already=%lld fallback=%lld respawned=%lld relocated=%lld "
-        "errors=%lld\n",
+        "orphans_removed=%lld errors=%lld\n",
         stats.to_add, stats.added, stats.to_remove, stats.removed,
         stats.already_applied, stats.fallback_copies, stats.respawned,
-        stats.relocated, stats.errors);
+        stats.relocated, stats.orphans_removed, stats.errors);
 
     config_free(&cfg);
     db_close(db);

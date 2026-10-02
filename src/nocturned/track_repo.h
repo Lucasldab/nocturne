@@ -59,9 +59,16 @@ int track_repo_lookup_by_path(struct nocturne_db *db, const char *path,
 /* Lookup by sha256. Returns 1 on hit, 0 on miss, -1 on error. */
 int track_repo_lookup_by_sha256(struct nocturne_db *db, const char *sha256);
 
+/* Delete one row by sha256, unlinking its resident transcode
+ * (residency_state.transcode_path) once the delete succeeds — the row
+ * delete cascades residency_state away, which would otherwise orphan the
+ * file. Returns 0 on success, -1 on error. */
+int track_repo_delete(struct nocturne_db *db, const char *sha256);
+
 /* Delete every row whose path begins with `library_root` and whose
- * last_seen_at is strictly less than `cutoff_iso`. Returns the number of
- * rows deleted (>= 0) or -1 on error. */
+ * last_seen_at is strictly less than `cutoff_iso`, unlinking their resident
+ * transcodes as track_repo_delete does. Returns the number of rows deleted
+ * (>= 0) or -1 on error. */
 long track_repo_delete_unseen_under_root(struct nocturne_db *db,
                                          const char *library_root,
                                          const char *cutoff_iso);

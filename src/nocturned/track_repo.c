@@ -25,6 +25,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <unistd.h>
 
 struct stmt_cache {
     struct nocturne_db *owner;
@@ -270,6 +272,88 @@ int track_repo_lookup_by_sha256(struct nocturne_db *db, const char *sha256)
     return hit;
 }
 
+/* Resident transcodes are derived files whose only reference is
+ * residency_state.transcode_path. Deleting a tracks row cascades that row
+ * away, so the transcode has to go with it or it is orphaned: Syncthing
+ * keeps shipping it and rotate never manages it again. (2026-09-16: the
+ * case-folding subtree sweep deleted rows while their files stayed, and
+ * left 22 such orphans on the phone.)
+ *
+ * collect_transcodes runs `sql` (binding up to two text params) BEFORE
+ * the delete; unlink_transcodes runs only after the delete succeeded. If
+ * the enclosing transaction later rolls back, the residency row survives
+ * with its file missing and rotate's respawn path re-transcodes it. */
+struct path_list { char **v; size_t n; };
+
+static void path_list_free(struct path_list *l)
+{
+    for (size_t i = 0; i < l->n; i++) free(l->v[i]);
+    free(l->v);
+    l->v = NULL; l->n = 0;
+}
+
+static int collect_transcodes(sqlite3 *raw, const char *sql,
+                              const char *p1, const char *p2,
+                              struct path_list *out)
+{
+    sqlite3_stmt *st = NULL;
+    if (sqlite3_prepare_v2(raw, sql, -1, &st, NULL) != SQLITE_OK) return -1;
+    if (p1) sqlite3_bind_text(st, 1, p1, -1, SQLITE_TRANSIENT);
+    if (p2) sqlite3_bind_text(st, 2, p2, -1, SQLITE_TRANSIENT);
+    int rc;
+    while ((rc = sqlite3_step(st)) == SQLITE_ROW) {
+        const unsigned char *t = sqlite3_column_text(st, 0);
+        if (!t) continue;
+        char **nv = realloc(out->v, (out->n + 1) * sizeof(*nv));
+        if (!nv) { sqlite3_finalize(st); return -1; }
+        out->v = nv;
+        out->v[out->n] = strdup((const char *) t);
+        if (!out->v[out->n]) { sqlite3_finalize(st); return -1; }
+        out->n++;
+    }
+    sqlite3_finalize(st);
+    return rc == SQLITE_DONE ? 0 : -1;
+}
+
+static void unlink_transcodes(const struct path_list *l)
+{
+    for (size_t i = 0; i < l->n; i++) {
+        if (unlink(l->v[i]) == 0) {
+            fprintf(stderr, "scan: removed transcode of dropped track %s\n",
+                    l->v[i]);
+        } else if (errno != ENOENT) {
+            fprintf(stderr, "scan: unlink(%s) failed: %s\n",
+                    l->v[i], strerror(errno));
+        }
+    }
+}
+
+int track_repo_delete(struct nocturne_db *db, const char *sha256)
+{
+    if (!db || !sha256) return -1;
+    sqlite3 *raw = db_handle(db);
+    if (!raw) return -1;
+    struct path_list xs = {0};
+    if (collect_transcodes(raw,
+            "SELECT transcode_path FROM residency_state "
+            "WHERE sha256=? AND transcode_path IS NOT NULL",
+            sha256, NULL, &xs) != 0) {
+        path_list_free(&xs);
+        return -1;
+    }
+    sqlite3_stmt *del = NULL;
+    int ok = 0;
+    if (sqlite3_prepare_v2(raw, "DELETE FROM tracks WHERE sha256=?",
+                           -1, &del, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(del, 1, sha256, -1, SQLITE_TRANSIENT);
+        ok = (sqlite3_step(del) == SQLITE_DONE);
+        sqlite3_finalize(del);
+    }
+    if (ok) unlink_transcodes(&xs);
+    path_list_free(&xs);
+    return ok ? 0 : -1;
+}
+
 long track_repo_delete_unseen_under_root(struct nocturne_db *db,
                                          const char *library_root,
                                          const char *cutoff_iso)
@@ -295,6 +379,18 @@ long track_repo_delete_unseen_under_root(struct nocturne_db *db,
     }
     pattern[pn] = '\0';
 
+    struct path_list xs = {0};
+    if (collect_transcodes(db_handle(db),
+            "SELECT r.transcode_path FROM residency_state r "
+            "JOIN tracks t ON t.sha256 = r.sha256 "
+            "WHERE substr(t.path, 1, length(?1)) = ?1 AND t.last_seen_at < ?2 "
+            "AND r.transcode_path IS NOT NULL",
+            pattern, cutoff_iso, &xs) != 0) {
+        path_list_free(&xs);
+        free(pattern);
+        return -1;
+    }
+
     sqlite3_stmt *s = g_cache.delete_unseen;
     bind_text(s, 1, pattern);
     bind_text(s, 2, cutoff_iso);
@@ -302,6 +398,8 @@ long track_repo_delete_unseen_under_root(struct nocturne_db *db,
     long deleted = (rc == SQLITE_DONE) ? sqlite3_changes(db_handle(db)) : -1;
     sqlite3_reset(s);
     free(pattern);
+    if (deleted >= 0) unlink_transcodes(&xs);
+    path_list_free(&xs);
     return deleted;
 }
 

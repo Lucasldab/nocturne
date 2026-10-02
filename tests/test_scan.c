@@ -404,5 +404,69 @@ int main(int argc, char **argv)
         rm_rf(root); free(root);
     }
 
+    /* Track-row deletes must take the resident transcode with them. The
+     * row delete cascades residency_state away, so a transcode left on
+     * disk is referenced by nothing: Syncthing keeps shipping it and
+     * rotate never manages it again. (2026-09-16: 22 such orphans.) */
+    {
+        char *root = make_tmpdir("orphan");
+        char *dbp  = tmp_db_path();
+        char d[1024];
+        snprintf(d, sizeof(d), "mkdir -p '%s/archive/A' '%s/archive/B' "
+                 "'%s/resident/A' '%s/resident/B'", root, root, root, root);
+        system(d);
+        struct nocturne_db *db = db_open(dbp, NULL, NULL);
+
+        /* (a) unseen-sweep: archive file gone, transcode still present. */
+        char gone[1024]; snprintf(gone, sizeof(gone), "%s/archive/A/gone.flac", root);
+        char gone_x[1024]; snprintf(gone_x, sizeof(gone_x), "%s/resident/A/gone.opus", root);
+        FILE *f = fopen(gone_x, "wb"); if (f) { fputs("opus", f); fclose(f); }
+        const char *sha_gone = "1111111111111111111111111111111111111111111111111111111111111111";
+
+        /* (b) content change: same archive path, different audio. */
+        char *src = fix_path(fixdir, "clean_all.flac");
+        char chg[1024]; snprintf(chg, sizeof(chg), "%s/archive/B/t.flac", root);
+        copy_one(src, chg);
+        free(src);
+        char chg_x[1024]; snprintf(chg_x, sizeof(chg_x), "%s/resident/B/t.opus", root);
+        f = fopen(chg_x, "wb"); if (f) { fputs("old audio", f); fclose(f); }
+        const char *sha_old = "2222222222222222222222222222222222222222222222222222222222222222";
+
+        char sql[8192];
+        snprintf(sql, sizeof(sql),
+            "INSERT INTO tracks (sha256, path, mtime_ns, size_bytes, tags_status, "
+            "date_added, last_seen_at) VALUES "
+            "('%s', '%s', 0, 1, 'ok', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'), "
+            "('%s', '%s', 0, 1, 'ok', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z');"
+            "INSERT INTO residency_state (sha256, location, updated_at, "
+            "transcode_path, transcode_size_bytes, transcode_format) VALUES "
+            "('%s', 'resident', '2026-01-01T00:00:00Z', '%s', 4, 'opus'), "
+            "('%s', 'resident', '2026-01-01T00:00:00Z', '%s', 9, 'opus');",
+            sha_gone, gone, sha_old, chg, sha_gone, gone_x, sha_old, chg_x);
+        char *err = NULL;
+        sqlite3_exec(db_handle(db), sql, NULL, NULL, &err);
+        expect(err == NULL, "orphan: seed rows");
+        sqlite3_free(err);
+
+        struct scan_stats s = {0};
+        int rc = scan_run(db, root, &s);
+        expect(rc == 0, "orphan: scan_run returns 0");
+        expect(s.files_removed == 1, "orphan: unseen row swept");
+        char *sha_new = select_text(db, chg, "sha256");
+        expect(sha_new && strcmp(sha_new, sha_old) != 0,
+               "orphan: content-changed path re-inserted under the new sha");
+        free(sha_new);
+        struct stat st;
+        expect(stat(gone_x, &st) != 0,
+               "orphan: swept row's transcode unlinked");
+        expect(stat(chg_x, &st) != 0,
+               "orphan: content-changed row's stale transcode unlinked");
+        expect(stat(chg, &st) == 0, "orphan: archive file untouched");
+
+        db_close(db);
+        unlink(dbp); free(dbp);
+        rm_rf(root); free(root);
+    }
+
     return test_finish(__FILE__);
 }

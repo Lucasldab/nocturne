@@ -336,17 +336,11 @@ static enum walk_result on_file(const struct tag_record *rec, void *ud)
         ctx->stats->files_updated++;
     } else if (hit == 1) {
         /* Path existed with a different sha — content changed. Drop old
-         * row to free the path-UNIQUE slot, then insert. */
-        sqlite3_stmt *del = NULL;
-        if (sqlite3_prepare_v2(db_handle(ctx->db),
-                               "DELETE FROM tracks WHERE sha256=?",
-                               -1, &del, NULL) == SQLITE_OK) {
-            sqlite3_bind_text(del, 1, existing_sha, -1, SQLITE_TRANSIENT);
-            if (sqlite3_step(del) != SQLITE_DONE) op_rc = -1;
-            sqlite3_finalize(del);
-        } else {
-            op_rc = -1;
-        }
+         * row to free the path-UNIQUE slot, then insert. track_repo_delete
+         * also unlinks the old resident transcode: it holds the OLD audio
+         * at exactly the path the new sha would be promoted to, and
+         * promote_transcode would otherwise adopt it as already done. */
+        if (track_repo_delete(ctx->db, existing_sha) != 0) op_rc = -1;
         if (op_rc == 0) op_rc = track_repo_insert(ctx->db, &row);
         ctx->stats->files_updated++;
     } else {

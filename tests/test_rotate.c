@@ -22,6 +22,10 @@
  *  13. Non-transcode demote prunes the sidecar-only album dir, but keeps
  *      a dir that still holds another resident track's audio.
  *  14. Transcode demote prunes the sidecar-only album dir.
+ *  15. Transcode mode: audio under resident/ that no residency_state row
+ *      references is removed (transcode extensions only, never dot-files
+ *      or dot-dirs), and its emptied dir is pruned.
+ *  16. Non-transcode mode never removes unreferenced resident files.
  */
 
 #define _GNU_SOURCE
@@ -789,6 +793,105 @@ int main(int argc, char **argv)
         char ra[1024]; snprintf(ra, sizeof(ra), "%s/resident/Art", lib);
         expect(!file_exists(ra), "test14: sidecar-only album + artist pruned");
         expect(file_exists(ap), "test14: archive untouched");
+
+        db_close(db);
+        rm_rf(tmp); free(tmp);
+    }
+
+    /* --- Test 15: transcode-mode orphan sweep --- */
+    {
+        char *tmp = make_tmpdir("orphans");
+        char lib[512]; snprintf(lib, sizeof(lib), "%s/lib", tmp);
+        char dbp[512]; snprintf(dbp, sizeof(dbp), "%s/db", tmp);
+        mkdir_p(lib);
+        struct nocturne_db *db = db_open(dbp, NULL, NULL);
+
+        /* One managed resident track. */
+        char ad[1024]; snprintf(ad, sizeof(ad), "%s/archive/Keep/Alb", lib);
+        mkdir_p(ad);
+        char ap[1200]; snprintf(ap, sizeof(ap), "%s/k.flac", ad);
+        write_dummy(ap, "flac");
+        char kd[1024]; snprintf(kd, sizeof(kd), "%s/resident/Keep/Alb", lib);
+        mkdir_p(kd);
+        char kp[1200]; snprintf(kp, sizeof(kp), "%s/k.opus", kd);
+        write_dummy(kp, "opus");
+        const char *sha = "f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5";
+        seed_track(db, sha, ap);
+        seed_residency_transcode(db, sha, kp);
+        seed_manifest(db, sha, 1024);
+
+        /* Orphans: in an album dir with a cover, at resident/ root, .m4a. */
+        char od[1024]; snprintf(od, sizeof(od), "%s/resident/Singles/Art", lib);
+        mkdir_p(od);
+        char o1[1200]; snprintf(o1, sizeof(o1), "%s/Song.opus", od);
+        write_dummy(o1, "opus");
+        char ocov[1200]; snprintf(ocov, sizeof(ocov), "%s/cover.jpg", od);
+        write_dummy(ocov, "art");
+        char o2[1200]; snprintf(o2, sizeof(o2), "%s/resident/Singles.opus", lib);
+        write_dummy(o2, "opus");
+        char o3[1200]; snprintf(o3, sizeof(o3), "%s/resident/Keep/Alb/old.m4a", lib);
+        write_dummy(o3, "aac");
+
+        /* Never touched: non-transcode extensions, dot-files, dot-dirs. */
+        char n1[1200]; snprintf(n1, sizeof(n1), "%s/resident/Keep/Alb/orig.flac", lib);
+        write_dummy(n1, "flac");
+        char n2[1200]; snprintf(n2, sizeof(n2), "%s/resident/Keep/Alb/notes.txt", lib);
+        write_dummy(n2, "txt");
+        char n3[1200]; snprintf(n3, sizeof(n3), "%s/resident/Keep/Alb/.syncthing.x.opus.tmp", lib);
+        write_dummy(n3, "tmp");
+        char n4[1200]; snprintf(n4, sizeof(n4), "%s/resident/Keep/Alb/.hidden.opus", lib);
+        write_dummy(n4, "hidden");
+        char sv[1024]; snprintf(sv, sizeof(sv), "%s/resident/.stversions/X", lib);
+        mkdir_p(sv);
+        char n5[1200]; snprintf(n5, sizeof(n5), "%s/v.opus", sv);
+        write_dummy(n5, "versioned");
+
+        struct transcode_cfg tc = { .enabled = true, .format = "opus",
+                                    .bitrate_kbps = 128 };
+        struct rotate_stats s = {0};
+        int rc = rotate_run_ex(db, lib, &tc, &s);
+        expect(rc == 0 && s.errors == 0, "test15: rc=0, errors=0");
+        expect(s.orphans_removed == 3, "test15: orphans_removed=3");
+        expect(!file_exists(o1), "test15: orphan in album dir removed");
+        expect(!file_exists(o2), "test15: orphan at resident/ root removed");
+        expect(!file_exists(o3), "test15: orphan .m4a removed");
+        char sd[1024]; snprintf(sd, sizeof(sd), "%s/resident/Singles", lib);
+        expect(!file_exists(sd), "test15: emptied orphan dirs pruned");
+        expect(file_has(kp, "opus"), "test15: referenced transcode kept");
+        expect(file_exists(n1) && file_exists(n2),
+               "test15: non-transcode extensions kept");
+        expect(file_exists(n3) && file_exists(n4),
+               "test15: dot-files kept");
+        expect(file_exists(n5), "test15: dot-dir contents kept");
+        expect(file_exists(ap), "test15: archive untouched");
+
+        memset(&s, 0, sizeof(s));
+        rc = rotate_run_ex(db, lib, &tc, &s);
+        expect(rc == 0 && s.orphans_removed == 0, "test15: rerun removes nothing");
+
+        db_close(db);
+        rm_rf(tmp); free(tmp);
+    }
+
+    /* --- Test 16: non-transcode mode never sweeps orphans --- */
+    {
+        char *tmp = make_tmpdir("orphans-flac");
+        char lib[512]; snprintf(lib, sizeof(lib), "%s/lib", tmp);
+        char dbp[512]; snprintf(dbp, sizeof(dbp), "%s/db", tmp);
+        mkdir_p(lib);
+        struct nocturne_db *db = db_open(dbp, NULL, NULL);
+
+        char rd[1024]; snprintf(rd, sizeof(rd), "%s/resident/Art/Alb", lib);
+        mkdir_p(rd);
+        char r1[1200]; snprintf(r1, sizeof(r1), "%s/a.opus", rd);
+        write_dummy(r1, "original opus");
+
+        struct rotate_stats s = {0};
+        int rc = rotate_run(db, lib, &s);
+        expect(rc == 0 && s.orphans_removed == 0,
+               "test16: orphans_removed=0 in non-transcode mode");
+        expect(file_has(r1, "original opus"),
+               "test16: unreferenced resident original kept");
 
         db_close(db);
         rm_rf(tmp); free(tmp);

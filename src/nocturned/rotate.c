@@ -789,6 +789,120 @@ static int prune_dir(const char *dir)
     return 1;
 }
 
+/* (dev, ino) identity of every file residency_state references. Matching
+ * by inode rather than by path string means a library_root spelled
+ * differently from the stored paths (symlink, trailing slash) can never
+ * make every resident file look unreferenced. */
+struct file_id { dev_t dev; ino_t ino; };
+struct file_id_set { struct file_id *v; size_t n, cap; };
+
+static int file_id_cmp(const void *a, const void *b)
+{
+    const struct file_id *x = a, *y = b;
+    if (x->dev != y->dev) return x->dev < y->dev ? -1 : 1;
+    if (x->ino != y->ino) return x->ino < y->ino ? -1 : 1;
+    return 0;
+}
+
+static int file_id_set_has(const struct file_id_set *s, const struct stat *st)
+{
+    struct file_id k = { st->st_dev, st->st_ino };
+    return s->n && bsearch(&k, s->v, s->n, sizeof(k), file_id_cmp) != NULL;
+}
+
+/* Extensions rotate's transcode promote can produce (transcode_dst_ext,
+ * minus .flac: a resident .flac may be a pre-migration original). */
+static int is_transcode_output_name(const char *name)
+{
+    const char *dot = strrchr(name, '.');
+    return dot && (!strcmp(dot, ".opus") || !strcmp(dot, ".m4a"));
+}
+
+static void remove_orphans_in(const char *dir, const struct file_id_set *refs,
+                              struct rotate_stats *out)
+{
+    DIR *d = opendir(dir);
+    if (!d) return;
+    struct dirent *de;
+    while ((de = readdir(d)) != NULL) {
+        const char *name = de->d_name;
+        if (name[0] == '.') continue;   /* ., .., .stfolder, Syncthing temps */
+        size_t need = strlen(dir) + 1 + strlen(name) + 1;
+        char *child = malloc(need);
+        if (!child) continue;
+        snprintf(child, need, "%s/%s", dir, name);
+        struct stat st;
+        if (lstat(child, &st) == 0) {
+            if (S_ISDIR(st.st_mode)) {
+                remove_orphans_in(child, refs, out);
+            } else if (S_ISREG(st.st_mode) && is_transcode_output_name(name) &&
+                       !file_id_set_has(refs, &st)) {
+                if (unlink(child) == 0) {
+                    fprintf(stderr, "rotate: removed orphan %s\n", child);
+                    out->orphans_removed++;
+                } else {
+                    fprintf(stderr, "rotate: unlink orphan %s failed: %s\n",
+                            child, strerror(errno));
+                }
+            }
+        }
+        free(child);
+    }
+    closedir(d);
+}
+
+/* Transcode mode ONLY: delete audio under resident/ that no
+ * residency_state.transcode_path references. Those files are derived — the
+ * archive FLAC is the source — and nothing manages them: no covers, never
+ * demoted, and they pin their dirs against prune_resident_tree. They came
+ * from tracks rows deleted while their transcode stayed on disk (see
+ * track_repo_delete). Never called in non-transcode mode, where resident
+ * files ARE the originals. If the reference set cannot be read, nothing is
+ * removed. */
+static void remove_orphan_transcodes(struct sqlite3 *raw,
+                                     const char *library_root,
+                                     struct rotate_stats *out)
+{
+    struct file_id_set refs = {0};
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(raw,
+            "SELECT transcode_path FROM residency_state "
+            "WHERE transcode_path IS NOT NULL",
+            -1, &stmt, NULL) != SQLITE_OK)
+        return;
+    int rc;
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        const unsigned char *t = sqlite3_column_text(stmt, 0);
+        struct stat st;
+        if (!t || stat((const char *) t, &st) != 0) continue;
+        if (refs.n == refs.cap) {
+            size_t nc = refs.cap ? refs.cap * 2 : 256;
+            struct file_id *nv = realloc(refs.v, nc * sizeof(*nv));
+            if (!nv) { rc = SQLITE_NOMEM; break; }
+            refs.v = nv; refs.cap = nc;
+        }
+        refs.v[refs.n].dev = st.st_dev;
+        refs.v[refs.n].ino = st.st_ino;
+        refs.n++;
+    }
+    sqlite3_finalize(stmt);
+    if (rc != SQLITE_DONE) {
+        fprintf(stderr, "rotate: orphan sweep skipped (reference read failed)\n");
+        free(refs.v);
+        return;
+    }
+    if (refs.n > 1) qsort(refs.v, refs.n, sizeof(*refs.v), file_id_cmp);
+
+    size_t need = strlen(library_root) + sizeof("/resident");
+    char *root = malloc(need);
+    if (root) {
+        snprintf(root, need, "%s/resident", library_root);
+        remove_orphans_in(root, &refs, out);
+        free(root);
+    }
+    free(refs.v);
+}
+
 /* Remove resident directories left holding no audio — the old album dir
  * after a relocation or demote keeps only its hardlinked cover.jpg, which
  * keeps the (possibly stale-case) dir alive on the phone. Walks every
@@ -1067,9 +1181,10 @@ int rotate_run_ex(struct nocturne_db *db, const char *library_root,
         if (rc == 0 && out->errors == before) out->removed++;
     }
 
-    /* Relocations and demotes leave album dirs holding only sidecars (or
-     * nothing). Prune them before the backfill so it runs against the
-     * final layout. */
+    /* Relocations, demotes and orphan removal leave album dirs holding
+     * only sidecars (or nothing). Prune them before the backfill so it
+     * runs against the final layout. */
+    if (transcode_on) remove_orphan_transcodes(raw, library_root, out);
     prune_resident_tree(library_root);
 
     fprintf(stderr, "rotate: backfill cover sidecars (transcode_on=%d)\n", transcode_on);

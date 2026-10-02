@@ -15,6 +15,7 @@ struct rotate_stats {
     long long fallback_copies; /* EXDEV fallbacks */
     long long respawned;       /* DB said resident but file missing → re-promoted */
     long long relocated;       /* transcode moved to follow a renamed archive path */
+    long long orphans_removed; /* unreferenced resident transcodes deleted */
     long long errors;
 };
 

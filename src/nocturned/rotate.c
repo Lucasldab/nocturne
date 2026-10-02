@@ -39,6 +39,7 @@
 #include "track_repo.h"
 #include "transcode.h"
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -601,6 +602,222 @@ static int demote_transcode(struct nocturne_db *db, const char *sha,
     return 0;
 }
 
+/* Point residency_state.transcode_path at a relocated transcode. Size is
+ * refreshed from disk; location and format are left as they were. */
+static int update_transcode_path(struct sqlite3 *raw, const char *sha,
+                                 const char *transcode_path,
+                                 long long transcode_size, const char *iso)
+{
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(raw,
+            "UPDATE residency_state SET transcode_path=?, "
+            "  transcode_size_bytes=?, updated_at=? WHERE sha256=?",
+            -1, &stmt, NULL) != SQLITE_OK)
+        return -1;
+    sqlite3_bind_text(stmt, 1, transcode_path, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(stmt, 2, transcode_size);
+    sqlite3_bind_text(stmt, 3, iso, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(stmt, 4, sha, -1, SQLITE_TRANSIENT);
+    int rc = sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+    return rc == SQLITE_DONE ? 0 : -1;
+}
+
+/* Transcode-mode relocation. The resident transcode lives at a path
+ * DERIVED from tracks.path (swap archive→resident, swap extension). When
+ * the archive FLAC moves — beets renaming a dir, e.g. a case merge
+ * archive/ERRA/… → archive/Erra/… — the scan updates tracks.path (sha
+ * unchanged) but nothing moved the transcode, and filter_resident_present
+ * only checks that the OLD transcode still exists. The stale copy then sat
+ * at resident/ERRA/… forever while newer tracks landed in resident/Erra/…,
+ * and the phone's case-insensitive storage deadlocked Syncthing on the two
+ * spellings.
+ *
+ * For every DB-resident sha (already filtered to "transcode present"),
+ * compute the expected path and, if it differs, rename the existing file
+ * there — no re-transcode — then update the row and re-link the album
+ * covers. The expected path keeps the EXISTING file's extension so a
+ * rename can never mislabel contents (format changes are not handled
+ * here). If the expected path is already occupied by a regular file
+ * (half-finished earlier relocation), the stale copy is unlinked and the
+ * row adopts the file that is there.
+ *
+ * Old resident dirs are left to prune_resident_tree, which runs after the
+ * demotes. */
+static void relocate_transcodes(struct sqlite3 *raw, const char *library_root,
+                                const struct sha_set *resident,
+                                const char *iso, struct rotate_stats *out)
+{
+    for (size_t i = 0; i < resident->n; i++) {
+        const char *sha = resident->items[i];
+        char *archive_path = lookup_track_path(raw, sha);
+        char *cur = lookup_transcode_path(raw, sha);
+        char *res_base = archive_path
+            ? swap_segment(library_root, archive_path, "archive", "resident")
+            : NULL;
+        /* Only touch transcodes that are themselves under resident/. */
+        char *cur_check = cur
+            ? swap_segment(library_root, cur, "resident", "resident")
+            : NULL;
+        const char *cur_slash = cur ? strrchr(cur, '/') : NULL;
+        const char *cur_ext = cur_slash ? strrchr(cur_slash, '.') : NULL;
+        char *expected = (res_base && cur_check && cur_ext)
+            ? path_with_ext(res_base, cur_ext) : NULL;
+        free(res_base);
+        free(cur_check);
+
+        if (!expected || !strcmp(expected, cur)) {
+            free(archive_path); free(cur); free(expected);
+            continue;
+        }
+
+        struct stat st;
+        int occupied = (lstat(expected, &st) == 0);
+        if (occupied && !S_ISREG(st.st_mode)) {
+            fprintf(stderr,
+                "rotate: relocate %s: %s exists and is not a regular file; "
+                "skipping\n", sha, expected);
+            out->errors++;
+            free(archive_path); free(cur); free(expected);
+            continue;
+        }
+        if (occupied) {
+            if (unlink(cur) != 0 && errno != ENOENT) {
+                fprintf(stderr, "rotate: relocate unlink(%s) failed: %s\n",
+                        cur, strerror(errno));
+                out->errors++;
+                free(archive_path); free(cur); free(expected);
+                continue;
+            }
+        } else {
+            if (mkparents(expected) != 0 || rename(cur, expected) != 0 ||
+                stat(expected, &st) != 0) {
+                fprintf(stderr, "rotate: relocate %s → %s failed: %s\n",
+                        cur, expected, strerror(errno));
+                out->errors++;
+                free(archive_path); free(cur); free(expected);
+                continue;
+            }
+        }
+        if (update_transcode_path(raw, sha, expected,
+                                  (long long) st.st_size, iso) != 0) {
+            fprintf(stderr,
+                "rotate: residency_state relocate update for %s failed\n", sha);
+            out->errors++;
+            free(archive_path); free(cur); free(expected);
+            continue;
+        }
+        fprintf(stderr, "rotate: relocated %s → %s\n", cur, expected);
+        link_album_covers(archive_path, expected);
+        out->relocated++;
+        free(archive_path); free(cur); free(expected);
+    }
+}
+
+static int is_cover_sidecar_name(const char *name)
+{
+    for (int i = 0; COVER_SIDECAR_NAMES[i]; i++)
+        if (!strcmp(name, COVER_SIDECAR_NAMES[i])) return 1;
+    return 0;
+}
+
+/* Post-order prune of one directory under resident/. Returns 1 if `dir`
+ * was removed, 0 if it was kept.
+ *
+ * A directory is removed only when, after its subdirectories have been
+ * pruned, every remaining entry is a regular file named in
+ * COVER_SIDECAR_NAMES — the files rotate itself propagates. Those are
+ * unlinked, then the dir is rmdir'd. Anything else (audio, unknown files,
+ * symlinks, dot-entries such as Syncthing's .stfolder / temp files)
+ * keeps the dir, untouched. Dot-directories are never descended into. */
+static int prune_dir(const char *dir)
+{
+    DIR *d = opendir(dir);
+    if (!d) return 0;
+    int keep = 0;
+    struct dirent *de;
+    while ((de = readdir(d)) != NULL) {
+        const char *name = de->d_name;
+        if (!strcmp(name, ".") || !strcmp(name, "..")) continue;
+        if (name[0] == '.') { keep = 1; continue; }
+        size_t need = strlen(dir) + 1 + strlen(name) + 1;
+        char *child = malloc(need);
+        if (!child) { keep = 1; continue; }
+        snprintf(child, need, "%s/%s", dir, name);
+        struct stat st;
+        if (lstat(child, &st) != 0) {
+            keep = 1;
+        } else if (S_ISDIR(st.st_mode)) {
+            if (!prune_dir(child)) keep = 1;
+        } else if (!(S_ISREG(st.st_mode) && is_cover_sidecar_name(name))) {
+            keep = 1;
+        }
+        free(child);
+    }
+    closedir(d);
+    if (keep) return 0;
+
+    /* Second pass: only known sidecars remain. Re-check each before
+     * unlinking so a file that appeared mid-walk is never removed. */
+    d = opendir(dir);
+    if (!d) return 0;
+    while ((de = readdir(d)) != NULL) {
+        const char *name = de->d_name;
+        if (!strcmp(name, ".") || !strcmp(name, "..")) continue;
+        if (!is_cover_sidecar_name(name)) { keep = 1; continue; }
+        size_t need = strlen(dir) + 1 + strlen(name) + 1;
+        char *child = malloc(need);
+        if (!child) { keep = 1; continue; }
+        snprintf(child, need, "%s/%s", dir, name);
+        struct stat st;
+        if (lstat(child, &st) == 0 && S_ISREG(st.st_mode)) {
+            if (unlink(child) != 0) keep = 1;
+        } else {
+            keep = 1;
+        }
+        free(child);
+    }
+    closedir(d);
+    if (keep) return 0;
+    if (rmdir(dir) != 0) {
+        if (errno != ENOTEMPTY && errno != EEXIST)
+            fprintf(stderr, "rotate: prune rmdir(%s) failed: %s\n",
+                    dir, strerror(errno));
+        return 0;
+    }
+    fprintf(stderr, "rotate: pruned %s\n", dir);
+    return 1;
+}
+
+/* Remove resident directories left holding no audio — the old album dir
+ * after a relocation or demote keeps only its hardlinked cover.jpg, which
+ * keeps the (possibly stale-case) dir alive on the phone. Walks every
+ * child of <library_root>/resident; resident/ itself is never removed.
+ * Best-effort: never bumps out->errors. */
+static void prune_resident_tree(const char *library_root)
+{
+    size_t need = strlen(library_root) + sizeof("/resident");
+    char *root = malloc(need);
+    if (!root) return;
+    snprintf(root, need, "%s/resident", library_root);
+    DIR *d = opendir(root);
+    if (!d) { free(root); return; }
+    struct dirent *de;
+    while ((de = readdir(d)) != NULL) {
+        const char *name = de->d_name;
+        if (name[0] == '.') continue;   /* ., .., .stfolder, .nomedia, … */
+        size_t cn = strlen(root) + 1 + strlen(name) + 1;
+        char *child = malloc(cn);
+        if (!child) continue;
+        snprintf(child, cn, "%s/%s", root, name);
+        struct stat st;
+        if (lstat(child, &st) == 0 && S_ISDIR(st.st_mode)) prune_dir(child);
+        free(child);
+    }
+    closedir(d);
+    free(root);
+}
+
 /* Apply one direction of motion. `from`/`to` are the path segment
  * names; `target_location` is what residency_state should record after
  * this move.
@@ -799,6 +1016,15 @@ int rotate_run_ex(struct nocturne_db *db, const char *library_root,
      * ADD loop re-promotes it instead of skipping forever. */
     filter_resident_present(raw, &resident, transcode_on, out);
 
+    /* Transcodes whose archive source moved follow it to the new derived
+     * path. Non-transcode mode has no derived path: tracks.path IS the
+     * resident file (the archive copy was moved, not kept), so there is
+     * nothing for it to go stale against — beets never sees the file while
+     * it is resident, so it cannot rename it, and the scan already tracks
+     * wherever it is. */
+    if (transcode_on)
+        relocate_transcodes(raw, library_root, &resident, iso_now, out);
+
     /* Diff. */
     for (size_t i = 0; i < manifest.n; i++) {
         if (!set_contains(&resident, manifest.items[i])) out->to_add++;
@@ -840,6 +1066,11 @@ int rotate_run_ex(struct nocturne_db *db, const char *library_root,
         }
         if (rc == 0 && out->errors == before) out->removed++;
     }
+
+    /* Relocations and demotes leave album dirs holding only sidecars (or
+     * nothing). Prune them before the backfill so it runs against the
+     * final layout. */
+    prune_resident_tree(library_root);
 
     fprintf(stderr, "rotate: backfill cover sidecars (transcode_on=%d)\n", transcode_on);
     /* Cover sidecar backfill: walk every track that is currently resident

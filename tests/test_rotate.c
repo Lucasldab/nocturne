@@ -13,6 +13,15 @@
  *   8. Self-heal: residency_state row missing → INSERTed on first move.
  *   9. tracks row missing for sha in manifest_current → errors++.
  *  10. Order: ADDS run before REMOVES (verified by tracking sequence).
+ *  11. Transcode mode: archive FLAC moved (case-merge rename) → resident
+ *      transcode renamed to the new expected path, no re-transcode,
+ *      residency_state.transcode_path updated, cover re-linked, the old
+ *      sidecar-only dir (and its emptied parent) pruned; rerun idempotent.
+ *  12. Prune safety: an old resident dir holding anything other than
+ *      known sidecars survives, as does resident/ itself.
+ *  13. Non-transcode demote prunes the sidecar-only album dir, but keeps
+ *      a dir that still holds another resident track's audio.
+ *  14. Transcode demote prunes the sidecar-only album dir.
  */
 
 #define _GNU_SOURCE
@@ -30,6 +39,7 @@
 #include "db.h"
 #include "rotate.h"
 #include "runner.h"
+#include "transcode.h"
 
 static int rm_rf(const char *path)
 {
@@ -141,6 +151,46 @@ static char *get_residency_loc(struct nocturne_db *db, const char *sha)
     }
     sqlite3_finalize(stmt);
     return out;
+}
+
+static void seed_residency_transcode(struct nocturne_db *db, const char *sha,
+                                     const char *transcode_path)
+{
+    char sql[2048];
+    snprintf(sql, sizeof(sql),
+        "INSERT INTO residency_state (sha256, location, updated_at, "
+        "transcode_path, transcode_size_bytes, transcode_format) "
+        "VALUES ('%s', 'resident', '2026-04-26T00:00:00Z', '%s', 4, 'opus')",
+        sha, transcode_path);
+    exec_sql(db, sql);
+}
+
+static char *get_transcode_path(struct nocturne_db *db, const char *sha)
+{
+    char sql[256];
+    snprintf(sql, sizeof(sql),
+        "SELECT transcode_path FROM residency_state WHERE sha256='%s'", sha);
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db_handle(db), sql, -1, &stmt, NULL) != SQLITE_OK)
+        return NULL;
+    char *out = NULL;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const unsigned char *t = sqlite3_column_text(stmt, 0);
+        if (t) out = strdup((const char *) t);
+    }
+    sqlite3_finalize(stmt);
+    return out;
+}
+
+static int file_has(const char *p, const char *want)
+{
+    char buf[256] = {0};
+    FILE *f = fopen(p, "rb");
+    if (!f) return 0;
+    size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    buf[n] = '\0';
+    return strcmp(buf, want) == 0;
 }
 
 static int has_last_rotation(struct nocturne_db *db)
@@ -533,6 +583,212 @@ int main(int argc, char **argv)
                "test10: sha[0] back at archive/ after eviction");
         expect(file_exists(rp1),
                "test10: sha[1] now at resident/ after add");
+
+        db_close(db);
+        rm_rf(tmp); free(tmp);
+    }
+
+    /* --- Test 11: transcode relocation after the archive FLAC moved --- */
+    {
+        char *tmp = make_tmpdir("reloc");
+        char lib[512]; snprintf(lib, sizeof(lib), "%s/lib", tmp);
+        char dbp[512]; snprintf(dbp, sizeof(dbp), "%s/db", tmp);
+        mkdir_p(lib);
+        struct nocturne_db *db = db_open(dbp, NULL, NULL);
+
+        /* Archive after the beets case merge: ERRA → Erra. */
+        char ad[1024]; snprintf(ad, sizeof(ad), "%s/archive/Erra/Augment", lib);
+        mkdir_p(ad);
+        char ap[1200]; snprintf(ap, sizeof(ap), "%s/x.flac", ad);
+        write_dummy(ap, "flac");
+        char acov[1200]; snprintf(acov, sizeof(acov), "%s/cover.jpg", ad);
+        write_dummy(acov, "art");
+
+        /* Resident still at the pre-merge spelling, cover hardlinked. */
+        char od[1024]; snprintf(od, sizeof(od), "%s/resident/ERRA/Augment", lib);
+        mkdir_p(od);
+        char op[1200]; snprintf(op, sizeof(op), "%s/x.opus", od);
+        write_dummy(op, "opus");
+        char ocov[1200]; snprintf(ocov, sizeof(ocov), "%s/cover.jpg", od);
+        link(acov, ocov);
+
+        const char *sha = "b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1b1";
+        seed_track(db, sha, ap);
+        seed_residency_transcode(db, sha, op);
+        seed_manifest(db, sha, 1024);
+
+        struct transcode_cfg tc = { .enabled = true, .format = "opus",
+                                    .bitrate_kbps = 128 };
+        struct rotate_stats s = {0};
+        int rc = rotate_run_ex(db, lib, &tc, &s);
+        expect(rc == 0, "test11: rc=0");
+        expect(s.relocated == 1, "test11: relocated=1");
+        expect(s.errors == 0, "test11: errors=0");
+        expect(s.to_add == 0, "test11: to_add=0 (no re-transcode)");
+        expect(s.added == 0, "test11: added=0");
+        expect(s.respawned == 0, "test11: respawned=0");
+
+        char np[1200];
+        snprintf(np, sizeof(np), "%s/resident/Erra/Augment/x.opus", lib);
+        expect(file_has(np, "opus"),
+               "test11: transcode renamed to the new expected path");
+        expect(!file_exists(op), "test11: old transcode gone");
+        char *xp = get_transcode_path(db, sha);
+        expect(xp && !strcmp(xp, np),
+               "test11: residency_state.transcode_path updated");
+        free(xp);
+        char *loc = get_residency_loc(db, sha);
+        expect(loc && !strcmp(loc, "resident"), "test11: still resident");
+        free(loc);
+        char ncov[1200];
+        snprintf(ncov, sizeof(ncov), "%s/resident/Erra/Augment/cover.jpg", lib);
+        expect(file_exists(ncov), "test11: cover linked beside new path");
+        expect(!file_exists(od), "test11: old sidecar-only album dir pruned");
+        char oart[1024]; snprintf(oart, sizeof(oart), "%s/resident/ERRA", lib);
+        expect(!file_exists(oart), "test11: emptied artist dir pruned");
+        char res[1024]; snprintf(res, sizeof(res), "%s/resident", lib);
+        expect(file_exists(res), "test11: resident/ itself kept");
+        expect(file_exists(ap) && file_exists(acov),
+               "test11: archive untouched");
+
+        memset(&s, 0, sizeof(s));
+        rc = rotate_run_ex(db, lib, &tc, &s);
+        expect(rc == 0 && s.relocated == 0 && s.errors == 0 &&
+               s.to_add == 0 && s.to_remove == 0,
+               "test11: rerun is a no-op");
+        expect(file_has(np, "opus"), "test11: rerun keeps the transcode");
+
+        db_close(db);
+        rm_rf(tmp); free(tmp);
+    }
+
+    /* --- Test 12: prune never removes non-sidecar content or resident/ --- */
+    {
+        char *tmp = make_tmpdir("prune-safe");
+        char lib[512]; snprintf(lib, sizeof(lib), "%s/lib", tmp);
+        char dbp[512]; snprintf(dbp, sizeof(dbp), "%s/db", tmp);
+        mkdir_p(lib);
+        struct nocturne_db *db = db_open(dbp, NULL, NULL);
+
+        char ad[1024]; snprintf(ad, sizeof(ad), "%s/archive/New/Alb", lib);
+        mkdir_p(ad);
+        char ap[1200]; snprintf(ap, sizeof(ap), "%s/y.flac", ad);
+        write_dummy(ap, "flac");
+
+        char od[1024]; snprintf(od, sizeof(od), "%s/resident/Old/Alb", lib);
+        mkdir_p(od);
+        char op[1200]; snprintf(op, sizeof(op), "%s/y.opus", od);
+        write_dummy(op, "opus");
+        char ocov[1200]; snprintf(ocov, sizeof(ocov), "%s/cover.jpg", od);
+        write_dummy(ocov, "art");
+        char other[1200]; snprintf(other, sizeof(other), "%s/notes.txt", od);
+        write_dummy(other, "keep me");
+
+        const char *sha = "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2";
+        seed_track(db, sha, ap);
+        seed_residency_transcode(db, sha, op);
+        seed_manifest(db, sha, 1024);
+
+        struct transcode_cfg tc = { .enabled = true, .format = "opus",
+                                    .bitrate_kbps = 128 };
+        struct rotate_stats s = {0};
+        int rc = rotate_run_ex(db, lib, &tc, &s);
+        expect(rc == 0 && s.relocated == 1, "test12: relocated=1");
+        expect(file_has(other, "keep me"), "test12: non-sidecar file kept");
+        expect(file_exists(ocov),
+               "test12: sidecar kept in a dir holding other content");
+
+        /* Now demote: resident/ must survive even with nothing left. */
+        exec_sql(db, "DELETE FROM manifest_current");
+        memset(&s, 0, sizeof(s));
+        rc = rotate_run_ex(db, lib, &tc, &s);
+        expect(rc == 0 && s.removed == 1, "test12: demoted");
+        char res[1024]; snprintf(res, sizeof(res), "%s/resident", lib);
+        expect(file_exists(res), "test12: resident/ itself kept");
+        char nom[1100]; snprintf(nom, sizeof(nom), "%s/.nomedia", res);
+        expect(file_exists(nom), "test12: resident/.nomedia kept");
+        char nd[1024]; snprintf(nd, sizeof(nd), "%s/resident/New", lib);
+        expect(!file_exists(nd), "test12: demoted album dir pruned");
+
+        db_close(db);
+        rm_rf(tmp); free(tmp);
+    }
+
+    /* --- Test 13: non-transcode demote prunes sidecar-only dirs --- */
+    {
+        char *tmp = make_tmpdir("prune-move");
+        char lib[512]; snprintf(lib, sizeof(lib), "%s/lib", tmp);
+        char dbp[512]; snprintf(dbp, sizeof(dbp), "%s/db", tmp);
+        mkdir_p(lib);
+        struct nocturne_db *db = db_open(dbp, NULL, NULL);
+
+        char shas[2][65];
+        seed_archive_library(db, lib, 2, shas);
+        /* A0 has a cover; A1 gets a second track that stays resident. */
+        char acov[1200]; snprintf(acov, sizeof(acov), "%s/archive/A0/cover.jpg", lib);
+        write_dummy(acov, "art");
+        char a1b[1200]; snprintf(a1b, sizeof(a1b), "%s/archive/A1/b.flac", lib);
+        write_dummy(a1b, "b");
+        const char *shab = "d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3";
+        seed_track(db, shab, a1b);
+        seed_residency(db, shab, "archive");
+        seed_manifest(db, shas[0], 1024);
+        seed_manifest(db, shas[1], 1024);
+        seed_manifest(db, shab, 1024);
+
+        struct rotate_stats s = {0};
+        rotate_run(db, lib, &s);
+        expect(s.added == 3, "test13 setup: 3 added");
+        char rcov[1200]; snprintf(rcov, sizeof(rcov), "%s/resident/A0/cover.jpg", lib);
+        expect(file_exists(rcov), "test13 setup: cover propagated");
+
+        exec_sql(db, "DELETE FROM manifest_current");
+        seed_manifest(db, shab, 1024);
+        memset(&s, 0, sizeof(s));
+        int rc = rotate_run(db, lib, &s);
+        expect(rc == 0 && s.removed == 2 && s.errors == 0,
+               "test13: 2 demoted");
+        char r0[1024]; snprintf(r0, sizeof(r0), "%s/resident/A0", lib);
+        expect(!file_exists(r0), "test13: sidecar-only A0 pruned");
+        expect(file_exists(acov), "test13: archive cover untouched");
+        char r1b[1200]; snprintf(r1b, sizeof(r1b), "%s/resident/A1/b.flac", lib);
+        expect(file_exists(r1b), "test13: A1 kept, still holds audio");
+
+        db_close(db);
+        rm_rf(tmp); free(tmp);
+    }
+
+    /* --- Test 14: transcode demote prunes sidecar-only dirs --- */
+    {
+        char *tmp = make_tmpdir("prune-xdemote");
+        char lib[512]; snprintf(lib, sizeof(lib), "%s/lib", tmp);
+        char dbp[512]; snprintf(dbp, sizeof(dbp), "%s/db", tmp);
+        mkdir_p(lib);
+        struct nocturne_db *db = db_open(dbp, NULL, NULL);
+
+        char ad[1024]; snprintf(ad, sizeof(ad), "%s/archive/Art/Alb", lib);
+        mkdir_p(ad);
+        char ap[1200]; snprintf(ap, sizeof(ap), "%s/z.flac", ad);
+        write_dummy(ap, "flac");
+        char rd[1024]; snprintf(rd, sizeof(rd), "%s/resident/Art/Alb", lib);
+        mkdir_p(rd);
+        char rp[1200]; snprintf(rp, sizeof(rp), "%s/z.opus", rd);
+        write_dummy(rp, "opus");
+        char rcov[1200]; snprintf(rcov, sizeof(rcov), "%s/folder.png", rd);
+        write_dummy(rcov, "art");
+
+        const char *sha = "e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4e4";
+        seed_track(db, sha, ap);
+        seed_residency_transcode(db, sha, rp);
+
+        struct transcode_cfg tc = { .enabled = true, .format = "opus",
+                                    .bitrate_kbps = 128 };
+        struct rotate_stats s = {0};
+        int rc = rotate_run_ex(db, lib, &tc, &s);
+        expect(rc == 0 && s.removed == 1 && s.errors == 0, "test14: demoted");
+        char ra[1024]; snprintf(ra, sizeof(ra), "%s/resident/Art", lib);
+        expect(!file_exists(ra), "test14: sidecar-only album + artist pruned");
+        expect(file_exists(ap), "test14: archive untouched");
 
         db_close(db);
         rm_rf(tmp); free(tmp);

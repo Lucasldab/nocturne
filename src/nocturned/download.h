@@ -14,6 +14,9 @@
  *   {"v":1, "id":"<uuid>", "state":"running|done|error",
  *    "ts":<ms>, "msg":"<optional>"}
  *
+ * `msg` is flacget's own explanation when it wrote one to FLACGET_RESULT_FILE
+ * (what was fetched, or why nothing was), else a generic fallback.
+ *
  * The phone's DownloadStatusReader tails the file and updates its Room table.
  *
  * IMPORTANT: this module does NOT take the single-writer cycle lock.

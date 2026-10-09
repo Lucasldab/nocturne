@@ -199,12 +199,39 @@ static int load_terminal_ids(const char *meta_dir, struct idset *out)
  *
  * Stdin is /dev/null. Stdout + stderr are inherited so the daemon's log
  * captures the wrapper's progress output verbatim — same UX as running
- * flacget interactively. */
-static int run_flacget(const char *flacget_path, const char *query)
+ * flacget interactively.
+ *
+ * flacget explains its outcome in FLACGET_RESULT_FILE ({"ok","reason","msg"});
+ * its `msg` is copied to `msg_out` (empty when absent or unreadable, and the
+ * caller falls back to its own wording). The file lives in $TMPDIR, never in
+ * meta_dir, which Syncthing shares with the phone. */
+static void read_result_msg(const char *path, char *msg_out, size_t msg_cap)
 {
+    msg_out[0] = '\0';
+    json_error_t jerr;
+    json_t *root = json_load_file(path, 0, &jerr);
+    if (!root) return;
+    const char *m = json_string_value(json_object_get(root, "msg"));
+    if (m) snprintf(msg_out, msg_cap, "%s", m);
+    json_decref(root);
+}
+
+static int run_flacget(const char *flacget_path, const char *query,
+                       char *msg_out, size_t msg_cap)
+{
+    msg_out[0] = '\0';
+    const char *tmpdir = getenv("TMPDIR");
+    char result_path[4096];
+    snprintf(result_path, sizeof(result_path), "%s/nocturne-flacget-XXXXXX",
+             tmpdir && *tmpdir ? tmpdir : "/tmp");
+    int rfd = mkstemp(result_path);
+    if (rfd >= 0) close(rfd);
+    else result_path[0] = '\0';   /* run without explanations */
+
     pid_t pid = fork();
     if (pid < 0) {
         fprintf(stderr, "download: fork: %s\n", strerror(errno));
+        if (result_path[0]) unlink(result_path);
         return -1;
     }
     if (pid == 0) {
@@ -214,6 +241,7 @@ static int run_flacget(const char *flacget_path, const char *query)
             dup2(devnull, 0);
             close(devnull);
         }
+        if (result_path[0]) setenv("FLACGET_RESULT_FILE", result_path, 1);
         char *const argv[] = { (char *) flacget_path, (char *) query, NULL };
         execv(flacget_path, argv);
         fprintf(stderr, "download: exec %s: %s\n", flacget_path, strerror(errno));
@@ -223,7 +251,12 @@ static int run_flacget(const char *flacget_path, const char *query)
     while (waitpid(pid, &status, 0) < 0) {
         if (errno == EINTR) continue;
         fprintf(stderr, "download: waitpid: %s\n", strerror(errno));
+        if (result_path[0]) unlink(result_path);
         return -1;
+    }
+    if (result_path[0]) {
+        read_result_msg(result_path, msg_out, msg_cap);
+        unlink(result_path);
     }
     if (WIFEXITED(status)) return WEXITSTATUS(status);
     if (WIFSIGNALED(status)) {
@@ -277,14 +310,17 @@ static int handle_request_line(const char *line, size_t llen,
      * flacget runs for several minutes. */
     status_append(meta_dir, id, "running", NULL);
 
-    int rc = run_flacget(flacget_path, query);
+    char result_msg[512];
+    int rc = run_flacget(flacget_path, query, result_msg, sizeof(result_msg));
     if (rc == 0) {
-        status_append(meta_dir, id, "done", NULL);
+        status_append(meta_dir, id, "done", result_msg);
         idset_add(done, id);
         stats->requests_processed_ok++;
     } else {
-        char buf[96];
-        if (rc == FLACGET_RC_NOT_FILED) {
+        char buf[512];
+        if (result_msg[0]) {
+            snprintf(buf, sizeof(buf), "%s", result_msg);
+        } else if (rc == FLACGET_RC_NOT_FILED) {
             /* Fetched and tagged, but beets refused to file it, so
              * music-import parked it under staging/skipped/. The bytes are on
              * hearth — this needs a human, not a re-download. Spell that out

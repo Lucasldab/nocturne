@@ -366,12 +366,15 @@ private fun DownloadRow(row: DownloadEntity) {
                 modifier = Modifier.weight(1f),
             )
         }
+        // flacget explains both outcomes: why nothing was fetched, or what was
+        // (file, quality, length, whether the artist name had to be dropped).
         val msg = row.message
-        if (!msg.isNullOrBlank() && row.state == "error") {
+        if (!msg.isNullOrBlank() && (row.state == "error" || row.state == "done")) {
             Text(
                 text = msg,
                 style = monoStyle(11),
-                color = MaterialTheme.colorScheme.error,
+                color = if (row.state == "error") MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 70.dp, top = 2.dp),
             )
         }

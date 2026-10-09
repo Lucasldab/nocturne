@@ -17,6 +17,8 @@
 #include "config.h"
 #include "transcode.h"
 
+#include <math.h>
+
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
@@ -64,13 +66,18 @@ int transcode_cmd_main(struct cli_args *args)
         .enabled = true,
         .format = fmt,
         .bitrate_kbps = kbps,
+        .level_lufs = cfg.transcode_level_lufs,
     };
 
     fprintf(stderr,
             "transcode: %s -> %s (codec=%s bitrate=%dk)\n",
             args->transcode_src, args->transcode_dst, fmt, kbps);
 
-    int rc = transcode_audio(args->transcode_src, args->transcode_dst, &tc);
+    struct transcode_result res;
+    int rc = transcode_audio(args->transcode_src, args->transcode_dst, &tc, &res);
+    if (rc == 0 && !isnan(res.gain_db))
+        fprintf(stderr, "transcode: source %.1f LUFS, gain %+.2f dB (target %d)\n",
+                res.source_lufs, res.gain_db, tc.level_lufs);
     config_free(&cfg);
 
     if (rc != 0) return 1;

@@ -32,6 +32,7 @@
 #include "_schema_0006_weekly_discovery.h"
 #include "_schema_0007_unsync_delete.h"
 #include "_schema_0008_orphan_cleanup.h"
+#include "_schema_0009_transcode_loudness.h"
 
 /* xxd emits `unsigned int <name>_len = N;` (non-const) so we can't use the
  * length in a static initializer. Indirect through a pointer to the length
@@ -53,6 +54,7 @@ static const struct migration_entry MIGRATIONS[] = {
     { 6, __0006_weekly_discovery_sql, &__0006_weekly_discovery_sql_len },
     { 7, __0007_unsync_delete_sql, &__0007_unsync_delete_sql_len },
     { 8, __0008_orphan_cleanup_sql, &__0008_orphan_cleanup_sql_len },
+    { 9, __0009_transcode_loudness_sql, &__0009_transcode_loudness_sql_len },
 };
 
 static const size_t MIGRATIONS_COUNT = sizeof(MIGRATIONS) / sizeof(MIGRATIONS[0]);

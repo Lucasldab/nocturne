@@ -252,7 +252,7 @@ static int migrate_one(struct nocturne_db *db, const char *sha,
             free(archive_path); free(transcode_path);
             return -1;
         }
-        int trc = transcode_audio(cur_path, transcode_path, tc);
+        int trc = transcode_audio(cur_path, transcode_path, tc, NULL);
         if (trc != 0) {
             fprintf(stderr,
                 "transcode-migrate: transcode %s failed (rc=%d)\n",

@@ -30,6 +30,7 @@ enum nocturned_subcommand {
     CMD_DISKCHECK,
     CMD_TRANSCODE,
     CMD_TRANSCODE_MIGRATE,
+    CMD_TRANSCODE_LEVEL,
     CMD_DISCOVER,
     CMD_UNSYNC,
     CMD_DELETE,

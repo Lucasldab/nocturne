@@ -53,6 +53,9 @@ void cli_print_usage(FILE *f)
         "                    One-time migration: convert all current FLAC residents\n"
         "                    into transcoded copies, restore archive hardlinks.\n"
         "                    Default is dry-run; pass --apply to execute.\n"
+        "  transcode-level [--apply]\n"
+        "                    Re-encode resident transcodes that predate loudness\n"
+        "                    levelling at [transcode] level_lufs. Dry-run default.\n"
         "  discover          Pick this week's Weekly Discovery tracks; resolver\n"
         "                    promotes them via the [buckets.weekly_discovery]\n"
         "                    bucket on the next cycle. Idempotent per Monday.\n"
@@ -121,6 +124,7 @@ static enum nocturned_subcommand subcommand_from_string(const char *s)
     if (!strcmp(s, "cycle"))   return CMD_CYCLE;
     if (!strcmp(s, "transcode")) return CMD_TRANSCODE;
     if (!strcmp(s, "transcode-migrate")) return CMD_TRANSCODE_MIGRATE;
+    if (!strcmp(s, "transcode-level"))   return CMD_TRANSCODE_LEVEL;
     if (!strcmp(s, "discover")) return CMD_DISCOVER;
     if (!strcmp(s, "unsync")) return CMD_UNSYNC;
     if (!strcmp(s, "delete")) return CMD_DELETE;

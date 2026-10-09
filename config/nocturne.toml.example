@@ -119,3 +119,8 @@ window_days = 0
 # format = "opus"
 # Target bitrate. Sane Opus range: 96-192. AAC: 128-256.
 # bitrate_kbps = 128
+# Per-track loudness target in LUFS (integer). Each resident copy is
+# measured and scaled to it while encoding; the FLAC is never touched.
+# -18 is the ReplayGain 2 reference. 0 or absent = no levelling. Copies made
+# before this was set are re-levelled by `nocturned transcode-level --apply`.
+# level_lufs = -18

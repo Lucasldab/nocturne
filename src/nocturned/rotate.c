@@ -41,6 +41,7 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <math.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -258,18 +259,28 @@ static int upsert_residency_transcode(struct sqlite3 *raw, const char *sha,
                                       const char *iso,
                                       const char *transcode_path,
                                       long long transcode_size,
-                                      const char *transcode_format)
+                                      const char *transcode_format,
+                                      const struct transcode_result *lvl)
 {
+    /* `lvl` NULL = the copy was not re-encoded this time (idempotent skip),
+     * so whatever loudness the row already records still describes the
+     * file: keep it. Otherwise record exactly what this encode did — NaN
+     * (levelling off / measurement failed) is stored as NULL. */
     sqlite3_stmt *stmt = NULL;
     if (sqlite3_prepare_v2(raw,
             "INSERT INTO residency_state (sha256, location, updated_at, "
-            "  transcode_path, transcode_size_bytes, transcode_format) "
-            "VALUES (?, 'resident', ?, ?, ?, ?) "
+            "  transcode_path, transcode_size_bytes, transcode_format, "
+            "  transcode_gain_db, transcode_lufs) "
+            "VALUES (?1, 'resident', ?2, ?3, ?4, ?5, ?6, ?7) "
             "ON CONFLICT(sha256) DO UPDATE SET location='resident', "
             "  updated_at=excluded.updated_at, "
             "  transcode_path=excluded.transcode_path, "
             "  transcode_size_bytes=excluded.transcode_size_bytes, "
-            "  transcode_format=excluded.transcode_format",
+            "  transcode_format=excluded.transcode_format, "
+            "  transcode_gain_db=CASE WHEN ?8 THEN residency_state.transcode_gain_db "
+            "                         ELSE excluded.transcode_gain_db END, "
+            "  transcode_lufs=CASE WHEN ?8 THEN residency_state.transcode_lufs "
+            "                      ELSE excluded.transcode_lufs END",
             -1, &stmt, NULL) != SQLITE_OK)
         return -1;
     sqlite3_bind_text(stmt, 1, sha, -1, SQLITE_TRANSIENT);
@@ -277,6 +288,11 @@ static int upsert_residency_transcode(struct sqlite3 *raw, const char *sha,
     sqlite3_bind_text(stmt, 3, transcode_path, -1, SQLITE_TRANSIENT);
     sqlite3_bind_int64(stmt, 4, transcode_size);
     sqlite3_bind_text(stmt, 5, transcode_format, -1, SQLITE_TRANSIENT);
+    if (lvl && !isnan(lvl->gain_db)) sqlite3_bind_double(stmt, 6, lvl->gain_db);
+    else sqlite3_bind_null(stmt, 6);
+    if (lvl && !isnan(lvl->source_lufs)) sqlite3_bind_double(stmt, 7, lvl->source_lufs);
+    else sqlite3_bind_null(stmt, 7);
+    sqlite3_bind_int(stmt, 8, lvl == NULL);
     int rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
     return rc == SQLITE_DONE ? 0 : -1;
@@ -527,6 +543,7 @@ static int promote_transcode(struct nocturne_db *db, const char *library_root,
      * run, just refresh the residency row. */
     struct stat st;
     int already = (stat(transcode_path, &st) == 0 && S_ISREG(st.st_mode));
+    struct transcode_result lvl = { NAN, NAN };
 
     if (!already) {
         if (mkparents(transcode_path) != 0) {
@@ -537,7 +554,7 @@ static int promote_transcode(struct nocturne_db *db, const char *library_root,
             free(archive_path); free(transcode_path);
             return -1;
         }
-        int trc = transcode_audio(archive_path, transcode_path, tc);
+        int trc = transcode_audio(archive_path, transcode_path, tc, &lvl);
         if (trc != 0) {
             fprintf(stderr, "rotate: transcode failed for %.*s (rc=%d)\n",
                     (int) strlen(sha), sha, trc);
@@ -557,7 +574,8 @@ static int promote_transcode(struct nocturne_db *db, const char *library_root,
     }
 
     if (upsert_residency_transcode(raw, sha, iso, transcode_path,
-                                   (long long) st.st_size, tc->format) != 0) {
+                                   (long long) st.st_size, tc->format,
+                                   already ? NULL : &lvl) != 0) {
         fprintf(stderr, "rotate: residency_state upsert for %.*s failed\n",
                 (int) strlen(sha), sha);
         out->errors++;

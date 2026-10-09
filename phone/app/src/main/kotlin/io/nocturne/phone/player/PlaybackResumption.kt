@@ -22,6 +22,23 @@ import io.nocturne.phone.data.db.dao.TrackDao
 object PlaybackResumption {
 
     /**
+     * Everything a resumption needs beyond the items themselves: the player
+     * modes, plus the shuffle play order remapped onto the hydrated list.
+     *
+     * @property shuffleOrder indices into [items].mediaItems in ExoPlayer
+     *           shuffle play order, or null when the snapshot carried no
+     *           usable order (old blob, corrupt) — ExoPlayer then keeps the
+     *           fresh random order it builds on setMediaItems.
+     */
+    class Restored(
+        val items: MediaSession.MediaItemsWithStartPosition,
+        val mediaIds: List<String>,
+        val shuffleMode: Boolean,
+        val repeatMode: Int,
+        val shuffleOrder: IntArray?,
+    )
+
+    /**
      * Hydrate [saved] using [trackDao] lookups.
      *
      * @param saved The persisted queue state from QueueRepository.loadQueue().
@@ -34,11 +51,18 @@ object PlaybackResumption {
         saved: SavedQueue,
         trackDao: TrackDao,
         musicTreeUri: android.net.Uri? = null,
-    ): MediaSession.MediaItemsWithStartPosition {
-        if (saved.mediaIds.isEmpty()) {
-            return emptyResult()
-        }
+    ): MediaSession.MediaItemsWithStartPosition = restore(saved, trackDao, musicTreeUri).items
 
+    /**
+     * Like [toMediaItemsWithStartPosition], but also carries shuffle mode,
+     * repeat mode and the remapped shuffle order so the service can put the
+     * player back exactly as the user left it.
+     */
+    suspend fun restore(
+        saved: SavedQueue,
+        trackDao: TrackDao,
+        musicTreeUri: android.net.Uri? = null,
+    ): Restored {
         // Hydrate each mediaId, tracking the original index alongside.
         val resolved = mutableListOf<Pair<Int, MediaItem>>()
         for ((originalIdx, mediaId) in saved.mediaIds.withIndex()) {
@@ -51,7 +75,9 @@ object PlaybackResumption {
             resolved.add(Pair(originalIdx, entity.toMediaItem(musicTreeUri = musicTreeUri)))
         }
 
-        if (resolved.isEmpty()) return emptyResult()
+        if (resolved.isEmpty()) {
+            return Restored(emptyResult(), emptyList(), saved.shuffleMode, saved.repeatMode, null)
+        }
 
         // Find the new index corresponding to the persisted currentIndex.
         // The persisted index refers to a position in saved.mediaIds; after
@@ -60,11 +86,50 @@ object PlaybackResumption {
         val startIndex = resolved.indexOfFirst { (origIdx, _) -> origIdx >= saved.currentIndex }
             .coerceAtLeast(0)
 
-        return MediaSession.MediaItemsWithStartPosition(
+        val items = MediaSession.MediaItemsWithStartPosition(
             /* mediaItems = */ resolved.map { (_, item) -> item },
             /* startIndex = */ startIndex,
             /* startPositionMs = */ saved.currentPositionMs,
         )
+        return Restored(
+            items = items,
+            mediaIds = resolved.map { (_, item) -> item.mediaId },
+            shuffleMode = saved.shuffleMode,
+            repeatMode = saved.repeatMode,
+            shuffleOrder = remapShuffleOrder(
+                savedOrder = saved.shuffleOrder,
+                savedSize = saved.mediaIds.size,
+                keptOriginalIndices = resolved.map { (origIdx, _) -> origIdx },
+            ),
+        )
+    }
+
+    /**
+     * Project a persisted shuffle order onto the hydrated queue.
+     *
+     * [savedOrder] indexes the persisted mediaIds; tracks dropped during
+     * hydration (deleted / no longer resident) are removed from the order and
+     * the survivors renumbered to their new positions, so the relative play
+     * order of what remains is unchanged.
+     *
+     * Returns null if [savedOrder] isn't a permutation of 0 until [savedSize]
+     * (absent in pre-field blobs, or corrupt) — the caller then leaves
+     * ExoPlayer's own order in place.
+     */
+    fun remapShuffleOrder(
+        savedOrder: List<Int>,
+        savedSize: Int,
+        keptOriginalIndices: List<Int>,
+    ): IntArray? {
+        if (savedOrder.size != savedSize || savedSize == 0) return null
+        val seen = BooleanArray(savedSize)
+        for (i in savedOrder) {
+            if (i !in 0 until savedSize || seen[i]) return null
+            seen[i] = true
+        }
+        val newIndexOf = IntArray(savedSize) { -1 }
+        keptOriginalIndices.forEachIndexed { newIdx, origIdx -> newIndexOf[origIdx] = newIdx }
+        return savedOrder.map { newIndexOf[it] }.filter { it >= 0 }.toIntArray()
     }
 
     private fun emptyResult(): MediaSession.MediaItemsWithStartPosition =

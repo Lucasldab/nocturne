@@ -23,7 +23,9 @@ import java.io.File
  * a `schema_version` so future plans can evolve the shape without crashing
  * older clients (forward-compat fallback to SavedQueue.EMPTY).
  *
- * Phase 5 schema_version = 1.
+ * Phase 5 schema_version = 1. `shuffleOrder` was added later without a
+ * version bump: it defaults to empty, so blobs written before it existed
+ * still parse (and restore with ExoPlayer's own fresh shuffle order).
  *
  * Debounce: PlaybackService is responsible for debouncing calls to saveQueue
  * (500ms via Flow.debounce) so rapid Player.Listener events coalesce into a
@@ -46,6 +48,13 @@ data class SavedQueue(
     val currentPositionMs: Long = 0L,
     val shuffleMode: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
+    /**
+     * ExoPlayer's shuffle play order as indices into [mediaIds], first to
+     * last. With shuffle on, ExoPlayer walks the queue in this order rather
+     * than list order, so restoring only the list would re-randomize what
+     * plays next. Empty = unknown (pre-field blob).
+     */
+    val shuffleOrder: List<Int> = emptyList(),
 ) {
     companion object {
         const val SCHEMA_VERSION: Int = 1

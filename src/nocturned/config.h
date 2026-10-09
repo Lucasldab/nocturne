@@ -38,6 +38,7 @@ struct nocturne_config {
     int transcode_enabled;       /* 0/1 */
     char *transcode_format;      /* "opus" | "aac"; NULL when default */
     int transcode_bitrate_kbps;  /* 0 → built-in default (128) */
+    int transcode_level_lufs;    /* per-track loudness target (e.g. -18); 0 = off */
 
     /* [discover] — Weekly Discovery picker. exclude_album_substrings is a
      * semicolon-separated list (e.g. "Live;Unplugged;Acoustic"); any track

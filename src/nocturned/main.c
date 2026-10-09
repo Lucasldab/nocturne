@@ -36,6 +36,7 @@ int why_cmd_main(struct cli_args *args);
 int diskcheck_cmd_main(struct cli_args *args);
 int transcode_cmd_main(struct cli_args *args);
 int transcode_migrate_cmd_main(struct cli_args *args);
+int transcode_level_cmd_main(struct cli_args *args);
 int discover_cmd_main(struct cli_args *args);
 int unsync_cmd_main(struct cli_args *args);
 int delete_cmd_main(struct cli_args *args);
@@ -80,6 +81,7 @@ int main(int argc, char **argv)
     case CMD_DISKCHECK: return diskcheck_cmd_main(&args);
     case CMD_TRANSCODE: return transcode_cmd_main(&args);
     case CMD_TRANSCODE_MIGRATE: return transcode_migrate_cmd_main(&args);
+    case CMD_TRANSCODE_LEVEL:   return transcode_level_cmd_main(&args);
     case CMD_DISCOVER: return discover_cmd_main(&args);
     case CMD_UNSYNC: return unsync_cmd_main(&args);
     case CMD_DELETE: return delete_cmd_main(&args);

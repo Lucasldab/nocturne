@@ -88,6 +88,7 @@ int rotate_cmd_main(struct cli_args *args)
         .format = cfg.transcode_format ? cfg.transcode_format : "opus",
         .bitrate_kbps = cfg.transcode_bitrate_kbps > 0
                         ? cfg.transcode_bitrate_kbps : 128,
+        .level_lufs = cfg.transcode_level_lufs,
     };
     int rc = rotate_run_ex(db, cfg.library_root, &tc, &stats);
 

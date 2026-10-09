@@ -26,6 +26,9 @@
  *      references is removed (transcode extensions only, never dot-files
  *      or dot-dirs), and its emptied dir is pruned.
  *  16. Non-transcode mode never removes unreferenced resident files.
+ *  17. Transcode promote with level_lufs set records transcode_gain_db; a
+ *      later promote that finds the copy already on disk keeps the stored
+ *      gain instead of nulling it (needs ffmpeg + libopus; skipped without).
  */
 
 #define _GNU_SOURCE
@@ -167,6 +170,24 @@ static void seed_residency_transcode(struct nocturne_db *db, const char *sha,
         "VALUES ('%s', 'resident', '2026-04-26T00:00:00Z', '%s', 4, 'opus')",
         sha, transcode_path);
     exec_sql(db, sql);
+}
+
+/* transcode_gain_db for `sha`: 1 + *out when non-NULL, 0 when NULL, -1 no row. */
+static int get_gain(struct nocturne_db *db, const char *sha, double *out)
+{
+    char sql[256];
+    snprintf(sql, sizeof(sql),
+        "SELECT transcode_gain_db FROM residency_state WHERE sha256='%s'", sha);
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db_handle(db), sql, -1, &stmt, NULL) != SQLITE_OK)
+        return -1;
+    int rc = -1;
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        if (sqlite3_column_type(stmt, 0) == SQLITE_NULL) rc = 0;
+        else { *out = sqlite3_column_double(stmt, 0); rc = 1; }
+    }
+    sqlite3_finalize(stmt);
+    return rc;
 }
 
 static char *get_transcode_path(struct nocturne_db *db, const char *sha)
@@ -892,6 +913,56 @@ int main(int argc, char **argv)
                "test16: orphans_removed=0 in non-transcode mode");
         expect(file_has(r1, "original opus"),
                "test16: unreferenced resident original kept");
+
+        db_close(db);
+        rm_rf(tmp); free(tmp);
+    }
+
+    /* --- Test 17: levelled promote records the gain; skip keeps it --- */
+    if (system("ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libopus") != 0) {
+        printf("[SKIP] tests/test_rotate.c: test17 needs ffmpeg with libopus\n");
+    } else {
+        char *tmp = make_tmpdir("level");
+        char lib[512]; snprintf(lib, sizeof(lib), "%s/lib", tmp);
+        char dbp[512]; snprintf(dbp, sizeof(dbp), "%s/db", tmp);
+        mkdir_p(lib);
+        struct nocturne_db *db = db_open(dbp, NULL, NULL);
+
+        char ad[1024]; snprintf(ad, sizeof(ad), "%s/archive/A/B", lib);
+        mkdir_p(ad);
+        char ap[1200]; snprintf(ap, sizeof(ap), "%s/t.flac", ad);
+        char cmd[2600];
+        snprintf(cmd, sizeof(cmd),
+                 "ffmpeg -nostdin -loglevel error -y -f lavfi "
+                 "-i 'sine=frequency=440:duration=5' -af volume=4 '%s'", ap);
+        expect(system(cmd) == 0, "test17: fixture FLAC generated");
+
+        const char *sha = "c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7c7";
+        seed_track(db, sha, ap);
+        seed_residency(db, sha, "archive");
+        seed_manifest(db, sha, 1024);
+
+        struct transcode_cfg tc = { .enabled = true, .format = "opus",
+                                    .bitrate_kbps = 128, .level_lufs = -18 };
+        struct rotate_stats s = {0};
+        int rc = rotate_run_ex(db, lib, &tc, &s);
+        expect(rc == 0 && s.added == 1 && s.errors == 0, "test17: promoted");
+        double g = 0;
+        expect(get_gain(db, sha, &g) == 1, "test17: gain recorded");
+        expect(g < -3.0, "test17: loud source was cut");
+
+        /* Simulate a row that lost residency while the copy stayed on disk,
+         * carrying a known gain: the re-promote must not re-encode or null it. */
+        char sql[512];
+        snprintf(sql, sizeof(sql),
+                 "UPDATE residency_state SET location='archive', "
+                 "transcode_gain_db=-4.25 WHERE sha256='%s'", sha);
+        exec_sql(db, sql);
+        memset(&s, 0, sizeof(s));
+        rc = rotate_run_ex(db, lib, &tc, &s);
+        expect(rc == 0 && s.errors == 0, "test17: re-promote ok");
+        expect(get_gain(db, sha, &g) == 1 && g == -4.25,
+               "test17: existing copy keeps its recorded gain");
 
         db_close(db);
         rm_rf(tmp); free(tmp);

@@ -28,7 +28,10 @@
 
 #include "transcode.h"
 
+#include "loudness.h"
+
 #include <errno.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,8 +57,13 @@ static const char *codec_for_format(const char *fmt)
 }
 
 int transcode_audio(const char *src, const char *dst,
-                    const struct transcode_cfg *cfg)
+                    const struct transcode_cfg *cfg,
+                    struct transcode_result *result)
 {
+    if (result) {
+        result->gain_db = NAN;
+        result->source_lufs = NAN;
+    }
     if (!src || !dst || !cfg) {
         errno = EINVAL;
         return -1;
@@ -84,6 +92,20 @@ int transcode_audio(const char *src, const char *dst,
      */
     bool is_opus = !strcmp(cfg->format, "opus");
 
+    /* Per-track levelling: measure, then scale with a plain volume filter.
+     * A failed measurement encodes at 0 dB — levelling is never a reason
+     * for a track not to reach the phone. */
+    char volume_arg[48] = "";
+    if (cfg->level_lufs != 0) {
+        double i = NAN, tp = NAN, gain = 0.0;
+        if (loudness_measure(src, &i, &tp) == 0) {
+            gain = loudness_gain(i, tp, (double) cfg->level_lufs);
+            if (result) result->source_lufs = i;
+        }
+        if (result) result->gain_db = gain;
+        if (gain != 0.0) snprintf(volume_arg, sizeof(volume_arg), "volume=%.2fdB", gain);
+    }
+
     char *argv[32];
     int n = 0;
     argv[n++] = "ffmpeg";
@@ -98,6 +120,9 @@ int transcode_audio(const char *src, const char *dst,
         argv[n++] = "-map"; argv[n++] = "0:v?";
         argv[n++] = "-c:v"; argv[n++] = "copy";
         argv[n++] = "-disposition:v"; argv[n++] = "attached_pic";
+    }
+    if (volume_arg[0]) {
+        argv[n++] = "-af"; argv[n++] = volume_arg;
     }
     argv[n++] = "-c:a"; argv[n++] = (char *) codec;
     argv[n++] = "-b:a"; argv[n++] = bitrate_arg;

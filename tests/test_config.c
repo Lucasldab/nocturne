@@ -128,5 +128,26 @@ int main(int argc, char **argv)
         unlink(path); free(path);
     }
 
+    /* 7. [transcode] level_lufs: accepted in range, absent = off, typo rejected. */
+    {
+        char *path = write_tmp("[transcode]\nenabled = 1\nlevel_lufs = -18\n");
+        struct nocturne_config c;
+        expect(config_load(path, &c) == 0 && c.transcode_level_lufs == -18,
+               "level_lufs = -18 parses");
+        config_free(&c);
+        unlink(path); free(path);
+
+        path = write_tmp("[transcode]\nenabled = 1\n");
+        expect(config_load(path, &c) == 0 && c.transcode_level_lufs == 0,
+               "level_lufs absent -> 0 (levelling off)");
+        config_free(&c);
+        unlink(path); free(path);
+
+        path = write_tmp("[transcode]\nlevel_lufs = 18\n");
+        expect(config_load(path, &c) == -1, "level_lufs = +18 (sign typo) rejected");
+        config_free(&c);
+        unlink(path); free(path);
+    }
+
     return test_finish(__FILE__);
 }

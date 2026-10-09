@@ -85,3 +85,21 @@ Until that lands, this CLI is the way to bench-test quality: pick a few
 tracks across genres, transcode at 96/128/160/192k Opus, A/B with the FLAC
 on your actual earbuds. Decide the bitrate before committing to the
 migration.
+
+## Loudness levelling
+
+With `[transcode] level_lufs = -18` (integer LUFS; 0 = off), every promote
+measures the archive FLAC with ffmpeg's `loudnorm` in analysis mode and
+encodes the resident copy through `volume=<gain>dB`:
+
+    gain = min(target - integrated, -1 dBTP - true_peak), clamped to [-30, +12]
+
+Per-track, no limiter: a quiet track with sharp peaks is boosted less rather
+than compressed. A source that measures as silence, or fails to measure,
+is encoded at 0 dB. The FLAC is never modified (its bytes are the track id).
+
+`residency_state.transcode_gain_db` / `transcode_lufs` record what was done;
+NULL gain = copy predates levelling. `nocturned transcode-level [--apply]`
+re-encodes exactly those rows in place (atomic rename) and updates their
+size, so the phone re-syncs them. It takes the daemon lock: stop the watcher
+first. Design: `docs/superpowers/specs/2026-10-10-loudness-and-download-feedback-design.md`.

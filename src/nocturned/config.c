@@ -329,6 +329,14 @@ static int apply_kv(struct nocturne_config *c,
             c->transcode_bitrate_kbps = (int) as_ll;
             free(as_str); return 0;
         }
+        if (!strcmp(key, "level_lufs")) {
+            /* Integer LUFS; 0 turns levelling off. Anything outside a sane
+             * listening range is a typo (e.g. +18), not a preference. */
+            if (!have_ll) goto fail;
+            if (as_ll != 0 && (as_ll < -40 || as_ll > -5)) goto fail;
+            c->transcode_level_lufs = (int) as_ll;
+            free(as_str); return 0;
+        }
     } else if (!strcmp(section, "discover")) {
         if (!strcmp(key, "exclude_album_substrings")) {
             free(c->discover_exclude_album_substrings);

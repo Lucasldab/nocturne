@@ -101,14 +101,14 @@ LIB_OBJ_NOCTURNED := $(filter-out $(BUILDDIR)/nocturned-obj/main.o, $(OBJ_NOCTUR
 # Membership is computed from existing test sources so a half-built tree
 # (e.g. plan 02-01 before db/lock land) still has a valid `make test`.
 TAGCHECK_TEST_SRC_NAMES  := $(notdir $(wildcard tests/test_walker.c tests/test_check.c tests/test_quarantine.c))
-NOCTURNED_TEST_SRC_NAMES := $(notdir $(wildcard tests/test_db.c tests/test_lock.c tests/test_hash.c tests/test_scan.c tests/test_watch.c tests/test_doctor.c tests/test_config.c tests/test_resolver.c tests/test_publisher.c tests/test_round_trip.c tests/test_migrate.c tests/test_rotate.c tests/test_syncthing_api.c tests/test_sync_config.c tests/test_jsonl.c tests/test_ingest.c tests/test_why.c tests/test_resolve_diff.c tests/test_disk_margin.c))
+NOCTURNED_TEST_SRC_NAMES := $(notdir $(wildcard tests/test_db.c tests/test_lock.c tests/test_hash.c tests/test_scan.c tests/test_watch.c tests/test_doctor.c tests/test_config.c tests/test_resolver.c tests/test_publisher.c tests/test_round_trip.c tests/test_migrate.c tests/test_rotate.c tests/test_syncthing_api.c tests/test_sync_config.c tests/test_jsonl.c tests/test_ingest.c tests/test_why.c tests/test_resolve_diff.c tests/test_disk_margin.c tests/test_loudness.c))
 
 TAGCHECK_TEST_BINS  := $(TAGCHECK_TEST_SRC_NAMES:%.c=$(BUILDDIR)/tests/%)
 NOCTURNED_TEST_BINS := $(NOCTURNED_TEST_SRC_NAMES:%.c=$(BUILDDIR)/tests/%)
 
 ALL_TEST_BINS := $(TAGCHECK_TEST_BINS) $(NOCTURNED_TEST_BINS)
 
-.PHONY: all tagcheck nocturned test test-c test-integration test-integration-rotate test-integration-ingest test-stignore-perf test-e2e-watch test-no-network test-jsonl-goldens clean help fixtures compile-commands
+.PHONY: all tagcheck nocturned test test-c test-transcode-level test-integration test-integration-rotate test-integration-ingest test-stignore-perf test-e2e-watch test-no-network test-jsonl-goldens clean help fixtures compile-commands
 
 all: tagcheck nocturned
 
@@ -118,7 +118,7 @@ nocturned: $(BIN_NOCTURNED)
 # Top-level test target: C suites, then integration shell tests, then the
 # CROSS-03 no-network audit. Stop on any failure so we don't paper over a
 # regression in earlier layers.
-test: test-c test-integration test-integration-rotate test-integration-ingest test-e2e-watch test-jsonl-goldens test-no-network
+test: test-c test-integration test-integration-rotate test-integration-ingest test-transcode-level test-e2e-watch test-jsonl-goldens test-no-network
 	@echo "==> All test suites PASSED"
 
 # Regenerate compile_commands.json for clangd. Requires bear (Arch: pacman -S bear).
@@ -159,6 +159,13 @@ test-integration-rotate: $(BIN_NOCTURNED) $(FIXTURES_DIR)/.fixtures.stamp
 	@echo "==> Running tests/test_integration_rotate.sh"
 	@bash tests/test_integration_rotate.sh; rc=$$?; \
 	if [ $$rc = 77 ]; then echo "==> SKIPPED (no syncthing in PATH)"; exit 0; \
+	elif [ $$rc != 0 ]; then exit $$rc; fi
+
+# transcode-level end to end (needs ffmpeg + libopus + sqlite3; skips without).
+test-transcode-level: $(BIN_NOCTURNED)
+	@echo "==> Running tests/test_transcode_level.sh"
+	@bash tests/test_transcode_level.sh; rc=$$?; \
+	if [ $$rc = 77 ]; then echo "==> SKIPPED (ffmpeg/libopus/sqlite3 missing)"; exit 0; \
 	elif [ $$rc != 0 ]; then exit $$rc; fi
 
 # Phase 3 informational benchmark — path-layout vs pattern-list. Slow

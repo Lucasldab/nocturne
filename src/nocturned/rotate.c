@@ -313,7 +313,9 @@ static int upsert_residency_archive_clear_transcode(struct sqlite3 *raw,
             "  updated_at=excluded.updated_at, "
             "  transcode_path=NULL, "
             "  transcode_size_bytes=NULL, "
-            "  transcode_format=NULL",
+            "  transcode_format=NULL, "
+            "  transcode_gain_db=NULL, "
+            "  transcode_lufs=NULL",
             -1, &stmt, NULL) != SQLITE_OK)
         return -1;
     sqlite3_bind_text(stmt, 1, sha, -1, SQLITE_TRANSIENT);

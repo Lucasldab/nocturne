@@ -30,8 +30,12 @@ double loudness_gain(double i, double tp, double target)
 {
     if (isnan(i) || isinf(i) || i <= LOUDNESS_SILENCE_LUFS) return 0.0;
     double g = target - i;
-    if (!isnan(tp) && !isinf(tp)) {
+    /* The peak ceiling only limits a BOOST. A quiet track already peaking
+     * near 0 dBTP gets no boost — it must not be turned into a cut, which
+     * would move it further from the target. Cuts lower the peak anyway. */
+    if (g > 0.0 && !isnan(tp) && !isinf(tp)) {
         double ceiling = LOUDNESS_PEAK_CEILING_DBTP - tp;
+        if (ceiling < 0.0) ceiling = 0.0;
         if (g > ceiling) g = ceiling;
     }
     if (g > LOUDNESS_MAX_BOOST_DB) g = LOUDNESS_MAX_BOOST_DB;
@@ -88,7 +92,10 @@ int loudness_measure(const char *src, double *i_out, double *tp_out)
     if (pid == 0) {
         dup2(pipefd[1], STDERR_FILENO);
         int devnull = open("/dev/null", O_WRONLY);
-        if (devnull >= 0) dup2(devnull, STDOUT_FILENO);
+        if (devnull >= 0) {
+            dup2(devnull, STDOUT_FILENO);
+            close(devnull);
+        }
         char *argv[] = {
             "ffmpeg", "-nostdin", "-hide_banner", "-nostats",
             "-i", (char *) src, "-map", "0:a",

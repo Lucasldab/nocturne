@@ -54,6 +54,12 @@ static void test_gain(void)
            "NaN measurement -> 0 dB");
     expect(near(loudness_gain(-24.0, NAN, -18.0), 6.0, 1e-9),
            "unknown true peak does not block an in-range boost");
+    expect(loudness_gain(-20.0, 0.0, -18.0) == 0.0,
+           "quiet track already peaking at 0 dBTP: no boost, and never a cut");
+    expect(near(loudness_gain(-20.0, -1.5, -18.0), 0.5, 1e-9),
+           "quiet track with 0.5 dB of headroom: boosted by 0.5 only");
+    expect(near(loudness_gain(-9.0, 0.5, -18.0), -9.0, 1e-9),
+           "a cut is never limited by the peak ceiling");
 }
 
 static const char *SAMPLE =

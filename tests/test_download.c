@@ -11,6 +11,8 @@
  *   7. Every request gets a "running" line before its terminal line.
  *   8. Result temp files are removed from $TMPDIR afterwards.
  *   9. A second run is a no-op (terminal ids are skipped).
+ *  10. A msg longer than the buffer, in multibyte UTF-8, arrives truncated
+ *      at a character boundary instead of being dropped.
  */
 
 #define _GNU_SOURCE
@@ -46,6 +48,8 @@ static const char *FAKE =
     "  garbage*)  printf 'not json' > \"$FLACGET_RESULT_FILE\"; exit 1;;\n"
     "  notfiled*) exit 3;;\n"
     "  oldok*)    exit 0;;\n"
+    "  long*)     python3 -c 'import json,os; json.dump({\"ok\":True,\"reason\":\"fetched\","
+    "\"msg\":\"\\u3042\"*600}, open(os.environ[\"FLACGET_RESULT_FILE\"],\"w\"))'; exit 0;;\n"
     "esac\n"
     "exit 9\n";
 
@@ -107,13 +111,14 @@ int main(void)
         "{\"v\":1,\"id\":\"r-silent\",\"query\":\"silent x\"}\n"
         "{\"v\":1,\"id\":\"r-garbage\",\"query\":\"garbage x\"}\n"
         "{\"v\":1,\"id\":\"r-notfiled\",\"query\":\"notfiled x\"}\n"
-        "{\"v\":1,\"id\":\"r-oldok\",\"query\":\"oldok x\"}\n", 0644);
+        "{\"v\":1,\"id\":\"r-oldok\",\"query\":\"oldok x\"}\n"
+        "{\"v\":1,\"id\":\"r-long\",\"query\":\"long x\"}\n", 0644);
     snprintf(desk, sizeof(desk), "%s/downloads-desktop.jsonl", meta);
 
     struct download_stats st = {0};
     expect(download_run(meta, fake, &st) == 0, "download_run returns 0");
-    expect(st.requests_processed_ok == 2 && st.requests_processed_err == 4,
-           "2 ok, 4 errors");
+    expect(st.requests_processed_ok == 3 && st.requests_processed_err == 4,
+           "3 ok, 4 errors");
 
     char state[32], msg[512];
     int running;
@@ -143,10 +148,22 @@ int main(void)
     expect(!strcmp(state, "done") && msg[0] == '\0',
            "rc=0 without result file: done, no msg");
 
+    char big[4096];
+    {
+        state[0] = big[0] = '\0';
+        last_status(desk, "r-long", state, sizeof(state), big, sizeof(big), &running);
+        size_t bl = strlen(big);
+        int all_a = bl > 0 && bl % 3 == 0;
+        for (size_t k = 0; all_a && k < bl; k += 3)
+            all_a = !memcmp(big + k, "\u3042", 3);
+        expect(!strcmp(state, "done") && bl > 500 && bl < 1024 && all_a,
+               "long multibyte msg truncated at a character boundary, not dropped");
+    }
+
     expect(count_result_temps(tmpd) == 0, "result temp files cleaned up");
 
     memset(&st, 0, sizeof(st));
-    expect(download_run(meta, fake, &st) == 0 && st.requests_skipped_done == 6 &&
+    expect(download_run(meta, fake, &st) == 0 && st.requests_skipped_done == 7 &&
            st.requests_processed_ok == 0 && st.requests_processed_err == 0,
            "second run skips all terminal ids");
 

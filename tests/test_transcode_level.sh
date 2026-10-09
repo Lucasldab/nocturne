@@ -7,7 +7,11 @@
 #   3. --apply re-encodes it: the copy's loudness lands within 1 LU of the
 #      target, the row records gain + source LUFS + the new size.
 #   4. A row that already has a gain is never selected.
-#   5. A second --apply is a no-op (planned=0).
+#   5. A row whose transcode_format differs from the config is skipped
+#      (counted as format_mismatch), not re-encoded into the wrong container.
+#   6. No temp file is left in resident/ (Syncthing-shared) or in
+#      <library>/.transcode-level-tmp; a stale temp there is cleared.
+#   7. A second --apply is a no-op (only the mismatch is planned again).
 #
 # Skips (exit 77) without ffmpeg/libopus or sqlite3.
 
@@ -46,6 +50,11 @@ ffmpeg -nostdin -loglevel error -y -i "$SRC" -c:a libopus -b:a 128k "$OUT"
 SRC2="$LIB/archive/A/B/u.flac"; OUT2="$LIB/resident/A/B/u.opus"
 cp "$SRC" "$SRC2"; cp "$OUT" "$OUT2"
 before2=$(sha256sum "$OUT2" | cut -d' ' -f1)
+# A third, written as AAC under an older config: must be skipped, not rewritten.
+SRC3="$LIB/archive/A/B/v.flac"; OUT3="$LIB/resident/A/B/v.m4a"
+cp "$SRC" "$SRC3"; printf 'm4a' > "$OUT3"
+# A stale temp from an "interrupted" earlier run.
+mkdir -p "$LIB/.transcode-level-tmp"; printf 'junk' > "$LIB/.transcode-level-tmp/zz.opus"
 
 cat > "$CFG" <<EOF
 [library]
@@ -69,22 +78,26 @@ now=2026-10-10T00:00:00Z
 sqlite3 "$DB" <<EOF
 INSERT INTO tracks (sha256, path, mtime_ns, size_bytes, format, date_added, last_seen_at)
 VALUES ('aa', '$SRC', 0, 1, 'flac', '$now', '$now'),
-       ('bb', '$SRC2', 0, 1, 'flac', '$now', '$now');
+       ('bb', '$SRC2', 0, 1, 'flac', '$now', '$now'),
+       ('cc', '$SRC3', 0, 1, 'flac', '$now', '$now');
 INSERT INTO residency_state (sha256, location, updated_at, transcode_path,
                              transcode_size_bytes, transcode_format, transcode_gain_db)
 VALUES ('aa', 'resident', '$now', '$OUT', 1, 'opus', NULL),
-       ('bb', 'resident', '$now', '$OUT2', 1, 'opus', -2.5);
+       ('bb', 'resident', '$now', '$OUT2', 1, 'opus', -2.5),
+       ('cc', 'resident', '$now', '$OUT3', 1, 'aac', NULL);
 EOF
 before=$(sha256sum "$OUT" | cut -d' ' -f1)
 
 # 2. Dry run.
 out=$("$BIN" transcode-level 2>/dev/null)
-echo "$out" | grep -q "planned=1 levelled=0" || fail "dry-run: $out"
+echo "$out" | grep -q "planned=2 levelled=0" || fail "dry-run: $out"
 [ "$(sha256sum "$OUT" | cut -d' ' -f1)" = "$before" ] || fail "dry-run modified the copy"
 
 # 3. Apply.
 out=$("$BIN" transcode-level --apply 2>/dev/null)
-echo "$out" | grep -q "planned=1 levelled=1 missing_source=0 errors=0" || fail "apply: $out"
+echo "$out" | grep -q "planned=2 levelled=1 missing_source=0 format_mismatch=1 errors=0" \
+    || fail "apply: $out"
+[ "$(cat "$OUT3")" = "m4a" ] || fail "format-mismatch copy was rewritten"
 lufs=$(measure "$OUT")
 python3 -c "import sys; v=float('$lufs'); sys.exit(0 if abs(v+18)<=1 else 1)" \
     || fail "levelled copy measures $lufs LUFS, want -18 +-1"
@@ -92,7 +105,8 @@ row=$(sqlite3 "$DB" "SELECT transcode_gain_db < -3, abs(transcode_lufs + 9) < 1.
                             transcode_size_bytes = $(stat -c %s "$OUT")
                      FROM residency_state WHERE sha256='aa'")
 [ "$row" = "1|1|1" ] || fail "row not updated as expected: $row"
-ls -a "$LIB/resident/A/B" | grep -q '^\..*\.level' && fail "temp file left behind"
+ls -A "$LIB/resident/A/B" | grep -v -E '^[tuv]\.(opus|m4a)$' && fail "stray file in resident/"
+[ -z "$(ls -A "$LIB/.transcode-level-tmp")" ] || fail "temp dir not empty (stale temp not cleared?)"
 
 # 4. Already-levelled row untouched.
 [ "$(sha256sum "$OUT2" | cut -d' ' -f1)" = "$before2" ] || fail "levelled row was re-encoded"
@@ -101,6 +115,7 @@ ls -a "$LIB/resident/A/B" | grep -q '^\..*\.level' && fail "temp file left behin
 
 # 5. Idempotent.
 out=$("$BIN" transcode-level --apply 2>/dev/null)
-echo "$out" | grep -q "planned=0" || fail "second apply not a no-op: $out"
+echo "$out" | grep -q "planned=1 levelled=0 missing_source=0 format_mismatch=1" \
+    || fail "second apply not a no-op: $out"
 
 echo "==> transcode-level: all checks passed"

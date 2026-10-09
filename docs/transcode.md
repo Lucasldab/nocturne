@@ -92,10 +92,12 @@ With `[transcode] level_lufs = -18` (integer LUFS; 0 = off), every promote
 measures the archive FLAC with ffmpeg's `loudnorm` in analysis mode and
 encodes the resident copy through `volume=<gain>dB`:
 
-    gain = min(target - integrated, -1 dBTP - true_peak), clamped to [-30, +12]
+    gain = target - integrated
+    if gain > 0: gain = min(gain, max(0, -1 dBTP - true_peak))   # boosts only
+    clamp to [-30, +12]
 
-Per-track, no limiter: a quiet track with sharp peaks is boosted less rather
-than compressed. A source that measures as silence, or fails to measure,
+Per-track, no limiter: a quiet track with sharp peaks is boosted less (or not
+at all) rather than compressed, and is never cut. A source that measures as silence, or fails to measure,
 is encoded at 0 dB. The FLAC is never modified (its bytes are the track id).
 
 `residency_state.transcode_gain_db` / `transcode_lufs` record what was done;

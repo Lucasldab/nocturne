@@ -17,8 +17,9 @@
 /* Gain in dB that brings integrated loudness `i` (LUFS) to `target`, capped
  * so true peak `tp` (dBTP) stays at or below LOUDNESS_PEAK_CEILING_DBTP and
  * clamped to [MAX_CUT, MAX_BOOST]. No limiter: a peaky quiet track is boosted
- * less, never compressed. Silence, -inf and NaN measurements give 0 dB. An
- * unknown (NaN/inf) true peak does not cap the gain. Pure. */
+ * less (or not at all), never compressed and never cut. Silence, -inf and
+ * NaN measurements give 0 dB. An unknown (NaN/inf) true peak does not cap
+ * the gain. Pure. */
 double loudness_gain(double i, double tp, double target);
 
 /* Parse "input_i" and "input_tp" from the JSON block ffmpeg's

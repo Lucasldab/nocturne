@@ -33,9 +33,10 @@ app needs no change.
 - **Target -18 LUFS, ReplayGain 2 reference (user).** Nearly every modern
   master is louder (−8…−10 LUFS), so the common case is attenuation, which
   cannot clip.
-- **No limiter.** Boost is capped so the true peak stays at or below
-  −1 dBTP: `gain = min(target − I, −1 − TP)`. A quiet track with sharp peaks
-  is boosted less than full rather than compressed.
+- **No limiter.** A boost is capped so the true peak stays at or below
+  −1 dBTP: `gain = min(target − I, max(0, −1 − TP))`. Cuts are never capped.
+  A quiet track with sharp peaks is boosted less (or not at all) rather than
+  compressed, and is never cut.
 - **Bounds.** Gain is clamped to [−30, +12] dB. A source that measures as
   silence or fails to measure (`I` ≤ −70 LUFS or unparseable) gets 0 dB and
   is logged — a measurement failure never fails the transcode.

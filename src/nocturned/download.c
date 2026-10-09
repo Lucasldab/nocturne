@@ -205,6 +205,20 @@ static int load_terminal_ids(const char *meta_dir, struct idset *out)
  * its `msg` is copied to `msg_out` (empty when absent or unreadable, and the
  * caller falls back to its own wording). The file lives in $TMPDIR, never in
  * meta_dir, which Syncthing shares with the phone. */
+/* Copy `src` into `dst` (cap bytes incl. NUL) without splitting a UTF-8
+ * sequence: jansson rejects invalid UTF-8, and a cut mid-character would
+ * make status_append drop the msg — and with it the fallback wording. */
+static void utf8_copy(char *dst, size_t cap, const char *src)
+{
+    size_t n = strlen(src);
+    if (n >= cap) {
+        n = cap - 1;
+        while (n > 0 && ((unsigned char) src[n] & 0xC0) == 0x80) n--;
+    }
+    memcpy(dst, src, n);
+    dst[n] = '\0';
+}
+
 static void read_result_msg(const char *path, char *msg_out, size_t msg_cap)
 {
     msg_out[0] = '\0';
@@ -212,7 +226,7 @@ static void read_result_msg(const char *path, char *msg_out, size_t msg_cap)
     json_t *root = json_load_file(path, 0, &jerr);
     if (!root) return;
     const char *m = json_string_value(json_object_get(root, "msg"));
-    if (m) snprintf(msg_out, msg_cap, "%s", m);
+    if (m) utf8_copy(msg_out, msg_cap, m);
     json_decref(root);
 }
 
@@ -310,16 +324,16 @@ static int handle_request_line(const char *line, size_t llen,
      * flacget runs for several minutes. */
     status_append(meta_dir, id, "running", NULL);
 
-    char result_msg[512];
+    char result_msg[1024];
     int rc = run_flacget(flacget_path, query, result_msg, sizeof(result_msg));
     if (rc == 0) {
         status_append(meta_dir, id, "done", result_msg);
         idset_add(done, id);
         stats->requests_processed_ok++;
     } else {
-        char buf[512];
+        char buf[1024];
         if (result_msg[0]) {
-            snprintf(buf, sizeof(buf), "%s", result_msg);
+            utf8_copy(buf, sizeof(buf), result_msg);
         } else if (rc == FLACGET_RC_NOT_FILED) {
             /* Fetched and tagged, but beets refused to file it, so
              * music-import parked it under staging/skipped/. The bytes are on

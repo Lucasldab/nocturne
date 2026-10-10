@@ -9,8 +9,10 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ShuffleOrder
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.google.common.util.concurrent.Futures
@@ -56,6 +58,11 @@ import kotlinx.coroutines.withContext
  *   2. A Player.Listener emits queue snapshots into a Channel that is debounced
  *      500ms before writing to QueueRepository.saveQueue (avoids write storms
  *      on rapid seek / track transitions).
+ *   3. Shuffle mode, repeat mode and ExoPlayer's shuffle play order ride
+ *      along in the snapshot and are re-applied once Media3 has set the
+ *      resumed items (see applyPendingRestore) — otherwise a process death
+ *      (e.g. switching Android user profiles) brought back the song but
+ *      dropped shuffle / repeat.
  */
 @OptIn(UnstableApi::class)
 class PlaybackService : MediaSessionService() {
@@ -66,6 +73,13 @@ class PlaybackService : MediaSessionService() {
     // Channel for debounced queue persistence. Capacity CONFLATED keeps only
     // the latest snapshot (older ones are overwritten before the debounce fires).
     private val queueSaveChannel = Channel<SavedQueue>(Channel.CONFLATED)
+
+    // Modes + shuffle order from the last onPlaybackResumption, waiting for
+    // Media3 to setMediaItems the resumed queue. They can't be applied up
+    // front: setMediaItems replaces ExoPlayer's shuffle order with a fresh
+    // random one, and flipping modes on the still-empty player would emit an
+    // empty-queue snapshot. Main thread only.
+    private var pendingRestore: PlaybackResumption.Restored? = null
 
     @OptIn(FlowPreview::class)
     override fun onCreate() {
@@ -264,6 +278,14 @@ class PlaybackService : MediaSessionService() {
                 enqueueSnapshot(player)
             }
 
+            override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+                // Queue edits (add / remove / move / setShuffleOrder) don't
+                // always transition the current item, so persist them here.
+                if (reason != Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) return
+                applyPendingRestore(player)
+                enqueueSnapshot(player)
+            }
+
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 // Capture position on pause so resumption starts at the right spot.
                 if (!isPlaying) enqueueSnapshot(player)
@@ -357,10 +379,47 @@ class PlaybackService : MediaSessionService() {
             currentPositionMs = player.currentPosition.coerceAtLeast(0L),
             shuffleMode = player.shuffleModeEnabled,
             repeatMode = player.repeatMode,
+            shuffleOrder = shufflePlayOrder(player.currentTimeline, mediaIds.size),
         )
         // trySend on CONFLATED channel: never blocks, never returns false
         // (oldest pending is replaced). Safe to call from main thread.
         queueSaveChannel.trySend(snapshot)
+    }
+
+    /**
+     * ExoPlayer's shuffle play order (window indices, first to last). The
+     * timeline reports it even while shuffle is off, so it is kept across
+     * shuffle toggles just like ExoPlayer keeps it. Empty if the timeline and
+     * queue disagree in size (mid-update), which restores as "unknown".
+     */
+    private fun shufflePlayOrder(timeline: Timeline, itemCount: Int): List<Int> {
+        if (timeline.windowCount != itemCount || itemCount == 0) return emptyList()
+        val order = ArrayList<Int>(itemCount)
+        var i = timeline.getFirstWindowIndex(/* shuffleModeEnabled = */ true)
+        while (i != C.INDEX_UNSET && order.size < itemCount) {
+            order.add(i)
+            i = timeline.getNextWindowIndex(i, Player.REPEAT_MODE_OFF, /* shuffleModeEnabled = */ true)
+        }
+        return if (order.size == itemCount) order else emptyList()
+    }
+
+    /**
+     * One-shot: the first playlist change after a resumption either is the
+     * resumed queue (re-apply shuffle order + modes) or something else the
+     * user started (drop the stale restore). Called on the main thread from
+     * onTimelineChanged.
+     */
+    private fun applyPendingRestore(player: ExoPlayer) {
+        val pending = pendingRestore ?: return
+        if (player.mediaItemCount == 0) return
+        pendingRestore = null
+        val ids = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
+        if (ids != pending.mediaIds) return
+        pending.shuffleOrder
+            ?.takeIf { it.size == player.mediaItemCount }
+            ?.let { player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(it, System.currentTimeMillis())) }
+        player.repeatMode = pending.repeatMode
+        player.shuffleModeEnabled = pending.shuffleMode
     }
 
     /**
@@ -388,8 +447,13 @@ class PlaybackService : MediaSessionService() {
                 try {
                     val saved = queueRepository.loadQueue()
                     val musicUri = syncPrefs.musicTreeUri.first()?.toUri()
-                    val result = PlaybackResumption.toMediaItemsWithStartPosition(saved, trackDao, musicUri)
-                    future.set(result)
+                    val restored = PlaybackResumption.restore(saved, trackDao, musicUri)
+                    // Stage modes + shuffle order before Media3 sees the items,
+                    // so the timeline listener is armed when setMediaItems lands.
+                    withContext(Dispatchers.Main) {
+                        pendingRestore = restored.takeIf { it.mediaIds.isNotEmpty() }
+                    }
+                    future.set(restored.items)
                 } catch (e: Exception) {
                     // Never propagate exceptions to Media3's callback — return empty queue.
                     future.set(

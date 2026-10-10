@@ -112,4 +112,25 @@ class QueueRepositoryTest {
         assertEquals(Player.REPEAT_MODE_ONE, loaded.repeatMode)
         assertFalse(loaded.mediaIds.isEmpty())
     }
+
+    @Test
+    fun shuffleOrderRoundTrips() = runTest {
+        val repo = freshRepo()
+        repo.saveQueue(SavedQueue(mediaIds = listOf("a", "b", "c"), shuffleOrder = listOf(2, 0, 1)))
+        assertEquals(listOf(2, 0, 1), repo.loadQueue().shuffleOrder)
+    }
+
+    @Test
+    fun blobWithoutShuffleOrderStillLoads() = runTest {
+        // Written by builds before shuffleOrder existed — must not reset the queue.
+        val repo = freshRepo()
+        repo.writeRawForTest(
+            """{"schema_version":1,"mediaIds":["x","y"],"currentIndex":1,"currentPositionMs":5,"shuffleMode":true,"repeatMode":2}""",
+        )
+        val loaded = repo.loadQueue()
+        assertEquals(listOf("x", "y"), loaded.mediaIds)
+        assertTrue(loaded.shuffleMode)
+        assertEquals(Player.REPEAT_MODE_ALL, loaded.repeatMode)
+        assertTrue(loaded.shuffleOrder.isEmpty())
+    }
 }

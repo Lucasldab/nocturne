@@ -32,6 +32,10 @@ export XDG_CONFIG_HOME="$WORK"
 cp tests/fixtures/jsonl-goldens/stats-golden.jsonl "$META/stats/phone-G0LD.jsonl"
 cp tests/fixtures/jsonl-goldens/likes-golden.jsonl "$META/likes-phone-G0LD.jsonl"
 cp tests/fixtures/jsonl-goldens/pins-golden.jsonl  "$META/pins-phone-G0LD.jsonl"
+# Gap files sit in the same folder and MUST be ignored: the assertions below
+# (files=3, parse_errors=0, unchanged counts) are what prove it.
+cp tests/fixtures/jsonl-goldens/gaps-golden.jsonl "$META/gaps-phone-G0LD.jsonl"
+cp tests/fixtures/jsonl-goldens/gaps-golden.jsonl "$META/gaps-desktop.jsonl"
 
 # 2. Pre-seed the tracks table so plays foreign-key resolves. The
 #    ingester runs migrations on first open, so we touch the binary

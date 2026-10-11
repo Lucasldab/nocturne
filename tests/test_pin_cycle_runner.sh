@@ -131,6 +131,23 @@ else
     echo "    ok: skipped"
 fi
 
+echo "==> case 6: only a gap arrived after the manifest -> gate stays shut"
+rm -rf "$META"; mkdir -p "$META"
+echo '{}' > "$META/pins-phone-test.jsonl"
+sleep 0.05
+: > "$META/manifest.json"
+sleep 0.05
+echo '{}' > "$META/gaps-phone-test.jsonl"
+rm -f "$ARGS_FILE"
+env HOME="$WORK/home" NOCTURNE_META_DIR="$META" \
+    NOCTURNE_MANIFEST="$META/manifest.json" NOCTURNE_CYCLE_RUN="$STUB" \
+    bash "$RUNNER" >"$WORK/out" 2>&1 || { echo "FAIL [gap]: non-zero exit"; fail=1; }
+if [ -f "$ARGS_FILE" ]; then
+    echo "FAIL [gap]: a gap triggered a cycle"; fail=1
+else
+    echo "    ok: gap ignored"
+fi
+
 if [ "$fail" -ne 0 ]; then
     echo "==> FAILED"
     exit 1

@@ -30,6 +30,7 @@ into the metadata sync folder:
 - `stats/phone-<deviceid>.jsonl`
 - `likes-phone-<deviceid>.jsonl`
 - `pins-phone-<deviceid>.jsonl`
+- `gaps-phone-<deviceid>.jsonl` / `gaps-desktop.jsonl` (friction log, §4.4 — not ingested)
 
 It does NOT cover:
 
@@ -122,6 +123,32 @@ treats them only as labels.
 | `unit` | string | yes | `"track"` or `"album"`. |
 | `id` | string | yes | Same shape rules as §4.2. |
 | `pinned` | bool | yes | `true` = pinned, `false` = unpinned tombstone. |
+
+### 4.4 Gap events (`gaps-phone-<deviceid>.jsonl`, `gaps-desktop.jsonl`)
+
+Friction-log entries: something the user found missing or annoying. **The
+ingester does not read these files** — `run_glob` matches only the patterns
+named in §2's other bullets — and the pin-cycle runner ignores them. They are
+read by the PM review agent (`.claude/agents/nocturne-pm.md`).
+`tests/test_jsonl_goldens.sh` and case 6 of `tests/test_pin_cycle_runner.sh`
+hold this.
+
+```json
+{"v":1,"ts":1745679800000,"text":"queue can't reorder by drag","screen":"now-playing","track":"<sha256>","app":"0.4.49-dev"}
+{"v":1,"ts":1745679900000,"text":"want a sleep timer","screen":"launcher","track":null,"app":"0.4.49-dev"}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `v` | integer | yes | `1`. |
+| `ts` | integer | yes | Unix milliseconds (§5). |
+| `text` | string | yes | 1–1000 chars, trimmed, CR/LF collapsed to a space. |
+| `screen` | string | yes | Navigation route pattern (`now-playing`, `album/{albumId}`, …), `"launcher"` (opened from the app shortcut) or `"desktop"`. |
+| `track` | string \| null | yes | sha256 of what was playing, or `null`. |
+| `app` | string | yes | Phone version name, or `"desktop"`. |
+
+Writers: the phone writes `gaps-phone-<deviceid>.jsonl`;
+`config/bin/nocturne-gap` writes `gaps-desktop.jsonl`. One writer per file (§3).
 
 ---
 

@@ -23,6 +23,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
@@ -32,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import io.nocturne.phone.ui.browser.components.NocturneBottomNav
 import io.nocturne.phone.ui.browser.components.TrackActionsSheet
+import io.nocturne.phone.ui.gap.GapSheet
 import io.nocturne.phone.ui.player.MiniPlayer
 import io.nocturne.phone.ui.player.NowPlayingScreen
 import io.nocturne.phone.ui.settings.SettingsScreen
@@ -118,6 +120,8 @@ fun BrowserRoot(
     var miniSheetTrack by remember {
         mutableStateOf<io.nocturne.phone.data.db.entity.TrackEntity?>(null)
     }
+    // Friction log: non-null = sheet open, holding the `screen` value to log.
+    var gapScreen by rememberSaveable { mutableStateOf<String?>(null) }
     // System back exits utility mode rather than the app — utility is an
     // overlay state, not a navigation destination.
     BackHandler(enabled = inUtility) { inUtility = false }
@@ -394,6 +398,7 @@ fun BrowserRoot(
                             controller = activeController,
                             playerVm = playerVm,
                             onBack = { nav.popBackStack() },
+                            onLogGap = { gapScreen = Routes.NOW_PLAYING },
                         )
                     } else {
                         Box(
@@ -434,6 +439,18 @@ fun BrowserRoot(
                 onUnsync = { playerVm.unsyncTrack(t.id) },
                 onDelete = { playerVm.deleteTrack(t.id) },
                 onDismiss = { miniSheetTrack = null },
+            )
+        }
+        gapScreen?.let { screen ->
+            GapSheet(
+                send = { text ->
+                    container.gapsWriter.emit(
+                        text = text,
+                        screen = screen,
+                        track = playerVm.controller.value?.currentMediaItem?.mediaId,
+                    )
+                },
+                onDismiss = { gapScreen = null },
             )
         }
     }

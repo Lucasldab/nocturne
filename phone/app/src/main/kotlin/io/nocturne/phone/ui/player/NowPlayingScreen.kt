@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -199,7 +201,8 @@ private fun NowPlayingBody(
                     style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMono),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
-                        .clickable(onClick = onLogGap)
+                        .minimumInteractiveComponentSize()
+                        .clickable(role = Role.Button, onClick = onLogGap)
                         .padding(start = 24.dp, top = 8.dp, bottom = 8.dp),
                 )
                 // Heart icon intentionally absent. If a like-toggle is added

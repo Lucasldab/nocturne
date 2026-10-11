@@ -122,6 +122,13 @@ fun BrowserRoot(
     }
     // Friction log: non-null = sheet open, holding the `screen` value to log.
     var gapScreen by rememberSaveable { mutableStateOf<String?>(null) }
+    val gapRequested by container.gapRequests.collectAsStateWithLifecycle()
+    LaunchedEffect(gapRequested) {
+        if (gapRequested) {
+            gapScreen = "launcher"
+            container.gapRequests.value = false
+        }
+    }
     // System back exits utility mode rather than the app — utility is an
     // overlay state, not a navigation destination.
     BackHandler(enabled = inUtility) { inUtility = false }

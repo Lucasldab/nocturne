@@ -90,6 +90,10 @@ class AppContainer(
     // daemon — read by the PM review agent (docs/gaps-triage.md).
     val gapsWriter: GapsWriter by lazy { GapsWriter(syncPrefs, jsonlFileWriter) }
 
+    // Set by MainActivity when launched from the "Log a gap" shortcut;
+    // BrowserRoot opens the sheet and clears it.
+    val gapRequests = kotlinx.coroutines.flow.MutableStateFlow(false)
+
     // Phone-initiated download request drain. Writes pending Room rows
     // (`state = "pending"`) to `downloads-phone-<deviceid>.jsonl`; the
     // desktop daemon's `download` subcommand consumes the JSONL and shells

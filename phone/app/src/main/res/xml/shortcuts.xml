@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="log_gap"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_log_gap">
+        <intent
+            android:action="io.nocturne.phone.action.LOG_GAP"
+            android:targetPackage="io.nocturne.phone"
+            android:targetClass="io.nocturne.phone.MainActivity" />
+    </shortcut>
+</shortcuts>

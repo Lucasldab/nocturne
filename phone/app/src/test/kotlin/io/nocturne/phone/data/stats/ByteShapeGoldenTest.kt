@@ -139,4 +139,30 @@ class ByteShapeGoldenTest {
         )
         assertEquals(expected, json.encodeToString(PinEvent.serializer(), event))
     }
+
+    @Test fun gapsGoldenLine1_withTrack() {
+        val expected = loadGolden("gaps-golden.jsonl")[0]
+        val event = GapEvent(
+            v = 1,
+            ts = 1745679800000L,
+            text = "queue can't reorder by drag",
+            screen = "now-playing",
+            track = "9a3f4e1b2c5d6e7f8091a2b3c4d5e6f70819f0e1d2c3b4a5968778695a4b3c2d",
+            app = "0.4.49-dev",
+        )
+        assertEquals(expected, json.encodeToString(GapEvent.serializer(), event))
+    }
+
+    @Test fun gapsGoldenLine2_nullTrack() {
+        val expected = loadGolden("gaps-golden.jsonl")[1]
+        val event = GapEvent(
+            v = 1,
+            ts = 1745679900000L,
+            text = "want a sleep timer",
+            screen = "launcher",
+            track = null,
+            app = "0.4.49-dev",
+        )
+        assertEquals(expected, json.encodeToString(GapEvent.serializer(), event))
+    }
 }

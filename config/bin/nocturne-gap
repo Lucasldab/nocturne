@@ -1,0 +1,52 @@
+#!/bin/sh
+# nocturne-gap -- the friction log: note something nocturne is missing.
+#
+#   nocturne-gap queue view should show album art   append a gap
+#   nocturne-gap -l                                  list every gap, oldest first
+#
+# Gaps live beside the phone's in the Syncthing meta folder on hearth:
+# the phone writes gaps-phone-<deviceid>.jsonl, this writes gaps-desktop.jsonl
+# (one writer per file, docs/jsonl-spec.md §3, §4.4). nocturned never reads
+# them; the PM agent (.claude/agents/nocturne-pm.md) does.
+#
+#   NOCTURNE_GAP_HOST   ssh host holding the meta folder (default hearth;
+#                       empty = this machine)
+#   NOCTURNE_GAP_META   meta folder path on that host
+set -eu
+
+HOST="${NOCTURNE_GAP_HOST-hearth}"
+META="${NOCTURNE_GAP_META:-/home/lucas/sync/nocturne/meta}"
+MAX=1000
+
+die() { printf 'nocturne-gap: %s\n' "$1" >&2; exit 2; }
+
+# on_meta CMD -- run a shell command against the meta folder, here or on HOST.
+on_meta() {
+    if [ -n "$HOST" ]; then ssh "$HOST" "cd '$META' && $1"; else (cd "$META" && sh -c "$1"); fi
+}
+
+list() {
+    # fromjson? skips a trailing partial line Syncthing has not finished.
+    on_meta 'cat gaps-*.jsonl 2>/dev/null || true' |
+        jq -Rr 'fromjson? | select(.ts) | [.ts, .screen, .text] | @tsv' |
+        sort -n |
+        while IFS="$(printf '\t')" read -r ts screen text; do
+            printf '%s  %s  %s  %s\n' "$ts" "$(date -d "@$((ts / 1000))" '+%Y-%m-%d %H:%M')" "$screen" "$text"
+        done
+}
+
+append() {
+    text=$(printf '%s' "$*" | tr '\r\n' '  ' | sed 's/  */ /g; s/^ //; s/ $//')
+    [ -n "$text" ] || die "empty gap"
+    [ "${#text}" -le "$MAX" ] || die "gap over $MAX characters (${#text})"
+    line=$(jq -cn --arg text "$text" --argjson ts "$(date +%s%3N)" \
+        '{v:1, ts:$ts, text:$text, screen:"desktop", track:null, app:"desktop"}')
+    # stdin carries the line, so no quoting survives into the remote shell.
+    printf '%s\n' "$line" | on_meta 'cat >> gaps-desktop.jsonl'
+}
+
+case "${1-}" in
+    -l|--list) list ;;
+    -h|--help|'') sed -n '2,/^set -eu/p' "$0" | sed 's/^# \{0,1\}//; /^set -eu/d' ;;
+    *) append "$@" ;;
+esac

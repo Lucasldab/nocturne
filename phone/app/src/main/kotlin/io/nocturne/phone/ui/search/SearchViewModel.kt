@@ -46,17 +46,25 @@ class SearchViewModel(
         viewModelScope.launch {
             _query
                 .debounce(DEBOUNCE_MS)
-                .map { input -> buildFtsQuery(input) }
-                .distinctUntilChanged()
-                .collectLatest { ftsQuery ->
+                .map { input -> input to buildFtsQuery(input) }
+                .distinctUntilChanged { a, b -> a.second == b.second }
+                .collectLatest { (input, ftsQuery) ->
                     if (ftsQuery == null) {
                         _results.value = SearchResult.Idle
                         return@collectLatest
                     }
-                    _results.value = SearchResult.Loading
+                    // Keep the previous results on screen while the next
+                    // keystroke resolves; swapping to a progress bar on every
+                    // letter made the list flicker.
+                    if (_results.value !is SearchResult.Results) {
+                        _results.value = SearchResult.Loading
+                    }
                     try {
+                        // Rank a wide candidate set, then cap: FTS returns rowid
+                        // order, so capping first could drop the best match.
                         val rows = withContext(ioDispatcher) {
-                            container.db.searchDao().typeahead(ftsQuery, limit = ROW_LIMIT)
+                            val hits = container.db.searchDao().typeahead(ftsQuery, limit = CANDIDATE_LIMIT)
+                            rankSearchResults(input, hits).take(ROW_LIMIT)
                         }
                         _results.value = if (rows.isEmpty()) {
                             SearchResult.Empty
@@ -84,6 +92,7 @@ class SearchViewModel(
     private companion object {
         const val DEBOUNCE_MS = 120L
         const val ROW_LIMIT = 50
+        const val CANDIDATE_LIMIT = 2000
     }
 }
 

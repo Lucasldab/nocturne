@@ -43,11 +43,18 @@ class AccentFoldTest {
         assertEquals("", accentFold("   \t\n"))
     }
 
-    @Test fun mixed_case_unicode_preserves_ligatures() {
+    @Test fun mixed_case_unicode_spells_out_ligatures() {
         // NFKD does NOT decompose `æ` (a separate Latin letter, not a
-        // precomposed accent). It stays as `æ` after fold; only the `Á`
-        // diacritic is stripped. This is intentional — the algorithm is
-        // a strip-marks, not a transliteration. Documented for plan 04-06.
-        assertEquals("agætis byrjun", accentFold("Ágætis byrjun"))
+        // precomposed accent), so it is spelled out explicitly; `Á` loses
+        // its diacritic the usual way. Typing "agaetis" must find the album.
+        assertEquals("agaetis byrjun", accentFold("Ágætis byrjun"))
+    }
+
+    // NFKD leaves these letters whole, so "aenima" never matched "Ænima".
+    @Test fun ligatures_and_stroked_letters_fold() {
+        assertEquals("aenima", accentFold("Ænima"))
+        assertEquals("sigur ros oe", accentFold("Sigur Rós Œ"))
+        assertEquals("mo strasse", accentFold("Mø Straße"))
+        assertEquals("thorn d l", accentFold("Þorn ð Ł"))
     }
 }

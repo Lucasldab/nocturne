@@ -20,15 +20,20 @@ private val WS_RUN = Regex("\\s+")
  * after the operator/keyword strip — the caller treats null as "no query".
  */
 fun buildFtsQuery(rawInput: String): String? {
+    val cleaned = normalizeSearchInput(rawInput) ?: return null
+    val tokens = cleaned.split(' ')
+    val tail = tokens.last() + "*"
+    return (tokens.dropLast(1) + tail).joinToString(" ")
+}
+
+/** Steps 1-3 of [buildFtsQuery]: the folded, operator-free words, or null. */
+fun normalizeSearchInput(rawInput: String): String? {
     val folded = accentFold(rawInput)
     if (folded.isBlank()) return null
-    val cleaned = folded
+    return folded
         .replace(FTS_FORBIDDEN_CHARS, " ")
         .replace(FTS_KEYWORDS, " ")
         .replace(WS_RUN, " ")
         .trim()
-    if (cleaned.isEmpty()) return null
-    val tokens = cleaned.split(' ')
-    val tail = tokens.last() + "*"
-    return (tokens.dropLast(1) + tail).joinToString(" ")
+        .ifEmpty { null }
 }

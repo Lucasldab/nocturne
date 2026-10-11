@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -35,8 +36,8 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GapSheet(send: suspend (String) -> Boolean, onDismiss: () -> Unit) {
-    val form = remember { GapForm(send) }
-    var text by remember { mutableStateOf("") }
+    var text by rememberSaveable { mutableStateOf("") }
+    val form = remember { GapForm(send).also { it.edit(text) } }
     var sending by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
@@ -56,6 +57,7 @@ fun GapSheet(send: suspend (String) -> Boolean, onDismiss: () -> Unit) {
                 supportingText = { Text("${text.length}/${GapsWriter.MAX_CHARS}") },
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp).focusRequester(focus),
             )
+            LaunchedEffect(Unit) { focus.requestFocus() }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(
                     enabled = form.canSend && !sending,
@@ -76,5 +78,4 @@ fun GapSheet(send: suspend (String) -> Boolean, onDismiss: () -> Unit) {
             }
         }
     }
-    LaunchedEffect(Unit) { focus.requestFocus() }
 }

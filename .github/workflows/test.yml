@@ -26,10 +26,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Must match release.yml. AGP 8.13 supports JDK 17/21, NOT 26.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
@@ -38,7 +38,7 @@ jobs:
       # installs the obsolete SDK `tools` package, which Google has withdrawn
       # from the repository — sdkmanager then exits 1 and the job dies before
       # any Gradle work. AGP downloads the platform and build-tools it needs.
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
         with:
           packages: ''
 
@@ -50,7 +50,7 @@ jobs:
       # assertion broke without re-running the job locally.
       - name: Upload test report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unit-test-report
           path: phone/app/build/reports/tests/testDebugUnitTest

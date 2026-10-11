@@ -24,8 +24,8 @@ per-line schema version (`v`) field; backward-compatible additions
 
 ## 2. Scope
 
-This document covers ONLY the three JSONL streams written by the phone
-into the metadata sync folder:
+This document covers ONLY the JSONL streams written by the phone and desktop
+helpers into the metadata sync folder:
 
 - `stats/phone-<deviceid>.jsonl`
 - `likes-phone-<deviceid>.jsonl`
@@ -127,9 +127,12 @@ treats them only as labels.
 ### 4.4 Gap events (`gaps-phone-<deviceid>.jsonl`, `gaps-desktop.jsonl`)
 
 Friction-log entries: something the user found missing or annoying. **The
-ingester does not read these files** — `run_glob` matches only the patterns
-named in §2's other bullets — and the pin-cycle runner ignores them. They are
-read by the PM review agent (`.claude/agents/nocturne-pm.md`).
+ingester does not read these files** — `run_glob` matches only
+`stats/phone-*.jsonl`, `likes-phone-*.jsonl`, `pins-phone-*.jsonl` and
+`actions-phone-*.jsonl` (`src/nocturned/ingest.c`) — and the pin-cycle runner
+ignores them. A gap arriving also fires `nocturne-pin-cycle.path` and
+`nocturne-download.path` (PathChanged on the meta dir); both no-op for gap
+files. They are read by the PM review agent (`.claude/agents/nocturne-pm.md`).
 `tests/test_jsonl_goldens.sh` and case 6 of `tests/test_pin_cycle_runner.sh`
 hold this.
 

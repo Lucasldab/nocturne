@@ -32,10 +32,10 @@ jobs:
       contents: write        # needed to attach the APK to the release
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # AGP 8.13 supports JDK 17/21. NOT 26 — the Arch default would break it.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "21"
@@ -44,7 +44,7 @@ jobs:
       # installs the obsolete SDK `tools` package, which Google has withdrawn
       # from the repository — sdkmanager then exits 1 and the job dies before
       # any Gradle work. AGP downloads the platform and build-tools it needs.
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
         with:
           packages: ''
 
@@ -75,13 +75,13 @@ jobs:
             | grep -i 'signer #1 certificate DN' || true
 
       - name: Attach to the release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: phone/app/build/outputs/apk/release/*.apk
           fail_on_unmatched_files: true
 
       - name: Keep the artefact even if the release step is skipped
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nocturne-phone-apk
           path: phone/app/build/outputs/apk/release/*.apk

@@ -8,6 +8,6 @@
         <intent
             android:action="io.nocturne.phone.action.LOG_GAP"
             android:targetPackage="io.nocturne.phone"
-            android:targetClass="io.nocturne.phone.MainActivity" />
+            android:targetClass="io.nocturne.phone.LogGapActivity" />
     </shortcut>
 </shortcuts>

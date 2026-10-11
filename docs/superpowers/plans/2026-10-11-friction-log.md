@@ -332,9 +332,12 @@ After §4.3 and before `---`, add:
 ### 4.4 Gap events (`gaps-phone-<deviceid>.jsonl`, `gaps-desktop.jsonl`)
 
 Friction-log entries: something the user found missing or annoying. **The
-ingester does not read these files** — `run_glob` matches only the patterns
-named in §2's other bullets — and the pin-cycle runner ignores them. They are
-read by the PM review agent (`.claude/agents/nocturne-pm.md`).
+ingester does not read these files** — `run_glob` matches only
+`stats/phone-*.jsonl`, `likes-phone-*.jsonl`, `pins-phone-*.jsonl` and
+`actions-phone-*.jsonl` (`src/nocturned/ingest.c`) — and the pin-cycle runner
+ignores them. A gap arriving also fires `nocturne-pin-cycle.path` and
+`nocturne-download.path` (PathChanged on the meta dir); both no-op for gap
+files. They are read by the PM review agent (`.claude/agents/nocturne-pm.md`).
 `tests/test_jsonl_goldens.sh` and case 6 of `tests/test_pin_cycle_runner.sh`
 hold this.
 
@@ -776,7 +779,7 @@ In `phone/app/build.gradle.kts`: `versionCode = 55` and `versionName = "0.4.49-d
 
 - [ ] **Step 6: Build, run the tests, and check the manifest merged the shortcut**
 
-Run: `cd phone && ./gradlew :app:testDebugUnitTest :app:assembleDebug && ~/Android/Sdk/build-tools/36.0.0/aapt2 dump xmltree app/build/outputs/apk/debug/app-debug.apk --file AndroidManifest.xml | grep -A2 'android.app.shortcuts'`
+Run: `cd phone && ./gradlew :app:testDebugUnitTest :app:assembleDebug && ~/Android/Sdk/build-tools/36.0.0/aapt2 dump xmltree app/build/outputs/apk/debug/nocturne-phone-debug.apk --file AndroidManifest.xml | grep -A2 'android.app.shortcuts'`
 Expected: BUILD SUCCESSFUL, and the grep shows the `meta-data` that points at the shortcuts resource.
 
 - [ ] **Step 7: Commit**
@@ -1095,13 +1098,13 @@ Leave `#Implement download new songs to library via nocturne` alone. It isn't pa
 
 - [ ] **Step 3: Install a test build on the phone**
 
-Run (from `phone/`): `./gradlew :app:assembleDebug && adb install -r --user 10 app/build/outputs/apk/debug/app-debug.apk`
+Run (from `phone/`): `./gradlew :app:assembleDebug && adb install -r --user 10 app/build/outputs/apk/debug/nocturne-phone-debug.apk`
 
 If the install fails with a signature mismatch, the installed app is CI-signed. Skip this step and test after Step 5's release instead. Don't uninstall the app: that would wipe its state.
 
 - [ ] **Step 4: Manual acceptance (the user, on the phone)**
 
-1. Long-press the nocturne icon → **Log a gap**. The sheet opens with the keyboard up. Type `test from launcher` and tap Send. A "Gap logged" toast appears.
+1. With the app already open on a non-Home screen (e.g. an album), long-press the nocturne icon → **Log a gap**. The sheet opens with the keyboard up. Type `test from launcher` and tap Send. A "Gap logged" toast appears. After Send (and again after Back), you are still on that same screen. Then swipe the app away from Recents and reopen it: no stray sheet appears.
 2. Play something, open Now Playing, tap **+gap**, type `test from now playing`, and tap Send.
 3. On soot: `nocturne-gap -l`. Within about a minute of Syncthing it shows both, with screens `launcher` and `now-playing`.
 4. Run the agent once ("run the nocturne PM"). It lists the 4 gaps and adds them to `docs/gaps-triage.md` as `open`.

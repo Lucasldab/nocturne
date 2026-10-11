@@ -83,6 +83,7 @@ fun NowPlayingScreen(
     controller: MediaController,
     playerVm: PlayerViewModel,
     onBack: () -> Unit,
+    onLogGap: () -> Unit,
 ) {
     var metadata by remember { mutableStateOf(controller.mediaMetadata) }
     var currentIndex by remember { mutableIntStateOf(controller.currentMediaItemIndex) }
@@ -139,6 +140,7 @@ fun NowPlayingScreen(
         currentTrack = trackEntity,
         eyebrow = eyebrow,
         onBack = onBack,
+        onLogGap = onLogGap,
     )
 }
 
@@ -156,6 +158,7 @@ private fun NowPlayingBody(
     currentTrack: io.nocturne.phone.data.db.entity.TrackEntity?,
     eyebrow: String,
     onBack: () -> Unit,
+    onLogGap: () -> Unit,
 ) {
     // Terminal Now Playing per ratified
     // `nowPlayingVariant: 'terminal'`. Metadata-led, file-info card, sticky
@@ -189,6 +192,16 @@ private fun NowPlayingBody(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.weight(1f))
+                // Friction log. The heart's old slot; the mini player's
+                // long-press is reserved for hold-to-unpin.
+                Text(
+                    text = "+gap",
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMono),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .clickable(onClick = onLogGap)
+                        .padding(start = 24.dp, top = 8.dp, bottom = 8.dp),
+                )
                 // Heart icon intentionally absent. If a like-toggle is added
                 // later, re-introduce LikeDao.isLiked(...) Flow + a VM
                 // toggle method — both were deleted as dead code.

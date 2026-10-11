@@ -6,6 +6,12 @@ import java.util.Locale
 private val combiningMarks = Regex("\\p{InCombiningDiacriticalMarks}+")
 private val whitespaceRun = Regex("\\s+")
 
+// Letters NFKD leaves whole: they are distinct code points, not base + mark.
+private val letterFolds = mapOf(
+    'æ' to "ae", 'œ' to "oe", 'ø' to "o", 'ß' to "ss", 'ð' to "d",
+    'þ' to "th", 'ł' to "l", 'đ' to "d", 'ı' to "i",
+)
+
 /**
  * Accent-fold an arbitrary input string for use in `search_blob` (during
  * import) and as a query-time pre-fold (Plan 04-06).
@@ -13,7 +19,8 @@ private val whitespaceRun = Regex("\\s+")
  * Algorithm:
  *   1. NFKD normalize (decomposes "café" → "café").
  *   2. Strip combining diacritical marks (́ etc).
- *   3. lowercase(Locale.ROOT).
+ *   3. lowercase(Locale.ROOT), then spell out letters NFKD keeps whole
+ *      ("Ænima" → "aenima", "Mø" → "mo", "Straße" → "strasse").
  *   4. Collapse runs of whitespace to a single ASCII space.
  *   5. Trim.
  *
@@ -32,6 +39,9 @@ fun accentFold(input: String): String {
     if (input.isEmpty()) return ""
     val nfkd = Normalizer.normalize(input, Normalizer.Form.NFKD)
     val stripped = nfkd.replace(combiningMarks, "")
-    val lowered = stripped.lowercase(Locale.ROOT)
+    val lowered = stripped.lowercase(Locale.ROOT).let { s ->
+        if (s.none { it in letterFolds }) s
+        else buildString { s.forEach { c -> letterFolds[c]?.let(::append) ?: append(c) } }
+    }
     return lowered.replace(whitespaceRun, " ").trim()
 }

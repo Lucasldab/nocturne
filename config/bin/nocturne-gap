@@ -3,6 +3,9 @@
 #
 #   nocturne-gap queue view should show album art   append a gap
 #   nocturne-gap -l                                  list every gap, oldest first
+#   nocturne-gap -- -5dB is too quiet                text starting with a dash
+#
+# An unknown -flag is refused rather than logged as a gap; -- ends options.
 #
 # Gaps live beside the phone's in the Syncthing meta folder on hearth:
 # the phone writes gaps-phone-<deviceid>.jsonl, this writes gaps-desktop.jsonl
@@ -26,8 +29,13 @@ on_meta() {
 }
 
 list() {
-    # fromjson? skips a trailing partial line Syncthing has not finished.
-    on_meta 'cat gaps-*.jsonl 2>/dev/null || true' |
+    # awk 1 terminates each file's last line, so an unfinished line cannot glue
+    # onto the next file's first; find keeps a remote zsh from complaining about
+    # an unmatched glob. Failure to reach the folder is an error, not "no gaps".
+    raw=$(on_meta 'find . -maxdepth 1 -name "gaps-*.jsonl" -exec awk 1 {} +') ||
+        die "cannot read $META${HOST:+ on $HOST}"
+    # fromjson? skips a partial line Syncthing has not finished.
+    printf '%s\n' "$raw" |
         jq -Rr 'fromjson? | select(.ts) | [.ts, .screen, .text] | @tsv' |
         sort -n |
         while IFS="$(printf '\t')" read -r ts screen text; do
@@ -47,6 +55,8 @@ append() {
 
 case "${1-}" in
     -l|--list) list ;;
+    --) shift; append "$@" ;;
     -h|--help|'') sed -n '2,/^set -eu/p' "$0" | sed 's/^# \{0,1\}//; /^set -eu/d' ;;
+    -?*) die "unknown option: $1 (try: nocturne-gap -h)" ;;
     *) append "$@" ;;
 esac

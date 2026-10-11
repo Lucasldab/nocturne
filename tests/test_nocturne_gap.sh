@@ -61,7 +61,8 @@ P2="$WORK/gaps-phone-0000aaaa.jsonl"
 printf '%s' '{"v":1,"ts":15778' > "$P2"
 printf '%s\n' '{"v":1,"ts":1577836800002,"text":"second file gap","screen":"home","track":null,"app":"x"}' \
     > "$WORK/gaps-phone-0000bbbb.jsonl"
-sh "$GAP" -l | grep -q 'home  second file gap$' || { echo "FAIL: gap lost behind a partial line"; fail=1; }
+out=$(sh "$GAP" -l)
+printf '%s\n' "$out" | grep -q 'home  second file gap$' || { echo "FAIL: gap lost behind a partial line"; fail=1; }
 rm -f "$P2" "$WORK/gaps-phone-0000bbbb.jsonl"
 
 echo "==> case 7: -l failure and empty modes"

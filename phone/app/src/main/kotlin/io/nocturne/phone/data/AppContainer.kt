@@ -11,6 +11,7 @@ import io.nocturne.phone.data.db.NocturneDatabase
 import io.nocturne.phone.data.prefs.SyncPrefs
 import io.nocturne.phone.data.stats.ActionsWriter
 import io.nocturne.phone.data.stats.DownloadsWriter
+import io.nocturne.phone.data.stats.GapsWriter
 import io.nocturne.phone.data.stats.JsonlFileWriter
 import io.nocturne.phone.data.stats.LikesWriter
 import io.nocturne.phone.data.stats.PinsWriter
@@ -84,6 +85,14 @@ class AppContainer(
     val actionsWriter: ActionsWriter by lazy {
         ActionsWriter(syncPrefs, jsonlFileWriter)
     }
+
+    // Friction log: one line per gap the user types. Never ingested by the
+    // daemon — read by the PM review agent (docs/gaps-triage.md).
+    val gapsWriter: GapsWriter by lazy { GapsWriter(syncPrefs, jsonlFileWriter) }
+
+    // Set by MainActivity when launched from the "Log a gap" shortcut;
+    // BrowserRoot opens the sheet and clears it.
+    val gapRequests = kotlinx.coroutines.flow.MutableStateFlow(false)
 
     // Phone-initiated download request drain. Writes pending Room rows
     // (`state = "pending"`) to `downloads-phone-<deviceid>.jsonl`; the

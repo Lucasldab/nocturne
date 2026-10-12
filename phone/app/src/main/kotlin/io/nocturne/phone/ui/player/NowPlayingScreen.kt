@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -30,6 +31,7 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -83,6 +85,7 @@ fun NowPlayingScreen(
     controller: MediaController,
     playerVm: PlayerViewModel,
     onBack: () -> Unit,
+    onLogGap: () -> Unit,
 ) {
     var metadata by remember { mutableStateOf(controller.mediaMetadata) }
     var currentIndex by remember { mutableIntStateOf(controller.currentMediaItemIndex) }
@@ -139,6 +142,7 @@ fun NowPlayingScreen(
         currentTrack = trackEntity,
         eyebrow = eyebrow,
         onBack = onBack,
+        onLogGap = onLogGap,
     )
 }
 
@@ -156,6 +160,7 @@ private fun NowPlayingBody(
     currentTrack: io.nocturne.phone.data.db.entity.TrackEntity?,
     eyebrow: String,
     onBack: () -> Unit,
+    onLogGap: () -> Unit,
 ) {
     // Terminal Now Playing per ratified
     // `nowPlayingVariant: 'terminal'`. Metadata-led, file-info card, sticky
@@ -189,6 +194,17 @@ private fun NowPlayingBody(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.weight(1f))
+                // Friction log. The heart's old slot; the mini player's
+                // long-press is reserved for hold-to-unpin.
+                Text(
+                    text = "+gap",
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = JetBrainsMono),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .clickable(role = Role.Button, onClick = onLogGap)
+                        .padding(start = 24.dp, top = 8.dp, bottom = 8.dp),
+                )
                 // Heart icon intentionally absent. If a like-toggle is added
                 // later, re-introduce LikeDao.isLiked(...) Flow + a VM
                 // toggle method — both were deleted as dead code.

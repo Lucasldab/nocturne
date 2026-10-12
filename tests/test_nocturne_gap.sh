@@ -10,6 +10,8 @@
 #      the partial file sorts before a complete one.
 #   6. -l fails loudly on an unreadable meta dir; prints nothing for no files.
 #   7. An unknown flag is refused (exit 2, nothing written); -- ends options.
+#   8. A host that never answers (Tailscale SSH waiting on re-auth) fails
+#      within NOCTURNE_GAP_TIMEOUT with exit 2 and a hint, for -l and append.
 #
 # Hermetic: NOCTURNE_GAP_HOST= runs everything locally against a temp meta dir.
 
@@ -79,6 +81,24 @@ rc=0; sh "$GAP" -x 2>/dev/null || rc=$?
 [ "$(wc -l < "$F")" -eq "$before" ] || { echo "FAIL: -x was written"; fail=1; }
 sh "$GAP" -- -x
 [ "$(tail -1 "$F" | jq -r .text)" = "-x" ] || { echo "FAIL: -- -x not logged"; fail=1; }
+
+echo "==> case 9: a host that never answers fails fast instead of hanging"
+# Stands in for Tailscale SSH holding the session open on a re-auth check.
+cat > "$WORK/ssh-hang" <<'EOF'
+#!/bin/sh
+exec sleep 30
+EOF
+chmod +x "$WORK/ssh-hang"
+for args in "-l" "a gap that cannot be delivered"; do
+    start=$SECONDS; rc=0
+    NOCTURNE_GAP_HOST=hanghost NOCTURNE_GAP_SSH="$WORK/ssh-hang" NOCTURNE_GAP_TIMEOUT=1 \
+        sh "$GAP" $args 2>"$WORK/err" || rc=$?
+    took=$((SECONDS - start))
+    [ "$rc" -eq 2 ] || { echo "FAIL [$args]: exit $rc, want 2"; fail=1; }
+    [ "$took" -le 5 ] || { echo "FAIL [$args]: took ${took}s"; fail=1; }
+    command grep -q 'hanghost did not answer' "$WORK/err" ||
+        { echo "FAIL [$args]: stderr was: $(cat "$WORK/err")"; fail=1; }
+done
 
 [ "$fail" -eq 0 ] || { echo "==> FAILED"; exit 1; }
 echo "==> PASS"

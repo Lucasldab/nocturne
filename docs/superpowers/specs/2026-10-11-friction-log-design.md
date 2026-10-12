@@ -29,9 +29,14 @@ those moments written down.
 ### Entry points
 
 - **Launcher shortcut.** A static app shortcut "Log a gap" (long-press the nocturne
-  icon). It launches `MainActivity` with action `io.nocturne.phone.action.LOG_GAP`;
-  `MainActivity` opens the gap sheet over whatever screen is restored. It is
-  available even when the app is not running.
+  icon). It launches a no-UI trampoline, `LogGapActivity` (action
+  `io.nocturne.phone.action.LOG_GAP`), which raises `AppContainer.gapRequests` and
+  starts the normal launcher intent, so the existing task comes forward with its
+  screen intact and the sheet opens over it. It is available even when the app is
+  not running.
+  *(Amended after review: the first design launched `MainActivity` directly, but
+  static shortcuts start with NEW_TASK|CLEAR_TASK, which reset navigation and made
+  Recents re-open the sheet.)*
 - **Now Playing.** The top row has free space where the heart was removed. It gets a
   `+gap` text button, in the same JetBrains Mono label style as `~/now-playing`.
 

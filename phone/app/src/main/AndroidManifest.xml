@@ -34,7 +34,19 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
+
+        <!-- Shortcut trampoline; see LogGapActivity KDoc. -->
+        <activity
+            android:name=".LogGapActivity"
+            android:exported="true"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <!-- Phase 5: Media3 playback service. Bound to MediaController via the
              MediaSessionService action filter; system UI / BT routes through it. -->

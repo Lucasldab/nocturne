@@ -73,3 +73,19 @@ data class DownloadRequestEvent(
     val query: String,                                 // search query or URL
     val ts: Long,                                      // requestedAt epoch-ms
 )
+
+/**
+ * A friction-log entry: something missing or annoying, typed by the user.
+ * Written by GapsWriter to `gaps-phone-<deviceid>.jsonl`; the daemon never
+ * reads it — the PM review agent does. Field order frozen; `track` is
+ * emitted as JSON null when nothing was playing (Json's explicitNulls).
+ */
+@Serializable
+data class GapEvent(
+    val v: Int,
+    val ts: Long,
+    val text: String,                                  // 1..1000 chars, single line
+    val screen: String,                                // route pattern, "launcher" or "desktop"
+    val track: String?,                                // 64-char lowercase hex sha256, or null
+    val app: String,                                   // BuildConfig.VERSION_NAME
+)

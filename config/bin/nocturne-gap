@@ -15,17 +15,30 @@
 #   NOCTURNE_GAP_HOST   ssh host holding the meta folder (default hearth;
 #                       empty = this machine)
 #   NOCTURNE_GAP_META   meta folder path on that host
+#   NOCTURNE_GAP_TIMEOUT  seconds to wait for HOST (default 20)
+#   NOCTURNE_GAP_SSH    ssh command (default ssh; the test swaps in a stub)
 set -eu
 
 HOST="${NOCTURNE_GAP_HOST-hearth}"
 META="${NOCTURNE_GAP_META:-/home/lucas/sync/nocturne/meta}"
+WAIT="${NOCTURNE_GAP_TIMEOUT:-20}"
+SSH="${NOCTURNE_GAP_SSH:-ssh}"
 MAX=1000
 
 die() { printf 'nocturne-gap: %s\n' "$1" >&2; exit 2; }
 
 # on_meta CMD -- run a shell command against the meta folder, here or on HOST.
+#
+# The remote leg is bounded by `timeout`: Tailscale SSH answers a stale session
+# with a re-auth URL and then holds the connection open indefinitely, which
+# ConnectTimeout and BatchMode do not catch (the TCP connect succeeded).
 on_meta() {
-    if [ -n "$HOST" ]; then ssh "$HOST" "cd '$META' && $1"; else (cd "$META" && sh -c "$1"); fi
+    if [ -z "$HOST" ]; then (cd "$META" && sh -c "$1"); return; fi
+    rc=0
+    timeout "$WAIT" "$SSH" -o ConnectTimeout="$WAIT" "$HOST" "cd '$META' && $1" || rc=$?
+    [ "$rc" -ne 124 ] ||
+        die "$HOST did not answer in ${WAIT}s -- Tailscale SSH may want re-auth; run: ssh $HOST true"
+    return "$rc"
 }
 
 list() {
@@ -50,7 +63,8 @@ append() {
     line=$(jq -cn --arg text "$text" --argjson ts "$(date +%s%3N)" \
         '{v:1, ts:$ts, text:$text, screen:"desktop", track:null, app:"desktop"}')
     # stdin carries the line, so no quoting survives into the remote shell.
-    printf '%s\n' "$line" | on_meta 'cat >> gaps-desktop.jsonl'
+    printf '%s\n' "$line" | on_meta 'cat >> gaps-desktop.jsonl' ||
+        die "could not write to $META${HOST:+ on $HOST}"
 }
 
 case "${1-}" in

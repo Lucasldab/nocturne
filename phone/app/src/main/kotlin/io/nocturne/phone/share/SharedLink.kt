@@ -2,9 +2,11 @@ package io.nocturne.phone.share
 
 /**
  * Turns whatever another app hands nocturne — a tapped Spotify link, a
- * `spotify:` URI from an "Add to Spotify" button, or share-sheet text like
- * "Check out this song! https://open.spotify.com/track/…?si=…" — into a
- * download query for flacget.
+ * `spotify:` URI from an "Add to Spotify" button, share-sheet text like
+ * "Check out this song! https://open.spotify.com/track/…?si=…", or the
+ * `instagram.com/reels/audio/<id>` link Instagram's share button gives for a
+ * song — into a download query for flacget, which resolves links to
+ * artist and title on hearth.
  *
  * Only track links are accepted: flacget refuses albums and playlists, so
  * rejecting them here gives the answer immediately instead of a round trip
@@ -25,6 +27,7 @@ private val SHORT_URL = Regex("""https?://(?:spotify\.link|spotify\.app\.link)/[
 private val OTHER_SPOTIFY = Regex(
     """(?:open\.spotify\.com/(?:intl-[a-z]{2}/)?|spotify:)(album|playlist|artist|episode|show|user)""",
 )
+private val INSTAGRAM_AUDIO = Regex("""https?://(?:www\.)?instagram\.com/reels?/audio/(\d+)""")
 private val ANY_URL = Regex("""https?://\S+""")
 
 /** Longest plain-text share treated as "artist - title" rather than junk. */
@@ -40,10 +43,13 @@ fun parseSharedLink(raw: String?): SharedLink {
         return SharedLink.Query("https://open.spotify.com/track/${it.groupValues[1]}")
     }
     SHORT_URL.find(text)?.let { return SharedLink.Query(it.value) }
+    INSTAGRAM_AUDIO.find(text)?.let {
+        return SharedLink.Query("https://www.instagram.com/reels/audio/${it.groupValues[1]}/")
+    }
     OTHER_SPOTIFY.find(text)?.let {
         return SharedLink.Rejected("only Spotify tracks work, not ${it.groupValues[1]}s")
     }
-    if (ANY_URL.containsMatchIn(text)) return SharedLink.Rejected("not a Spotify link")
+    if (ANY_URL.containsMatchIn(text)) return SharedLink.Rejected("not a song link")
     if (text.length > MAX_PLAIN_QUERY || '\n' in text) {
         return SharedLink.Rejected("share a link or \"artist - title\"")
     }

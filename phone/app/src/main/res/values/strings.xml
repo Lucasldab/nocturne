@@ -2,4 +2,5 @@
 <resources>
     <string name="app_name">nocturne</string>
     <string name="shortcut_log_gap">Log a gap</string>
+    <string name="share_label">nocturne download</string>
 </resources>

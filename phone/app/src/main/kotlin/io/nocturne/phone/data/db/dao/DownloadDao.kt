@@ -39,4 +39,8 @@ interface DownloadDao {
 
     @Query("SELECT * FROM downloads WHERE id = :id")
     suspend fun byId(id: String): DownloadEntity?
+
+    /** Most recent request for [query], so a re-shared link isn't fetched twice. */
+    @Query("SELECT * FROM downloads WHERE query = :query ORDER BY requestedAt DESC LIMIT 1")
+    suspend fun latestFor(query: String): DownloadEntity?
 }

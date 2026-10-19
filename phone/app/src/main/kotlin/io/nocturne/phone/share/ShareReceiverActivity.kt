@@ -2,6 +2,7 @@ package io.nocturne.phone.share
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
@@ -27,6 +28,7 @@ class ShareReceiverActivity : ComponentActivity() {
             Intent.ACTION_VIEW -> intent.dataString
             else -> null
         }
+        Log.i(TAG, "${intent?.action} subject=${intent?.getStringExtra(Intent.EXTRA_SUBJECT)} text=$raw")
         when (val parsed = parseSharedLink(raw)) {
             is SharedLink.Rejected -> done("nocturne: ${parsed.reason}")
             is SharedLink.Query -> lifecycleScope.launch {
@@ -59,6 +61,7 @@ class ShareReceiverActivity : ComponentActivity() {
     }
 
     private companion object {
+        const val TAG = "nocturne-share"
         val IN_FLIGHT = setOf("pending", "queued", "running")
     }
 }

@@ -41,6 +41,20 @@ class SharedLinkTest {
         )
     }
 
+    @Test fun instagramAudioDropsTrackingParam() {
+        assertEquals(
+            query("https://www.instagram.com/reels/audio/557712381347950/"),
+            parseSharedLink("https://www.instagram.com/reels/audio/557712381347950?dlrf=bDF1Ync4Y21rN3Jz"),
+        )
+    }
+
+    @Test fun instagramReelIsNotASong() {
+        assertEquals(
+            SharedLink.Rejected("not a song link"),
+            parseSharedLink("https://www.instagram.com/reel/DAbCdEfGhIj/"),
+        )
+    }
+
     @Test fun albumIsRejected() {
         assertEquals(
             SharedLink.Rejected("only Spotify tracks work, not albums"),
@@ -57,7 +71,7 @@ class SharedLinkTest {
 
     @Test fun otherUrlIsRejected() {
         assertEquals(
-            SharedLink.Rejected("not a Spotify link"),
+            SharedLink.Rejected("not a song link"),
             parseSharedLink("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
         )
     }

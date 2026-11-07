@@ -57,6 +57,10 @@ fun SearchOverlay(
     pinnedIds: Set<String> = emptySet(),
     onPinTrack: (String) -> Unit = {},
     onTrackTap: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
+    onPlayNext: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
+    onAddToQueue: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
+    onUnsync: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
+    onDelete: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
 ) {
     val vm: SearchViewModel = viewModel(factory = SearchVMFactory(container))
     val query by vm.query.collectAsStateWithLifecycle()
@@ -70,6 +74,10 @@ fun SearchOverlay(
         pinnedIds = pinnedIds,
         onPinTrack = onPinTrack,
         onTrackTap = onTrackTap,
+        onPlayNext = onPlayNext,
+        onAddToQueue = onAddToQueue,
+        onUnsync = onUnsync,
+        onDelete = onDelete,
     )
 }
 
@@ -84,6 +92,10 @@ private fun SearchOverlayBody(
     pinnedIds: Set<String> = emptySet(),
     onPinTrack: (String) -> Unit = {},
     onTrackTap: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
+    onPlayNext: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
+    onAddToQueue: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
+    onUnsync: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
+    onDelete: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
 ) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
@@ -140,7 +152,16 @@ private fun SearchOverlayBody(
                 },
             )
             HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
-            ResultsBody(state, pinnedIds = pinnedIds, onPinTrack = onPinTrack, onTrackTap = onTrackTap)
+            ResultsBody(
+                state,
+                pinnedIds = pinnedIds,
+                onPinTrack = onPinTrack,
+                onTrackTap = onTrackTap,
+                onPlayNext = onPlayNext,
+                onAddToQueue = onAddToQueue,
+                onUnsync = onUnsync,
+                onDelete = onDelete,
+            )
         }
     }
 }
@@ -151,6 +172,10 @@ private fun ResultsBody(
     pinnedIds: Set<String> = emptySet(),
     onPinTrack: (String) -> Unit = {},
     onTrackTap: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
+    onPlayNext: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
+    onAddToQueue: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
+    onUnsync: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
+    onDelete: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
 ) {
     when (state) {
         SearchResult.Idle -> EmptyHint("type to search by title, artist, album, genre")
@@ -165,6 +190,10 @@ private fun ResultsBody(
                     isPinned = pinnedIds.contains(track.id),
                     onTap = { onTrackTap(track) },
                     onPinClick = { onPinTrack(track.id) },
+                    onPlayNext = { onPlayNext(track) },
+                    onAddToQueue = { onAddToQueue(track) },
+                    onUnsync = { onUnsync(track) },
+                    onDelete = { onDelete(track) },
                 )
             }
         }

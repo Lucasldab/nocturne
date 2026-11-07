@@ -28,6 +28,8 @@ fun AlbumsScreen(
     onNavigate: (String) -> Unit,
     modifier: Modifier = Modifier,
     container: AppContainer? = null,
+    onPlayNextAlbum: ((String) -> Unit)? = null,
+    onAddAlbumToQueue: ((String) -> Unit)? = null,
 ) {
     // Quick task 260430-vtb (Bug 1): swapped from Pager → non-paged StateFlow.
     // Pager+scrollToItem(target) silently swallowed seeks past the loaded
@@ -70,6 +72,8 @@ fun AlbumsScreen(
                     container = container,
                     onUnsync = { vm.unsyncAlbum(album.id) },
                     onDelete = { vm.deleteAlbum(album.id) },
+                    onPlayNext = onPlayNextAlbum?.let { f -> { f(album.id) } },
+                    onAddToQueue = onAddAlbumToQueue?.let { f -> { f(album.id) } },
                 )
             }
         }

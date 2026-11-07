@@ -28,7 +28,8 @@ import io.nocturne.phone.ui.browser.components.TrackSortToggle
 fun TracksScreen(
     vm: BrowserViewModel,
     modifier: Modifier = Modifier,
-    onTrackTap: (TrackEntity) -> Unit = {},
+    /** Tapped track + the list as currently shown (sort mode order). */
+    onTrackTap: (TrackEntity, List<TrackEntity>) -> Unit = { _, _ -> },
     onPlayNext: (TrackEntity) -> Unit = {},
     onAddToQueue: (TrackEntity) -> Unit = {},
     container: AppContainer? = null,
@@ -92,7 +93,7 @@ fun TracksScreen(
                         track = track,
                         isPinned = pinnedIds.contains(track.id),
                         pullProgress = pullProgress.perTrack[track.id],
-                        onTap = { onTrackTap(track) },
+                        onTap = { onTrackTap(track, tracksList) },
                         onPinClick = { vm.togglePinTrack(track.id) },
                         onPlayNext = { onPlayNext(track) },
                         onAddToQueue = { onAddToQueue(track) },
@@ -143,7 +144,7 @@ fun TracksScreen(
                         track = track,
                         isPinned = pinnedIds.contains(track.id),
                         pullProgress = pullProgress.perTrack[track.id],
-                        onTap = { onTrackTap(track) },
+                        onTap = { onTrackTap(track, sorted) },
                         onPinClick = { vm.togglePinTrack(track.id) },
                         onPlayNext = { onPlayNext(track) },
                         onAddToQueue = { onAddToQueue(track) },

@@ -1,9 +1,8 @@
 # nocturne JSONL stream specification
 
 > **Status: Normative.** This document is the protocol contract between
-> the Phase 6 phone stats writer and the Phase 7 desktop ingester. It
-> was locked at the Phase 7 ship date (2026-04-26). The Phase 6
-> implementer MUST produce JSONL bytes that match the goldens in
+> the phone's event writers and the server's ingester. Writers MUST
+> produce JSONL bytes that match the goldens in
 > `tests/fixtures/jsonl-goldens/` byte-for-byte (modulo `<sha256>`,
 > `<album-key>`, `<deviceid>`, `<ts>` substitutions).
 
@@ -15,8 +14,7 @@ as described in [RFC 2119](https://www.rfc-editor.org/rfc/rfc2119).
 
 ## 1. Status
 
-Normative for Phase 6 (Android stats writer). Locked at the Phase 7
-ship date 2026-04-26. Future protocol-breaking revisions MUST bump the
+Normative since 2026-04-26. Future protocol-breaking revisions MUST bump the
 per-line schema version (`v`) field; backward-compatible additions
 (new optional fields) MAY be made without a version bump.
 
@@ -35,8 +33,11 @@ helpers into the metadata sync folder:
 It does NOT cover:
 
 - `catalog.json` and `manifest.json` — those have their own JSON
-  Schemas under `schema/` (Phase 2 publisher).
+  Schemas under `schema/`.
 - Syncthing folder configuration — see `docs/install.md`.
+- `actions-phone-*.jsonl` and the `downloads-*.jsonl` streams, which are not
+  specified yet. Their source of truth is the code that reads them
+  (`src/nocturned/`).
 
 The desktop ingester (`build/nocturned ingest`, `src/nocturned/ingest.{h,c}`)
 is the canonical reader for these streams. Source of truth for ambiguities
@@ -88,9 +89,8 @@ The phone MUST be the single writer for any file bearing its own
 | `duration_ms` | integer | yes | The track's full duration in ms. MUST be `>= 0`. |
 
 A "play" is an event the user materially listened to; a "skip" is one
-they bailed out of early. The phone-side classifier rule is documented
-in PROJECT.md (Phase 6) and is not normative here — the ingester
-treats them only as labels.
+they bailed out of early. The phone-side classifier rule lives in the
+app and is not normative here — the ingester treats them only as labels.
 
 ### 4.2 Like events (`likes-phone-<deviceid>.jsonl`)
 
@@ -132,7 +132,7 @@ ingester does not read these files** — `run_glob` matches only
 `actions-phone-*.jsonl` (`src/nocturned/ingest.c`) — and the pin-cycle runner
 ignores them. A gap arriving also fires `nocturne-pin-cycle.path` and
 `nocturne-download.path` (PathChanged on the meta dir); both no-op for gap
-files. They are read by the PM review agent (`.claude/agents/nocturne-pm.md`).
+files. They are only read during triage (`docs/gaps-triage.md`).
 `tests/test_jsonl_goldens.sh` and case 6 of `tests/test_pin_cycle_runner.sh`
 hold this.
 
@@ -186,10 +186,9 @@ The phone MUST:
    callback (the listen-classifier callback for plays, the like/pin
    button handler for those).
 4. On `write(2)` or `fsync(2)` failure: queue the event in memory and
-   retry on the next event. Lost events are acceptable per the Phase 6
-   threat model — the multi-day-offline tolerance test (Phase 6 highest-
-   risk gate) is the pinch point we optimise for, not perfect at-most-
-   once durability under worst-case storage failures.
+   retry on the next event. Lost events are acceptable: the design
+   optimises for tolerating days offline, not for perfect durability
+   under worst-case storage failures.
 
 The ingester MAY observe a "trailing partial line" at any time (a
 write completed but `\n` hasn't been flushed yet by Syncthing): see §10.
@@ -212,8 +211,7 @@ write completed but `\n` hasn't been flushed yet by Syncthing): see §10.
   size to be less than the persisted offset, it logs a warning and
   resets the offset to 0 (treating the shrink as a Syncthing-anomaly
   truncation). The phone MUST NOT rotate or truncate these files —
-  compaction is a future concern (Pitfall 15) and will be coordinated
-  via a separate protocol when needed.
+  compaction would need its own protocol.
 
 ---
 
@@ -240,7 +238,7 @@ The reference byte shapes are committed under
 - `likes-golden.jsonl` (3 lines)
 - `pins-golden.jsonl` (3 lines)
 
-Phase 6 implementers SHOULD: produce JSONL on Android, byte-diff your
+Implementers SHOULD: produce JSONL on Android, byte-diff your
 output line against the corresponding golden line. They MUST be
 identical up to substitution of `<sha256>`, `<album-key>`,
 `<deviceid>`, and `<ts>` placeholders.
@@ -285,7 +283,7 @@ That test is run on every `make test`.
   - Retry on the next event tick OR when the user takes the next
     listen / like / pin action, whichever is first.
 - Lost events (memory full, app killed before retry) are acceptable
-  per Phase 6 design. The protocol does NOT guarantee at-least-once
+  by design. The protocol does NOT guarantee at-least-once
   delivery — it guarantees that whatever events DO get written are
   processed at-most-once by the ingester.
 
@@ -332,5 +330,3 @@ These are byte-identical to the goldens in
   goldens.
 - `tests/test_ingest.c` — unit tests for the ingester (each validation
   rule has a case).
-- `.planning/phases/07-desktop-ingester/PLAN.md` — phase context and
-  threat model.

@@ -66,9 +66,7 @@ phone/**/*.iml
 /*.jpeg
 /*.webp
 
-# Agent / IDE runtime state
-.claude/*
-!.claude/agents/
+# Local planning state
 .planning/
 
 # Local SQLite runtime artifacts

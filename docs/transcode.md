@@ -87,4 +87,4 @@ is encoded at 0 dB. The FLAC is never modified (its bytes are the track id).
 NULL gain = copy predates levelling. `nocturned transcode-level [--apply]`
 re-encodes exactly those rows in place (atomic rename) and updates their
 size, so the phone re-syncs them. It takes the daemon lock: stop the watcher
-first. Design: `docs/superpowers/specs/2026-10-10-loudness-and-download-feedback-design.md`.
+first.

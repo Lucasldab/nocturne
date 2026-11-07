@@ -10,7 +10,7 @@
 # Gaps live beside the phone's in the Syncthing meta folder on hearth:
 # the phone writes gaps-phone-<deviceid>.jsonl, this writes gaps-desktop.jsonl
 # (one writer per file, docs/jsonl-spec.md §3, §4.4). nocturned never reads
-# them; the PM agent (.claude/agents/nocturne-pm.md) does.
+# them; they are only read during triage (docs/gaps-triage.md).
 #
 #   NOCTURNE_GAP_HOST   ssh host holding the meta folder (default hearth;
 #                       empty = this machine)

@@ -1,18 +1,18 @@
-# Run the phone app's JVM unit tests.
+# Run the daemon's test suite and the phone app's JVM unit tests.
 #
-# Exists because they were not run anywhere. `phone/app/src/test/` held 187
-# tests across 29 classes and neither CI nor any local machine executed them:
-# release.yml only ever called :app:assembleRelease, and soot had no Android
-# SDK at all. A residency bug shipped to the phone with an empty test slot
-# sitting next to the code it broke.
+# Exists because the phone tests were not run anywhere. `phone/app/src/test/`
+# held 187 tests across 29 classes and neither CI nor any local machine executed
+# them: release.yml only ever called :app:assembleRelease, and soot had no
+# Android SDK at all. A residency bug shipped to the phone with an empty test
+# slot sitting next to the code it broke.
 #
 # Called two ways:
 #   - directly, on every push to main and every pull request
 #   - via workflow_call from release.yml, which gates the APK build on it
 #
-# Needs no secrets: unit tests never touch the keystore.
+# Needs no secrets: the tests never touch the keystore.
 
-name: Unit tests
+name: Tests
 
 on:
   push:
@@ -22,6 +22,38 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Debian because nocturned needs TagLib 2.x and ubuntu-24.04 ships 1.13, and
+  # trixie is what the daemon runs on in production. SYS_PTRACE is for the
+  # strace layer of the no-network audit.
+  daemon-tests:
+    runs-on: ubuntu-latest
+    container:
+      image: debian:trixie
+      options: --cap-add=SYS_PTRACE
+
+    steps:
+      # Before checkout: without git in the image, checkout falls back to a
+      # plain download and the Makefile's `git describe` has no repository.
+      - name: Install dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends \
+            git ca-certificates build-essential pkg-config xxd curl \
+            libtag-c-dev libsqlite3-dev libjansson-dev libcurl4-openssl-dev \
+            ffmpeg flac sqlite3 jq strace syncthing python3
+
+      - uses: actions/checkout@v7
+
+      # As a normal user: the job container runs as root, which would hide
+      # permission bugs in the file-handling tests.
+      - name: Run make test
+        run: |
+          useradd -m ci
+          chown -R ci "$GITHUB_WORKSPACE"
+          su ci -c 'make test'
+
   unit-tests:
     runs-on: ubuntu-latest
 

@@ -1,6 +1,6 @@
 # nocturne
 
-[![Unit tests](https://github.com/Lucasldab/nocturne/actions/workflows/test.yml/badge.svg)](https://github.com/Lucasldab/nocturne/actions/workflows/test.yml)
+[![Tests](https://github.com/Lucasldab/nocturne/actions/workflows/test.yml/badge.svg)](https://github.com/Lucasldab/nocturne/actions/workflows/test.yml)
 [![Latest release](https://img.shields.io/github/v/release/Lucasldab/nocturne?include_prereleases)](https://github.com/Lucasldab/nocturne/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -98,9 +98,9 @@ install and update through [Obtainium](https://github.com/ImranR98/Obtainium).
 
 ## Getting started
 
-You need `make`, a C compiler, `pkg-config`, `xxd`, TagLib, SQLite, Jansson,
-libcurl and Syncthing. `ffmpeg` is needed for transcode mode, and `strace` for
-the full test suite.
+You need `make`, a C compiler, `pkg-config`, `xxd`, TagLib 2.x, SQLite, Jansson,
+libcurl, Syncthing and Python 3. `ffmpeg` is needed for transcode mode. See
+[the install guide](docs/install.md) for package names and the test tools.
 
 ```sh
 make nocturned      # builds build/nocturned
@@ -125,11 +125,11 @@ Follow these in order for a full setup:
 
 | Suite | Command | Runs in CI |
 |-------|---------|------------|
-| Daemon unit and integration tests, network audit | `make test` | No, run locally |
+| Daemon unit and integration tests, network audit | `make test` | Yes, on every push to `main` and every PR |
 | Phone unit tests | `cd phone && ./gradlew :app:testDebugUnitTest` | Yes, on every push to `main` and every PR |
 
-A release tag builds a signed APK only if the phone tests pass, because Obtainium
-can install anything that reaches Releases.
+A release tag builds a signed APK only if both suites pass, because Obtainium can
+install anything that reaches Releases.
 
 ## Repository layout
 

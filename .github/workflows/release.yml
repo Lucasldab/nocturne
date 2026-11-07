@@ -71,7 +71,10 @@ jobs:
         run: |
           APK=$(find phone/app/build/outputs/apk/release -name '*.apk' | head -1)
           echo "apk: $APK"
-          "$ANDROID_HOME"/build-tools/*/apksigner verify --print-certs "$APK" \
+          # Newest build-tools only: the runner image ships several, and the
+          # bare glob expanded to two apksigner paths ("Unsupported command").
+          SIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
+          "$SIGNER" verify --print-certs "$APK" \
             | grep -i 'signer #1 certificate DN' || true
 
       - name: Attach to the release

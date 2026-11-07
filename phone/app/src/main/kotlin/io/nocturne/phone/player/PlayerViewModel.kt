@@ -195,44 +195,26 @@ class PlayerViewModel(
     }
 
     /**
-     * Append a single track to the end of the current queue without disturbing
-     * playback. If the queue is empty, falls through to playSingleTrack so the
-     * user gets the expected "tap → it plays" behaviour.
+     * "Add to queue": append [tracks] (resident ones, in order) to the end of
+     * the queue without disturbing playback. Empty queue → they just play.
      */
-    fun enqueueTrack(track: TrackEntity) {
-        val c = _controller.value ?: return
-        if (!track.isResident) {
-            toastNotDownloaded()
-            return
-        }
-        viewModelScope.launch {
-            val musicUri = container.syncPrefs.musicTreeUri.first()?.toUri()
-            if (musicUri == null) {
-                toastPickMusicFolder()
-                return@launch
-            }
-            val item = track.toMediaItem(musicTreeUri = musicUri)
-            if (c.mediaItemCount == 0) {
-                c.setMediaItems(listOf(item), 0, /* startPositionMs = */ 0L)
-                c.prepare()
-                c.play()
-            } else {
-                c.addMediaItem(item)
-                if (!c.isPlaying && c.playbackState == androidx.media3.common.Player.STATE_IDLE) {
-                    c.prepare()
-                }
-            }
-        }
-    }
+    fun addToQueue(tracks: List<TrackEntity>) = queueTracks(tracks, QueueOps.QUEUED_END)
 
     /**
-     * Insert a track immediately after the currently-playing item so it plays
-     * next without disturbing the rest of the queue. Empty queue → falls
-     * through to playSingleTrack.
+     * "Play next": insert [tracks] right after the current item — after any
+     * earlier play-next items, so repeated play-next taps play in tap order.
+     * With shuffle on, [QueueShuffleOrder] keeps them next in play order too.
      */
-    fun playNextTrack(track: TrackEntity) {
+    fun playNext(tracks: List<TrackEntity>) = queueTracks(tracks, QueueOps.QUEUED_NEXT)
+
+    fun enqueueTrack(track: TrackEntity) = addToQueue(listOf(track))
+
+    fun playNextTrack(track: TrackEntity) = playNext(listOf(track))
+
+    private fun queueTracks(tracks: List<TrackEntity>, queuedBy: String) {
         val c = _controller.value ?: return
-        if (!track.isResident) {
+        val resident = tracks.filter { it.isResident }
+        if (resident.isEmpty()) {
             toastNotDownloaded()
             return
         }
@@ -242,18 +224,22 @@ class PlayerViewModel(
                 toastPickMusicFolder()
                 return@launch
             }
-            val item = track.toMediaItem(musicTreeUri = musicUri)
+            val items = resident.map { it.toMediaItem(musicTreeUri = musicUri).markQueued(queuedBy) }
             if (c.mediaItemCount == 0) {
-                c.setMediaItems(listOf(item), 0, /* startPositionMs = */ 0L)
+                c.setMediaItems(items, 0, /* startPositionMs = */ 0L)
                 c.prepare()
                 c.play()
-            } else {
-                val insertAt = (c.currentMediaItemIndex + 1).coerceAtMost(c.mediaItemCount)
-                c.addMediaItem(insertAt, item)
-                if (!c.isPlaying && c.playbackState == androidx.media3.common.Player.STATE_IDLE) {
-                    c.prepare()
-                }
+                return@launch
             }
+            if (queuedBy == QueueOps.QUEUED_NEXT) {
+                val at = QueueOps.playNextInsertIndex(c.currentMediaItemIndex, c.mediaItemCount) { i ->
+                    c.getMediaItemAt(i).queuedBy() == QueueOps.QUEUED_NEXT
+                }
+                c.addMediaItems(at, items)
+            } else {
+                c.addMediaItems(items)
+            }
+            if (c.playbackState == Player.STATE_IDLE) c.prepare()
         }
     }
 

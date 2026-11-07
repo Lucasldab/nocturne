@@ -12,7 +12,6 @@ import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.ShuffleOrder
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.google.common.util.concurrent.Futures
@@ -107,6 +106,9 @@ class PlaybackService : MediaSessionService() {
             .setWakeMode(C.WAKE_MODE_LOCAL)
             // Gapless: ExoPlayer default-on satisfies the gapless contract.
             .build()
+        // Keep play-next / add-to-queue meaningful with shuffle on (the
+        // default order scatters inserted items at random). See QueueShuffleOrder.
+        player.setShuffleOrder(QueueShuffleOrder())
 
         // Surface playback errors via Toast AND auto-skip on missing file.
         // Without this the player silently transitions to STATE_ENDED on URI
@@ -417,7 +419,7 @@ class PlaybackService : MediaSessionService() {
         if (ids != pending.mediaIds) return
         pending.shuffleOrder
             ?.takeIf { it.size == player.mediaItemCount }
-            ?.let { player.setShuffleOrder(ShuffleOrder.DefaultShuffleOrder(it, System.currentTimeMillis())) }
+            ?.let { player.setShuffleOrder(QueueShuffleOrder(it, System.currentTimeMillis())) }
         player.repeatMode = pending.repeatMode
         player.shuffleModeEnabled = pending.shuffleMode
     }

@@ -40,6 +40,9 @@ fun TrackEntity.toMediaItem(
         .setAlbumArtist(albumArtist.firstOrNull())
         .setTrackNumber(trackNumber)
         .setDiscNumber(discNumber)
+        // Per-entry id: the queue view keys rows by it, so two copies of the
+        // same track in the queue stay distinct rows (see QueueOps.entryKeys).
+        .setExtras(android.os.Bundle().apply { putString(QueueOps.EXTRA_ENTRY_ID, java.util.UUID.randomUUID().toString()) })
         .apply {
             if (artworkBytes != null) {
                 setArtworkData(artworkBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
@@ -73,3 +76,18 @@ fun TrackEntity.toMediaItem(
         .setMediaMetadata(metadata)
         .build()
 }
+
+/** Copy of this item tagged as hand-queued ([QueueOps.EXTRA_QUEUED_BY]). */
+fun MediaItem.markQueued(queuedBy: String): MediaItem {
+    val extras = android.os.Bundle(mediaMetadata.extras ?: android.os.Bundle())
+    extras.putString(QueueOps.EXTRA_QUEUED_BY, queuedBy)
+    return buildUpon()
+        .setMediaMetadata(mediaMetadata.buildUpon().setExtras(extras).build())
+        .build()
+}
+
+/** [QueueOps.QUEUED_NEXT] / [QueueOps.QUEUED_END] for hand-queued items, else null. */
+fun MediaItem.queuedBy(): String? = mediaMetadata.extras?.getString(QueueOps.EXTRA_QUEUED_BY)
+
+/** Per-entry id set by [toMediaItem]; null for items built elsewhere. */
+fun MediaItem.entryId(): String? = mediaMetadata.extras?.getString(QueueOps.EXTRA_ENTRY_ID)

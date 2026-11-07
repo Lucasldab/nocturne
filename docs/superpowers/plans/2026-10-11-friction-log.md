@@ -25,7 +25,7 @@
   - Shortcut label: `Log a gap`.
 - The mini player's long-press must **not** be used.
 - **App version.** Bump `versionCode` from 54 to 55 and `versionName` from `"0.4.48-dev"` to `"0.4.49-dev"`. `v0.4.48-dev` is already tagged.
-- **Commits** end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. They never include a "Generated with Claude Code" line.
+- No AI attribution in commit messages (no trailers, no footers).
 - **Build and test commands:**
   - Phone tests run from `phone/` with `./gradlew :app:testDebugUnitTest`.
   - Shell and C tests run from the repo root with `make test-e2e-watch` and `bash tests/test_jsonl_goldens.sh`. The goldens test needs `make` to have built `build/nocturned`.
@@ -257,9 +257,7 @@ git add tests/fixtures/jsonl-goldens/gaps-golden.jsonl phone/app/src/test/resour
   phone/app/src/main/kotlin/io/nocturne/phone/data/AppContainer.kt \
   phone/app/src/test/kotlin/io/nocturne/phone/data/stats/ByteShapeGoldenTest.kt \
   phone/app/src/test/kotlin/io/nocturne/phone/data/stats/GapsWriterTest.kt
-git commit -m "feat(phone): GapsWriter and the gaps JSONL stream
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(phone): GapsWriter and the gaps JSONL stream"
 ```
 
 ---
@@ -363,9 +361,7 @@ Writers: the phone writes `gaps-phone-<deviceid>.jsonl`;
 
 ```bash
 git add tests/test_jsonl_goldens.sh tests/test_pin_cycle_runner.sh docs/jsonl-spec.md
-git commit -m "test: gap files stay inert to ingest and the pin-cycle gate
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "test: gap files stay inert to ingest and the pin-cycle gate"
 ```
 
 ---
@@ -654,9 +650,7 @@ git add phone/app/src/main/kotlin/io/nocturne/phone/ui/gap \
   phone/app/src/test/kotlin/io/nocturne/phone/ui/gap \
   phone/app/src/main/kotlin/io/nocturne/phone/ui/player/NowPlayingScreen.kt \
   phone/app/src/main/kotlin/io/nocturne/phone/ui/browser/BrowserRoot.kt
-git commit -m "feat(phone): gap sheet, opened from +gap on Now Playing
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(phone): gap sheet, opened from +gap on Now Playing"
 ```
 
 ---
@@ -789,9 +783,7 @@ git add phone/app/src/main/res/xml/shortcuts.xml phone/app/src/main/res/values/s
   phone/app/src/main/AndroidManifest.xml phone/app/src/main/kotlin/io/nocturne/phone/MainActivity.kt \
   phone/app/src/main/kotlin/io/nocturne/phone/data/AppContainer.kt \
   phone/app/src/main/kotlin/io/nocturne/phone/ui/browser/BrowserRoot.kt phone/app/build.gradle.kts
-git commit -m "feat(phone): \"Log a gap\" launcher shortcut; bump to 0.4.49-dev
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat(phone): \"Log a gap\" launcher shortcut; bump to 0.4.49-dev"
 ```
 
 ---
@@ -963,9 +955,7 @@ Expected: every listed test passes, including the new one.
 
 ```bash
 git add config/bin/nocturne-gap tests/test_nocturne_gap.sh Makefile
-git commit -m "feat: nocturne-gap, the desktop side of the friction log
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat: nocturne-gap, the desktop side of the friction log"
 ```
 
 ---
@@ -1067,9 +1057,7 @@ Expected: `nocturne-pm` is listed, or at minimum the file exists. Agents load at
 
 ```bash
 git add .claude/agents/nocturne-pm.md docs/gaps-triage.md
-git commit -m "feat: nocturne-pm review agent and gaps triage file
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+git commit -m "feat: nocturne-pm review agent and gaps triage file"
 ```
 
 ---

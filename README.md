@@ -11,6 +11,12 @@ it belongs on the phone right now, based on what you pin, play and recently
 added. An Android app browses the whole catalog and plays whatever is on the
 device. Syncthing moves the files, with no streaming and no accounts.
 
+<p align="center">
+  <img src="docs/screenshots/now-playing.png" width="32%" alt="Now Playing screen with track details, the play queue and playback controls">
+  <img src="docs/screenshots/home.png" width="32%" alt="Home screen listing this week's picks, each with a GET button">
+  <img src="docs/screenshots/tracks.png" width="32%" alt="Tracks tab sorted by most played, with a PIN button on each track and one track pinned">
+</p>
+
 ## Why I built it
 
 I wanted the convenience of a streaming app with music I own. Copying the whole

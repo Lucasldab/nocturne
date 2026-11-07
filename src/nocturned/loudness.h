@@ -6,8 +6,7 @@
  * The phone only ever plays the lossy resident copies, so levelling is baked
  * into the transcode rather than tagged onto the FLAC: the archive FLAC is the
  * track id (sha256 of the whole file), and retagging it would detach every
- * pin, like and play. See docs/superpowers/specs/2026-10-10-loudness-and-
- * download-feedback-design.md. */
+ * pin, like and play. See docs/transcode.md. */
 
 #define LOUDNESS_SILENCE_LUFS      (-70.0)  /* at or below: treat as silence */
 #define LOUDNESS_PEAK_CEILING_DBTP (-1.0)   /* boost never pushes peaks past this */

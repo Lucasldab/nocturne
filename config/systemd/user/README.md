@@ -1,7 +1,9 @@
 # systemd user units — nocturne
 
-Reference templates for the desktop-side daemon's systemd integration.
-Copy these into `~/.config/systemd/user/`, reload, enable.
+Reference templates for the server-side daemon's systemd integration.
+Copy these into `~/.config/systemd/user/`, reload, enable. They assume the
+binary at `/usr/local/bin/nocturned`, the library at `~/music` and the meta
+folder at `~/sync/nocturne/meta`; edit the units if yours differ.
 
 ## Files
 
@@ -14,12 +16,16 @@ Copy these into `~/.config/systemd/user/`, reload, enable.
 | `nocturne-pin-cycle.path` | Path watcher that fires `nocturne-pin-cycle.service` on changes inside `~/sync/nocturne/meta/`. |
 | `nocturne-download.service` | Runs `nocturned download` to dispatch phone-side download requests via `flacget`. Holds its own lockfile — independent of the cycle lock. |
 | `nocturne-download.path` | Watches the meta dir and fires `nocturne-download.service`. Loop-safe: the dispatcher's id-set dedup makes spurious fires no-ops. |
+| `nocturne-discover.service` | Runs `nocturned discover` to pick the week's discovery tracks, then starts a cycle. |
+| `nocturne-discover.timer` | Fires `nocturne-discover.service` on Mondays at midnight. |
 
-The service's `ExecStart` calls `~/.local/bin/nocturne-pin-cycle-runner` — a
-shell wrapper in `config/bin/` that implements the 5 s debounce, waits for
-Syncthing `.tmp` sentinels to drain, then gates the cycle on nanosecond mtime
-comparison (so a Syncthing rename and a manifest write that land in the same
-wall-clock second don't silently suppress the retry).
+The pin-cycle service's `ExecStart` calls `~/.local/bin/nocturne-pin-cycle-runner`
+— a shell wrapper in `config/bin/` that implements the 5 s debounce, waits for
+Syncthing `.tmp` sentinels to drain, then gates the cycle on nanosecond ctime
+comparison. It uses ctime because Syncthing copies the phone's mtime onto the
+file, so a pin that syncs late would otherwise look older than the manifest.
+The cycle service calls `~/.local/bin/nocturne-cycle-run`, which arbitrates the
+lock with the watcher and retries `nocturned cycle`.
 
 ## Lock coordination
 
@@ -42,23 +48,23 @@ End-to-end handover is ~2 seconds of lost inotify coverage.
 ```sh
 mkdir -p ~/.config/systemd/user ~/.local/bin
 cp config/systemd/user/*.{service,timer,path} ~/.config/systemd/user/
-cp config/bin/nocturne-pin-cycle-runner ~/.local/bin/
-chmod +x ~/.local/bin/nocturne-pin-cycle-runner
+install -m 0755 config/bin/nocturne-cycle-run config/bin/nocturne-pin-cycle-runner ~/.local/bin/
 systemctl --user daemon-reload
 systemctl --user enable --now \
     nocturne-watch.service \
     nocturne-cycle.timer \
-    nocturne-pin-cycle.path \
-    nocturne-download.path
+    nocturne-discover.timer \
+    nocturne-pin-cycle.path
 systemctl --user list-timers | grep nocturne
 ```
 
-The `nocturne-download.path` unit fires `nocturned download` on every meta
-dir change. The dispatcher reads `downloads-phone-*.jsonl`, dedups against
-terminal-state entries it has already written to `downloads-desktop.jsonl`,
-then shells out to `~/.local/bin/flacget` once per fresh request. `flacget`
-itself calls `nocturned cycle` at the end so the new track flows into the
-phone's catalog via the normal pin/Syncthing path.
+To let the phone request downloads, also enable `nocturne-download.path`. It
+fires `nocturned download` on every meta dir change. The dispatcher reads
+`downloads-phone-*.jsonl`, dedups against terminal-state entries it has already
+written to `downloads-desktop.jsonl`, then runs the command set in
+`[download] flacget_path` (default `~/.local/bin/flacget`) once per fresh request.
+That command is not part of this repo. It should end by running `nocturned cycle`,
+so the new track flows into the phone's catalog.
 
 Verify watch is up:
 
@@ -76,6 +82,6 @@ systemctl --user status nocturne-watch.service
 
 ## GrapheneOS / battery exemption
 
-Phone-side: Syncthing-Fork AND the Nocturne app both need the GrapheneOS
-"battery optimization → don't optimize" exemption to keep syncing while the
-screen is off. See `docs/phone-setup.md`.
+Phone-side: Syncthing-Fork and the nocturne app both need the battery
+optimization exemption ("Unrestricted") to keep syncing while the screen is off.
+See `docs/phone-setup.md`.

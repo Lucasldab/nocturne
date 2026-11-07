@@ -10,7 +10,7 @@
 [library]
 # Path to your music library root. Optional; the daemon also accepts
 # the library path positionally on the command line for scan/watch.
-# path = "/home/you/music/library"
+# path = "/home/you/music"
 
 # [download] — the wrapper `nocturned download` execs once per phone-initiated
 # request. Optional; defaults to ~/.local/bin/flacget.
@@ -18,22 +18,23 @@
 # flacget_path = "/home/you/.local/bin/flacget"
 
 [sync_meta]
-# Where the daemon writes catalog.json + manifest.json (Phase 3).
-# Default: ~/sync/music-meta
+# Where the daemon writes catalog.json + manifest.json.
+# Default: ~/sync/music-meta. The shipped systemd units watch
+# ~/sync/nocturne/meta, so set this to that path if you use them.
 # path = "/home/you/sync/music-meta"
 
 [cap]
 # Total cap on resident bytes. Default: 12 GiB.
 # bytes = 12884901888
-# Effective resident ratio inside the cap (RESOLVE-03). Default: 0.70
+# Effective resident ratio inside the cap. Default: 0.70
 # (the resolver will not exceed cap.bytes * effective_ratio).
 # effective_ratio = 0.70
 
 [resolver]
-# Hysteresis at the cap edge (RESOLVE-05). Default: 0.10
+# Hysteresis at the cap edge. Default: 0.10
 # hysteresis = 0.10
-# Below this many phone plays, fall back to recent_adds + exploration
-# (RESOLVE-06). Default: 10
+# Below this many phone plays, fall back to recent_adds + exploration.
+# Default: 10
 # cold_start_play_threshold = 10
 # RNG seed for the exploration bucket. 0 = derive from ISO-week.
 # seed = 0
@@ -114,7 +115,8 @@ window_days = 0
 #
 # Default: disabled (resident is a hardlink of archive, identical bytes).
 [transcode]
-# enabled = false
+# Integer, not a boolean: 1 = on, 0 = off (the default).
+# enabled = 0
 # Codec: "opus" (smallest, no embedded art) or "aac" (larger, art preserved).
 # format = "opus"
 # Target bitrate. Sane Opus range: 96-192. AAC: 128-256.

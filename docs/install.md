@@ -1,58 +1,57 @@
-# nocturne — desktop install + Syncthing wiring
+# nocturne — server install
 
-This walkthrough takes a clean Arch + Hyprland workstation through to a
-working `nocturned` daemon, a path-layout-migrated music library, and a
-desktop-side Syncthing peer ready to sync to a phone.
+This takes a Linux machine from a clean checkout to a running `nocturned`, a
+migrated music library and a Syncthing peer ready to pair with a phone.
 
-Phone-side wiring is in [docs/phone-setup.md](phone-setup.md).
-Symptom-driven recovery is in [docs/troubleshooting.md](troubleshooting.md).
+Next steps: [phone setup](phone-setup.md). If something goes wrong, see
+[troubleshooting](troubleshooting.md).
+
+The examples use `~/music` for the library and `~/sync/nocturne/meta` for the meta
+folder, which are the paths the shipped systemd units expect.
 
 ## 1. Prerequisites
 
-Arch Linux. Other distributions work; install commands below assume
-`pacman`. The user is expected to know how to substitute equivalents
-on Debian/Fedora/etc.
+nocturned needs **TagLib 2.x**. It doesn't link against 1.13, the version in
+Ubuntu 24.04.
+
+Debian 13 (trixie):
 
 ```sh
-sudo pacman -S taglib sqlite jansson curl syncthing
-sudo pacman -S strace        # for tests/test_no_network.sh runtime layer
-sudo pacman -S bear          # optional, for `make compile-commands`
+sudo apt install build-essential pkg-config xxd libtag-c-dev libsqlite3-dev \
+    libjansson-dev libcurl4-openssl-dev syncthing python3 ffmpeg
+sudo apt install curl flac jq sqlite3 strace   # for make test
 ```
 
-Verify versions:
+Arch:
 
 ```sh
-syncthing --version              # expect 2.0.16 or newer
-pkg-config --modversion libcurl  # expect 8.x
-pkg-config --modversion taglib_c # expect 2.x
+sudo pacman -S base-devel tinyxxd taglib sqlite jansson curl syncthing python ffmpeg
+sudo pacman -S flac jq strace                  # for make test
+sudo pacman -S bear                            # optional, for make compile-commands
 ```
 
-## 2. Build nocturned
+`ffmpeg` is required for [transcode mode](transcode.md), and the test suite uses it
+to generate fixtures.
+
+## 2. Build and install
 
 ```sh
 cd /path/to/nocturne
 make nocturned
 make test
+sudo install -m 0755 build/nocturned /usr/local/bin/nocturned
 ```
 
-Expected: `==> All test suites PASSED`. If the CROSS-03 audit fails
-with "libcurl linked", confirm you're on a tag at or after Phase 3
-plan 03-07.
-
-Optional sanitizer build for paranoia:
-
-```sh
-make clean
-make test SAN=1
-```
+`make test` should end with `==> All test suites PASSED`. For a sanitizer build, run
+`make clean`, then `make test SAN=1`.
 
 ## 3. Configure
 
-Create `~/.config/nocturne/config.toml`:
+Create `~/.config/nocturne/config.toml`, replacing `<you>` with your username:
 
 ```toml
 [library]
-path = "/home/<you>/music/library"
+path = "/home/<you>/music"
 
 [sync_meta]
 path = "/home/<you>/sync/nocturne/meta"
@@ -62,81 +61,63 @@ bytes = 12884901888           # 12 GiB
 effective_ratio = 0.70
 
 [syncthing]
-desktop_name = "nocturne-desktop"
+desktop_name = "nocturne-server"
 phone_name   = "nocturne-phone"
 # After running Syncthing once, paste in the device IDs:
 # desktop_device_id = "ABCDEFG-..."
 # phone_device_id   = "HIJKLMN-..."
 
 [syncthing.phone]
-sync_files_path = "/storage/emulated/0/Music/nocturne"
-sync_meta_path  = "/storage/emulated/0/sync/nocturne/meta"
+sync_files_path = "/storage/emulated/0/nocturne/music"
+sync_meta_path  = "/storage/emulated/0/nocturne/meta"
 ```
 
-The [cap] block is the resident-set size cap. 12 GiB is the default
-target; effective_ratio leaves 30% headroom on the phone's filesystem
-to avoid Pitfall 10 (storage floor).
+`[cap]` limits how much music goes to the phone. With `effective_ratio = 0.70`, the
+resolver stays under 70% of `bytes` to leave headroom on the phone's filesystem.
 
-## 4. One-time library migrate (SYNC-01)
+Every option is described in
+[`config/nocturne.toml.example`](../config/nocturne.toml.example).
 
-Phase 3 lays out your library as
-`<root>/archive/<artist>/<album>/<track>` for non-resident files and
-`<root>/resident/<artist>/<album>/<track>` for the rotating set.
-Hardlinks make this free in disk space; the path layout IS the
-selective-sync mechanism (see `.planning/research/PITFALLS.md`
-Pitfall 2).
-
-Step 1: scan to populate the DB so migrate has rows to enumerate.
+Also create the meta folder:
 
 ```sh
-nocturned scan ~/music/library
+mkdir -p ~/sync/nocturne/meta
 ```
 
-Expected output:
+## 4. Migrate the library (once)
 
-```
-scan: seen=12345 added=12345 updated=0 removed=0 skipped=0 parse_failed=0 hash_failed=0 elapsed=18s
-```
+nocturne keeps non-resident files in `<library>/archive/` and the rotating set in
+`<library>/resident/`. Only `resident/` is synced, so the directory layout itself
+selects what reaches the phone. Moves use hardlinks, so they take no extra space.
 
-Step 2: dry-run the migrate to see what will move.
+Scan to fill the database:
 
 ```sh
-nocturned migrate ~/music/library
+nocturned scan ~/music
+# scan: seen=12345 added=12345 updated=0 removed=0 skipped=0 parse_failed=0 hash_failed=0 elapsed=18s
 ```
 
-Expected output:
-
-```
-migrate: planned=12345 moved=0 already=0 skipped_outside=0 fallback=0 errors=0 (dry-run)
-```
-
-Step 3: execute.
+Do a dry run to see what will move:
 
 ```sh
-nocturned migrate ~/music/library --apply
+nocturned migrate ~/music
+# migrate: planned=12345 moved=0 already=0 skipped_outside=0 fallback=0 errors=0 (dry-run)
 ```
 
-Expected output:
-
-```
-migrate: planned=12345 moved=12345 already=0 skipped_outside=0 fallback=0 errors=0
-```
-
-After this command, every track lives under
-`~/music/library/archive/<artist>/<album>/<track>`. `~/music/library/resident/`
-is empty until rotate runs.
-
-Step 4: doctor sanity check.
+Then apply it:
 
 ```sh
-nocturned doctor
+nocturned migrate ~/music --apply
+# migrate: planned=12345 moved=12345 already=0 skipped_outside=0 fallback=0 errors=0
 ```
 
-Expected: `Schema version: 3`, `Issues found: 0 (healthy)`. If
-`schema_version < 3`, the migration did not apply — check
-`~/.local/share/nocturne/nocturne.db` permissions and rerun.
+Every track now lives under `~/music/archive/`. `resident/` stays empty until the
+first rotation.
 
-## 5. Wire Syncthing on desktop (SYNC-02, SYNC-04, SYNC-05)
+Check the result with `nocturned doctor`. `Orphan rows` should be 0, and
+`Issues found` shows anything that needs attention.
+
+## 5. Set up Syncthing
 
 Start Syncthing once so it generates its config:
 
@@ -144,148 +125,96 @@ Start Syncthing once so it generates its config:
 systemctl --user enable --now syncthing
 ```
 
-Open `https://127.0.0.1:8384` in a browser (accept the self-signed
-cert). Set the Device Name to `nocturne-desktop`
-(Settings → General → Device Name) — this is Pitfall 20 mitigation;
-the default is your machine's hostname which leaks identity.
+Open `https://127.0.0.1:8384` and accept the self-signed certificate. Set the
+device name to `nocturne-server` under Settings → General, because the default is
+your hostname.
 
-Disable the privacy-leaking knobs:
+Turn off the settings that reach outside your network:
 
 - Settings → Connections → uncheck "Global Discovery"
 - Settings → Connections → uncheck "Enable Relaying"
 - Settings → Connections → uncheck "Enable NAT traversal"
 
-Copy your Syncthing device ID (top-right Identification panel) into
-`config.toml` as `[syncthing] desktop_device_id`.
+Copy your device ID (Actions → Show ID) into `config.toml` as
+`[syncthing] desktop_device_id`.
 
-Generate the desktop-side folder XML:
-
-```sh
-nocturned sync-config --print --side desktop > /tmp/desktop-folders.xml
-cat /tmp/desktop-folders.xml
-```
-
-The output is a complete `<configuration>` block with both folder
-pairs declared. Two ways to apply it:
-
-### Option A: REST PUT (no Syncthing restart needed)
+Check the generated folder config, then apply it. `desktop` is the code's name for
+the server side:
 
 ```sh
+nocturned sync-config --print --side desktop
 nocturned sync-config --apply
 ```
 
-Expected silently exits 0. Refresh the Syncthing GUI; the two folders
-(`sync-meta`, `sync-files`) appear in the sidebar.
-
-### Option B: hand-edit config.xml
-
-Stop Syncthing, paste the relevant `<folder>` blocks into
-`~/.config/syncthing/config.xml` after the existing folders, restart
-Syncthing.
-
-```sh
-systemctl --user restart syncthing
-```
+Refresh the GUI: `sync-meta` and `sync-files` should appear in the sidebar. If you'd
+rather edit by hand, stop Syncthing, paste the `<folder>` blocks into
+`~/.config/syncthing/config.xml` and start it again.
 
 ## 6. First rotation
 
-Compute the manifest:
+Compute which tracks belong on the phone, apply that, and publish the result:
 
 ```sh
 nocturned resolve
-```
-
-Expected output:
-
-```
-resolve: residents=8412 used=12348902400 cap=12884901888 effective=9019431321 cold_start=yes
-note: run `nocturned rotate` to apply the manifest to disk
-```
-
-Apply it:
-
-```sh
+# resolve: residents=840 used=9000000000 cap=12884901888 effective=9019431321 cold_start=yes
 nocturned rotate
+# rotate: to_add=840 added=840 to_remove=0 removed=0 already=0 ... errors=0
+nocturned publish
+# publish: out=/home/<you>/sync/nocturne/meta
 ```
 
-Expected:
+`cold_start=yes` is expected at this point. Until the phone has logged 10 plays, the
+resolver only uses recent adds, exploration and pins, so weekly discovery picks
+don't appear on the phone yet.
 
-```
-rotate: to_add=8412 added=8412 to_remove=0 removed=0 already=0 fallback=0 errors=0
-```
+On the very first rotate you may see an `ensure_resident_nomedia` error, because
+`resident/` doesn't exist yet. The rotation still completes.
 
 If you see `warn: syncthing config.xml not loaded`, set
-`NOCTURNE_SYNCTHING_CONFIG=$HOME/.config/syncthing` and retry; the
-default location is correct unless you've moved Syncthing's config dir.
+`NOCTURNE_SYNCTHING_CONFIG` to your Syncthing config directory and retry. The
+default, `~/.config/syncthing`, is correct unless you moved it.
 
-Inspect the result:
+To confirm files arrived:
 
 ```sh
-ls ~/music/library/resident/   # should NOT be empty
-find ~/music/library/resident -type f -name '*.flac' | wc -l
+find ~/music/resident -type f | wc -l
+ls ~/sync/nocturne/meta      # catalog.json  manifest.json
 ```
 
 ## 7. Run as a service
 
-Reference unit files live under `config/systemd/user/`. Five units cover
-the full automation chain:
-
-| Unit | Role |
-|------|------|
-| `nocturne-watch.service` | inotify watcher; sub-second DB updates on FS events |
-| `nocturne-cycle.service` | one-shot scan→ingest→resolve→rotate→publish |
-| `nocturne-cycle.timer` | fires cycle every 15 min |
-| `nocturne-pin-cycle.service` | runs cycle when phone JSONL writes land |
-| `nocturne-pin-cycle.path` | path watcher that triggers pin-cycle |
-
-Install:
+The units are in `config/systemd/user/`, and
+[their README](../config/systemd/user/README.md) describes each one.
 
 ```sh
 mkdir -p ~/.config/systemd/user ~/.local/bin
-cp config/systemd/user/*.{service,timer,path} ~/.config/systemd/user/
-cp config/bin/nocturne-pin-cycle-runner ~/.local/bin/
-chmod +x ~/.local/bin/nocturne-pin-cycle-runner
+install -m 0644 config/systemd/user/*.{service,timer,path} ~/.config/systemd/user/
+install -m 0755 config/bin/nocturne-cycle-run config/bin/nocturne-pin-cycle-runner ~/.local/bin/
 systemctl --user daemon-reload
 systemctl --user enable --now \
     nocturne-watch.service \
     nocturne-cycle.timer \
+    nocturne-discover.timer \
     nocturne-pin-cycle.path
 ```
 
-Verify:
+Check that they're running:
 
 ```sh
 systemctl --user status nocturne-watch.service
-# active (running) — "library=/home/$USER/music dirs=N watches=N"
 systemctl --user list-timers | grep nocturne
-# nocturne-cycle.timer firing every 15 min
 ```
 
-### Lock coordination
+To keep the services running while you're logged out, run
+`sudo loginctl enable-linger $USER`.
 
-`nocturned` enforces single-writer access via a flock on its pidfile.
-Watch holds it indefinitely; cycle / pin-cycle take it for the duration
-of their run. The reference units coordinate via `ExecStartPre` (stop
-watch) + `ExecStartPost` (restart watch). Handover takes ≈2 seconds of
-lost inotify coverage per cycle tick, which is fine — `nocturned scan`
-on next watch start picks up anything that changed during the gap.
+Timings to expect:
 
-### Latency budget
+- A new song in `~/music/` reaches the database within about 2 seconds.
+- The catalog and manifest are published within 15 minutes, at the next cycle. Lower
+  `OnUnitActiveSec=` in the timer for faster updates.
+- A pin from the phone starts a cycle right away instead of waiting for the timer.
 
-- Drop a song in `~/music/` → DB updated ≤2 s (watch).
-- Catalog/manifest published ≤15 min (next cycle tick — tighten via
-  `OnUnitActiveSec=` in the timer if you want faster).
-- Phone Syncthing pulls + Nocturne app reconciles ≤45 s after publish.
-- **End-to-end worst case: ≈16 min.**
+## 8. Next: the phone
 
-## 8. Next: phone
-
-[docs/phone-setup.md](phone-setup.md) walks through Syncthing-Fork on
-F-Droid, device pairing, and the manual SYNC-06 (5-minute timing) and
-SYNC-07 (Receive-Only tampering) verification procedures.
-
-## Troubleshooting
-
-If anything in this walkthrough errors out, check
-[docs/troubleshooting.md](troubleshooting.md) — symptom-keyed recipes
-for the common pitfalls.
+Continue with [phone setup](phone-setup.md).

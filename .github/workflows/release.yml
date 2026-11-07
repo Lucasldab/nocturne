@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Gate the APK on the unit tests. Obtainium auto-installs whatever lands in
+  # Gate the APK on the test suites. Obtainium auto-installs whatever lands in
   # Releases, so a red suite must stop the build rather than ship past it.
   test:
     uses: ./.github/workflows/test.yml

@@ -243,6 +243,34 @@ class PlayerViewModel(
         }
     }
 
+    // -------------------------------------------------------------------------
+    // Mini-player hold-to-unpin. The long-press stages the unpin and the UI
+    // shows an undo snackbar; the write happens on commit (snackbar gone or
+    // screen left) via the same path as every other unpin: pin row tombstone
+    // → PinsWriter drain to pins-phone-<id>.jsonl, plus the unsync action
+    // line. Undo writes nothing, so the pin is left exactly as it was.
+    // -------------------------------------------------------------------------
+
+    private val pendingUnpins = PendingUnpins { id ->
+        container.appScope.launch { commitUnsync(id) }
+    }
+
+    fun stageUnpin(trackId: String): Long = pendingUnpins.stage(trackId)
+
+    fun undoUnpin(token: Long): Boolean = pendingUnpins.undo(token)
+
+    fun commitUnpin(token: Long) = pendingUnpins.commit(token)
+
+    private suspend fun commitUnsync(trackId: String) {
+        container.db.pinDao().setPinned(
+            id = trackId,
+            pinned = false,
+            ts = System.currentTimeMillis(),
+        )
+        container.pinsWriter.drain()
+        container.actionsWriter.emitUnsyncTrack(trackId)
+    }
+
     fun playAlbumFromTrack(tracks: List<TrackEntity>, startTrack: TrackEntity) {
         val c = _controller.value ?: return  // not yet connected
         if (!startTrack.isResident) {
@@ -344,6 +372,7 @@ class PlayerViewModel(
     }
 
     override fun onCleared() {
+        pendingUnpins.commitAll()
         disconnect()
     }
 }

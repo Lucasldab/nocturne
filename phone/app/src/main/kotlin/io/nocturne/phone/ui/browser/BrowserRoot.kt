@@ -32,7 +32,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import io.nocturne.phone.ui.browser.components.NocturneBottomNav
-import io.nocturne.phone.ui.browser.components.TrackActionsSheet
 import io.nocturne.phone.ui.gap.GapSheet
 import io.nocturne.phone.ui.player.MiniPlayer
 import io.nocturne.phone.ui.player.NowPlayingScreen
@@ -114,12 +113,11 @@ fun BrowserRoot(
     // process death / rotation should reset to browse for predictability.
     var inUtility by remember { mutableStateOf(false) }
     var activeUtility by remember { mutableStateOf("rotation") }
-    // Long-press on the mini-player surfaces the same TrackActionsSheet used by
-    // track rows in the catalog. State lives at this level so the sheet can
-    // render above the entire shell (incl. nav bar + mini-player).
-    var miniSheetTrack by remember {
-        mutableStateOf<io.nocturne.phone.data.db.entity.TrackEntity?>(null)
-    }
+    // Hold the mini-player → unpin directly, with an undo snackbar (friction
+    // log 2026-11-07). The unpin is staged in PlayerViewModel and only written
+    // once the snackbar goes away without undo.
+    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+    val snackScope = androidx.compose.runtime.rememberCoroutineScope()
     // Friction log: non-null = sheet open, holding the `screen` value to log.
     var gapScreen by rememberSaveable { mutableStateOf<String?>(null) }
     val gapRequested by container.gapRequests.collectAsStateWithLifecycle()
@@ -194,6 +192,16 @@ fun BrowserRoot(
         }
 
         Scaffold(
+            snackbarHost = {
+                androidx.compose.material3.SnackbarHost(snackbarHostState) { data ->
+                    androidx.compose.material3.Snackbar(
+                        snackbarData = data,
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                        actionColor = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            },
             topBar = {
                 if (!isFullscreen) {
                     Column {
@@ -267,14 +275,34 @@ fun BrowserRoot(
                 // the mini stays anchored above the system gesture inset.
                 Column(modifier = Modifier.fillMaxWidth()) {
                     if (hasMediaItem && activeController != null) {
-                        val sheetScope = androidx.compose.runtime.rememberCoroutineScope()
                         MiniPlayer(
                             controller = activeController,
                             onTap = { nav.navigate(Routes.NOW_PLAYING) },
                             onLongPress = {
-                                val id = activeController.currentMediaItem?.mediaId ?: return@MiniPlayer
-                                sheetScope.launch {
-                                    miniSheetTrack = playerVm.getTrack(id)
+                                val item = activeController.currentMediaItem ?: return@MiniPlayer
+                                val token = playerVm.stageUnpin(item.mediaId)
+                                snackScope.launch {
+                                    try {
+                                        val title = playerVm.getTrack(item.mediaId)?.title
+                                            ?: item.mediaMetadata.title?.toString().orEmpty()
+                                        // A newer hold replaces the visible snackbar;
+                                        // the dismissed one commits its own unpin.
+                                        snackbarHostState.currentSnackbarData?.dismiss()
+                                        val result = snackbarHostState.showSnackbar(
+                                            message = "unpinned · $title",
+                                            actionLabel = "undo",
+                                            duration = androidx.compose.material3.SnackbarDuration.Long,
+                                        )
+                                        if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                                            playerVm.undoUnpin(token)
+                                        } else {
+                                            playerVm.commitUnpin(token)
+                                        }
+                                    } finally {
+                                        // Left the screen mid-snackbar: no undo
+                                        // happened, so the unpin stands.
+                                        playerVm.commitUnpin(token)
+                                    }
                                 }
                             },
                         )
@@ -464,15 +492,6 @@ fun BrowserRoot(
         // Mini-player + nav-bar are now stacked in the Scaffold bottomBar slot
         // above (no longer overlaid via Box.align so they can't visually clash
         // with the NavigationBar or the gesture inset).
-        miniSheetTrack?.let { t ->
-            TrackActionsSheet(
-                displayName = t.title,
-                isAlbum = false,
-                onUnsync = { playerVm.unsyncTrack(t.id) },
-                onDelete = { playerVm.deleteTrack(t.id) },
-                onDismiss = { miniSheetTrack = null },
-            )
-        }
         gapScreen?.let { screen ->
             GapSheet(
                 send = { text ->

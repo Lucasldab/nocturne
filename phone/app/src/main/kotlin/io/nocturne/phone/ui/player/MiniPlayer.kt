@@ -86,6 +86,8 @@ fun MiniPlayer(
         }
     }
 
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+
     androidx.compose.foundation.layout.Column(
         modifier = modifier
             .fillMaxWidth()
@@ -126,7 +128,12 @@ fun MiniPlayer(
                         Modifier.pointerInput(onTap, onLongPress) {
                             detectTapGestures(
                                 onTap = { onTap() },
-                                onLongPress = { onLongPress() },
+                                onLongPress = {
+                                    haptics.performHapticFeedback(
+                                        androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress,
+                                    )
+                                    onLongPress()
+                                },
                             )
                         }
                     } else {

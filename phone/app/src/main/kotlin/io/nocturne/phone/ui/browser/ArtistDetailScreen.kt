@@ -38,6 +38,8 @@ fun ArtistDetailScreen(
     onPlayNext: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
     onAddToQueue: (io.nocturne.phone.data.db.entity.TrackEntity) -> Unit = {},
     container: io.nocturne.phone.data.AppContainer? = null,
+    onPlayNextAlbum: ((String) -> Unit)? = null,
+    onAddAlbumToQueue: ((String) -> Unit)? = null,
 ) {
     var artist by remember { mutableStateOf<ArtistEntity?>(null) }
     LaunchedEffect(artistId) { artist = vm.artistById(artistId) }
@@ -99,6 +101,8 @@ fun ArtistDetailScreen(
                         container = container,
                         onUnsync = { vm.unsyncAlbum(album.id) },
                         onDelete = { vm.deleteAlbum(album.id) },
+                        onPlayNext = onPlayNextAlbum?.let { f -> { f(album.id) } },
+                        onAddToQueue = onAddAlbumToQueue?.let { f -> { f(album.id) } },
                     )
                 }
                 item { HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant) }

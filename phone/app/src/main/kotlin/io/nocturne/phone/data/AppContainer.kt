@@ -86,6 +86,13 @@ class AppContainer(
         ActionsWriter(syncPrefs, jsonlFileWriter)
     }
 
+    // Process-lifetime scope for writes that must outlive the screen that
+    // asked for them (e.g. a staged unpin committed while its ViewModel is
+    // being cleared).
+    val appScope = kotlinx.coroutines.CoroutineScope(
+        kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO,
+    )
+
     // Friction log: one line per gap the user types. Never ingested by the
     // daemon — read by the PM review agent (docs/gaps-triage.md).
     val gapsWriter: GapsWriter by lazy { GapsWriter(syncPrefs, jsonlFileWriter) }

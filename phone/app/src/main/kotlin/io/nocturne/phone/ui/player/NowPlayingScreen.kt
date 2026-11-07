@@ -302,7 +302,6 @@ private fun NowPlayingBody(
             // 4. Queue — fills remaining space inside the scrollable upper region.
             QueueSection(
                 controller = controller,
-                currentIndex = currentIndex,
                 playerVm = playerVm,
                 onLongPressTrack = { id, title -> queueSheetTrack = id to title },
                 modifier = Modifier.weight(1f),

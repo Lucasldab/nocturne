@@ -35,9 +35,18 @@ fun AlbumRow(
     container: AppContainer? = null,
     onUnsync: () -> Unit = {},
     onDelete: () -> Unit = {},
+    onPlayNext: (() -> Unit)? = null,
+    onAddToQueue: (() -> Unit)? = null,
 ) {
     val rowAlpha = if (album.hasResident) 1f else NON_RESIDENT_ALPHA
     var showActionsSheet by remember { mutableStateOf(false) }
+    // Swipe right → "$ play next" / "$ add to queue" for the whole album
+    // (resident tracks, track order) — the same gesture and menu as TrackRow.
+    SwipeQueueActions(
+        onPlayNext = { onPlayNext?.invoke() },
+        onAddToQueue = { onAddToQueue?.invoke() },
+        enabled = album.hasResident && onPlayNext != null && onAddToQueue != null,
+    ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -78,6 +87,7 @@ fun AlbumRow(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
     }
 
     if (showActionsSheet) {

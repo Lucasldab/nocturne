@@ -3,6 +3,7 @@ package io.nocturne.phone.data.stats
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
@@ -10,16 +11,15 @@ import kotlinx.coroutines.launch
  * Phase 6 (STATS-01 / STATS-02 / D-10..D-14 / D-24): play-vs-skip emitter
  * hooked into Media3's `Player.Listener` callbacks.
  *
- * Lifecycle:
- *   - `onPlaybackStateChanged(STATE_READY)`: caches `player.contentDuration`
- *     into `preTransitionDurationMs`. This is the only place duration is
- *     guaranteed resolved — Pitfall 1 (`player.duration` is `C.TIME_UNSET`
- *     during transitions).
- *   - `onMediaItemTransition`: caches the new item's `mediaId` and resets the
- *     duration cache so the next `STATE_READY` re-fills it.
- *   - `onPositionDiscontinuity`: the actual classifier hook. Calls
- *     `decideEmission(...)` with the cached duration and the old position;
- *     if non-null, dispatches `StatsWriter.record` on `scope` (FGS-immune).
+ * The callback bookkeeping lives in [PlayTracker] (durations remembered per
+ * track id, one open listen at a time); this class only adapts Media3:
+ *   - READY, timeline changes and transitions report durations of the
+ *     current and next items. Gapless playback stays READY between tracks,
+ *     so READY alone is not enough (the bug fixed 2026-11-08).
+ *   - `onMediaItemTransition` opens the new item's listen.
+ *   - `onPositionDiscontinuity` (auto-transition, seek onto another item,
+ *     removal of the current item) and STATE_ENDED (last item played out)
+ *     close it and emit via `StatsWriter.record` on `scope` (FGS-immune).
  *
  * `decideEmission` is factored out as an `internal companion fun` so the
  * decision table can be exercised by a pure-JVM unit test without a real
@@ -30,31 +30,49 @@ class StatsListener(
     private val writer: StatsWriter,
     private val scope: CoroutineScope,
     private val nowMs: () -> Long = { System.currentTimeMillis() },
+    private val tracker: PlayTracker = PlayTracker(),
 ) : Player.Listener {
 
-    // Cached pre-transition state. Updated on STATE_READY (duration) and
-    // onMediaItemTransition (track id of the NEW item — used for the NEXT
-    // discontinuity callback).
-    private var preTransitionDurationMs: Long = C.TIME_UNSET
-    private var preTransitionTrackId: String? = null
+    private val window = Timeline.Window()
+
+    /** Record the duration of the timeline item at [index], if the player knows it. */
+    private fun rememberWindow(index: Int) {
+        val timeline = player.currentTimeline
+        if (index == C.INDEX_UNSET || index < 0 || index >= timeline.windowCount) return
+        timeline.getWindow(index, window)
+        tracker.onDurationKnown(window.mediaItem.mediaId, window.durationMs)
+    }
+
+    private fun rememberCurrentAndNext() {
+        rememberWindow(player.currentMediaItemIndex)
+        rememberWindow(player.nextMediaItemIndex)
+    }
 
     override fun onPlaybackStateChanged(playbackState: Int) {
-        if (playbackState == Player.STATE_READY) {
-            preTransitionDurationMs = player.contentDuration  // Pitfall 1 mitigation
-            if (preTransitionTrackId == null) {
-                preTransitionTrackId = player.currentMediaItem?.mediaId
+        val current = player.currentMediaItem?.mediaId
+        when (playbackState) {
+            Player.STATE_READY -> {
+                tracker.onDurationKnown(current, player.contentDuration)
+                rememberCurrentAndNext()
+                // Restored queue, or a replay after STATE_ENDED: no transition
+                // announces the item, so open its listen here.
+                if (tracker.openTrackId == null) tracker.onItemStarted(current)
             }
+            Player.STATE_ENDED -> emit(tracker.onEnded(current, player.currentPosition))
         }
     }
 
+    override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+        // Gapless: the next item's duration arrives here (SOURCE_UPDATE) while
+        // the playback state stays READY.
+        rememberCurrentAndNext()
+    }
+
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-        // After a transition, the NEW item's id becomes the candidate for the
-        // next transition. The OLD id was used by the discontinuity callback,
-        // which fires immediately BEFORE this one per Media3 1.10 docs.
-        preTransitionTrackId = mediaItem?.mediaId
-        // Force a re-cache on the next STATE_READY — the new item's duration
-        // hasn't been resolved yet (Pitfall 1).
-        preTransitionDurationMs = C.TIME_UNSET
+        // Media3 calls onPositionDiscontinuity for the OLD item first, so the
+        // previous listen is already closed when this opens the next one.
+        tracker.onItemStarted(mediaItem?.mediaId)
+        rememberCurrentAndNext()
     }
 
     override fun onPositionDiscontinuity(
@@ -62,14 +80,19 @@ class StatsListener(
         newPosition: Player.PositionInfo,
         reason: Int,
     ) {
-        val decision = decideEmission(
-            reason = reason,
-            oldMediaItemIndex = oldPosition.mediaItemIndex,
-            newMediaItemIndex = newPosition.mediaItemIndex,
-            oldPositionMs = oldPosition.positionMs,
-            cachedDurationMs = preTransitionDurationMs,
-            cachedTrackId = preTransitionTrackId,
-        ) ?: return
+        emit(
+            tracker.onDiscontinuity(
+                reason = reason,
+                oldMediaItemIndex = oldPosition.mediaItemIndex,
+                newMediaItemIndex = newPosition.mediaItemIndex,
+                oldTrackId = oldPosition.mediaItem?.mediaId,
+                oldPositionMs = oldPosition.positionMs,
+            ),
+        )
+    }
+
+    private fun emit(decision: Emission?) {
+        decision ?: return
         scope.launch {
             writer.record(
                 track = decision.trackId,
@@ -81,7 +104,7 @@ class StatsListener(
         }
     }
 
-    internal data class Emission(
+    data class Emission(
         val trackId: String,
         val playedMs: Long,
         val durationMs: Long,
@@ -101,7 +124,8 @@ class StatsListener(
          *
          * Per D-13: emits for AUTO_TRANSITION (track played to natural end)
          * AND for SEEK that crosses a media-item boundary (user pressed Next
-         * mid-song = skip). Intra-track seeks do not emit.
+         * mid-song = skip), and for REMOVE (the current item left the queue
+         * mid-song). Intra-track seeks do not emit.
          */
         fun decideEmission(
             reason: Int,
@@ -115,6 +139,9 @@ class StatsListener(
             val emitting = when (reason) {
                 Player.DISCONTINUITY_REASON_AUTO_TRANSITION -> true
                 Player.DISCONTINUITY_REASON_SEEK -> crossesItem
+                // The current item left the queue (setMediaItems for another
+                // album, or a swipe-remove): the interrupted listen counts.
+                Player.DISCONTINUITY_REASON_REMOVE -> true
                 else -> false
             }
             if (!emitting) return null

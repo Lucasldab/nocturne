@@ -27,6 +27,10 @@
  *     path — this CLI/ingest action AND the scan unseen-sweep/re-hash deletes.
  *   - scan.c on next walk refuses to insert a row for any blacklisted sha,
  *     so re-imports (e.g. streamrip re-running the same Spotify CSV) skip
+ *   - When that was the album's last audio, its cover and the emptied album
+ *     and artist folders go too. Nothing else would ever remove them.
+ *   - The beets row is not touched: nocturned knows nothing about beets.
+ *     music-import runs music-prune-orphans before each import.
  *
  * Album-level: resolves album_id → all track shas → iterate. After all
  * tracks deleted, attempt rmdir on the now-empty album + artist dirs.
@@ -36,8 +40,10 @@
 
 #include "actions.h"
 #include "db.h"
+#include "rotate.h"
 #include "track_repo.h"
 
+#include <dirent.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -117,6 +123,81 @@ int unsync_track(struct nocturne_db *db, const char *sha, struct action_stats *o
     }
     out->touched++;
     return 0;
+}
+
+/* rmdir a track's album and artist folders if empty. Stops there, so the
+ * library's last track cannot take archive/ with it. Best-effort. */
+static void prune_empty_dirs(const char *path)
+{
+    char *dup = strdup(path);
+    if (!dup) return;
+    char *slash = strrchr(dup, '/');
+    for (int level = 0; level < 2 && slash && slash > dup; level++) {
+        *slash = '\0';
+        if (rmdir(dup) != 0) break;  /* not empty / no perms */
+        slash = strrchr(dup, '/');
+    }
+    free(dup);
+}
+
+static int is_cover_sidecar(const char *name)
+{
+    for (int i = 0; COVER_SIDECAR_NAMES[i]; i++)
+        if (strcmp(name, COVER_SIDECAR_NAMES[i]) == 0) return 1;
+    return 0;
+}
+
+/* A missing folder counts as holding only covers; an unreadable one does not. */
+static int holds_only_covers(const char *dir)
+{
+    DIR *d = opendir(dir);
+    if (!d) return errno == ENOENT;
+    int only = 1;
+    struct dirent *de;
+    while (only && (de = readdir(d)) != NULL) {
+        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
+        only = is_cover_sidecar(de->d_name);
+    }
+    closedir(d);
+    return only;
+}
+
+/* `dir` with its /archive/ segment swapped for /resident/; NULL if it has none. */
+static char *resident_twin(const char *dir)
+{
+    static const char seg[] = "/archive/";
+    const char *at = strstr(dir, seg);
+    if (!at) return NULL;
+    char *out = NULL;
+    if (asprintf(&out, "%.*s/resident/%s", (int) (at - dir), dir,
+                 at + sizeof(seg) - 1) < 0)
+        return NULL;
+    return out;
+}
+
+/* After `track_path` is gone: if only covers remain beside it, remove them and
+ * the emptied album and artist folders. Anything we do not recognise keeps the
+ * folder. Without transcoding, rotate moves promoted tracks into resident/, so
+ * an archive folder holding only a cover can still be a live album: its
+ * resident twin has to be clear too. Best-effort. */
+static void remove_album_leftovers(const char *track_path)
+{
+    const char *slash = strrchr(track_path, '/');
+    if (!slash || slash == track_path) return;
+    char *dir = strndup(track_path, (size_t) (slash - track_path));
+    if (!dir) return;
+    char *twin = resident_twin(dir);
+    if (holds_only_covers(dir) && (!twin || holds_only_covers(twin))) {
+        for (int i = 0; COVER_SIDECAR_NAMES[i]; i++) {
+            char *cover = NULL;
+            if (asprintf(&cover, "%s/%s", dir, COVER_SIDECAR_NAMES[i]) < 0) continue;
+            unlink(cover);
+            free(cover);
+        }
+        prune_empty_dirs(track_path);
+    }
+    free(twin);
+    free(dir);
 }
 
 int delete_track_everywhere(struct nocturne_db *db, const char *sha,
@@ -199,6 +280,8 @@ int delete_track_everywhere(struct nocturne_db *db, const char *sha,
         sqlite3_exec(raw, "RELEASE del_track", NULL, NULL, NULL);
     }
 
+    if (archive_path) remove_album_leftovers(archive_path);
+
     out->touched++;
     free(archive_path); free(transcode_path);
     return 0;
@@ -262,20 +345,6 @@ int unsync_album(struct nocturne_db *db, const char *album_id,
     }
     free(shas);
     return 0;
-}
-
-/* rmdir parents up to library_root if empty. Best-effort. */
-static void prune_empty_dirs(const char *path)
-{
-    char *dup = strdup(path);
-    if (!dup) return;
-    char *slash = strrchr(dup, '/');
-    while (slash && slash > dup) {
-        *slash = '\0';
-        if (rmdir(dup) != 0) break;  /* not empty / no perms / hit boundary */
-        slash = strrchr(dup, '/');
-    }
-    free(dup);
 }
 
 int delete_album_everywhere(struct nocturne_db *db, const char *album_id,

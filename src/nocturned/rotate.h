@@ -52,4 +52,7 @@ int rotate_run_ex(struct nocturne_db *db, const char *library_root,
 typedef int (*rotate_link_fn)(const char *oldpath, const char *newpath);
 void rotate_set_link_fn_for_testing(rotate_link_fn fn);
 
+/* Album-folder cover files, NULL-terminated. */
+extern const char *const COVER_SIDECAR_NAMES[];
+
 #endif /* NOCTURNE_NOCTURNED_ROTATE_H */

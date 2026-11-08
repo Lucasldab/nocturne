@@ -112,13 +112,27 @@ class StatsListenerLogicTest {
     }
 
     @Test fun other_discontinuity_reasons_do_not_emit() {
+        for (reason in listOf(Player.DISCONTINUITY_REASON_INTERNAL, Player.DISCONTINUITY_REASON_SKIP)) {
+            val r = decideEmission(
+                reason = reason,
+                oldMediaItemIndex = 0, newMediaItemIndex = 1,
+                oldPositionMs = 100_000L,
+                cachedDurationMs = 200_000L,
+                cachedTrackId = "abc",
+            )
+            assertNull(r)
+        }
+    }
+
+    @Test fun removing_the_current_item_emits() {
+        // setMediaItems(otherAlbum) mid-song: the interrupted listen counts.
         val r = decideEmission(
             reason = Player.DISCONTINUITY_REASON_REMOVE,
-            oldMediaItemIndex = 0, newMediaItemIndex = 1,
-            oldPositionMs = 100_000L,
+            oldMediaItemIndex = 0, newMediaItemIndex = 0,
+            oldPositionMs = 150_000L,
             cachedDurationMs = 200_000L,
             cachedTrackId = "abc",
         )
-        assertNull(r)
+        assertEquals("play", r?.kind)
     }
 }

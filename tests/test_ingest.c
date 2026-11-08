@@ -50,6 +50,7 @@
 
 #include <sqlite3.h>
 
+#include "actions.h"
 #include "db.h"
 #include "ingest.h"
 #include "runner.h"
@@ -745,6 +746,136 @@ static void test_mid_stream_restart(void)
     db_close(db); unlink(dbp); free(dbp); rm_rf(meta); free(meta);
 }
 
+/* === didn't-like leftovers ===============================================
+ *
+ * delete_track_everywhere used to unlink only the audio. The album's cover.jpg
+ * then held the folder open for good: an archive folder with no music, which
+ * nothing else ever cleans (four found on hearth, 2026-11-08). */
+
+struct del_lib { char root[128]; struct nocturne_db *db; char *dbp; };
+
+static void lib_path(char *out, size_t cap, const struct del_lib *l, const char *rel)
+{
+    snprintf(out, cap, "%s/%s", l->root, rel);
+}
+
+/* Create `rel` under the library, along with its parent directories. */
+static void lib_touch(const struct del_lib *l, const char *rel)
+{
+    char path[512];
+    lib_path(path, sizeof(path), l, rel);
+    for (char *c = path + strlen(l->root) + 1; *c; c++) {
+        if (*c != '/') continue;
+        *c = '\0'; mkdir(path, 0755); *c = '/';
+    }
+    write_file(path, "x");
+}
+
+static int lib_exists(const struct del_lib *l, const char *rel)
+{
+    char path[512]; struct stat st;
+    lib_path(path, sizeof(path), l, rel);
+    return lstat(path, &st) == 0;
+}
+
+static void lib_open(struct del_lib *l)
+{
+    snprintf(l->root, sizeof(l->root), "/tmp/nocturne-del-XXXXXX");
+    if (!mkdtemp(l->root)) l->root[0] = '\0';
+    l->dbp = make_tmp_dbpath();
+    l->db = db_open(l->dbp, NULL, NULL);
+    lib_touch(l, "archive/.keep");
+}
+
+static void lib_close(struct del_lib *l)
+{
+    db_close(l->db); unlink(l->dbp); free(l->dbp); rm_rf(l->root);
+}
+
+static void lib_delete(struct del_lib *l, const char *sha, const char *rel)
+{
+    char path[512], sql[1024];
+    lib_path(path, sizeof(path), l, rel);
+    snprintf(sql, sizeof(sql),
+        "INSERT INTO tracks (sha256, path, mtime_ns, size_bytes, tags_status, "
+        "date_added, last_seen_at) VALUES ('%s', '%s', 0, 1, 'ok', "
+        "'2026-04-26T00:00:00Z', '2026-04-26T00:00:00Z')", sha, path);
+    exec_sql(l->db, sql);
+    struct action_stats st = {0};
+    delete_track_everywhere(l->db, sha, &st);
+}
+
+static void test_delete_last_track_clears_folder(void)
+{
+    struct del_lib l; lib_open(&l);
+    lib_touch(&l, "archive/Artist/Album/01 - A.flac");
+    lib_touch(&l, "archive/Artist/Album/cover.jpg");
+    lib_delete(&l, SHA_A, "archive/Artist/Album/01 - A.flac");
+    expect(!lib_exists(&l, "archive/Artist/Album"), "delete: album folder gone with its last track");
+    expect(!lib_exists(&l, "archive/Artist"), "delete: artist folder gone when it held only that album");
+    lib_close(&l);
+}
+
+static void test_delete_keeps_artist_with_other_album(void)
+{
+    struct del_lib l; lib_open(&l);
+    lib_touch(&l, "archive/Artist/Album/01 - A.flac");
+    lib_touch(&l, "archive/Artist/Album/cover.jpg");
+    lib_touch(&l, "archive/Artist/Other/01 - B.flac");
+    lib_delete(&l, SHA_A, "archive/Artist/Album/01 - A.flac");
+    expect(!lib_exists(&l, "archive/Artist/Album"), "delete: emptied album goes");
+    expect(lib_exists(&l, "archive/Artist/Other/01 - B.flac"), "delete: artist's other album stays");
+    lib_close(&l);
+}
+
+static void test_delete_keeps_cover_while_album_has_audio(void)
+{
+    struct del_lib l; lib_open(&l);
+    lib_touch(&l, "archive/Artist/Album/01 - A.flac");
+    lib_touch(&l, "archive/Artist/Album/02 - B.flac");
+    lib_touch(&l, "archive/Artist/Album/cover.jpg");
+    lib_delete(&l, SHA_A, "archive/Artist/Album/01 - A.flac");
+    expect(lib_exists(&l, "archive/Artist/Album/cover.jpg"), "delete: cover stays while the album has audio");
+    lib_close(&l);
+}
+
+static void test_delete_keeps_folder_with_unknown_file(void)
+{
+    struct del_lib l; lib_open(&l);
+    lib_touch(&l, "archive/Artist/Album/01 - A.flac");
+    lib_touch(&l, "archive/Artist/Album/cover.jpg");
+    lib_touch(&l, "archive/Artist/Album/rip.log");
+    lib_delete(&l, SHA_A, "archive/Artist/Album/01 - A.flac");
+    expect(lib_exists(&l, "archive/Artist/Album/cover.jpg"), "delete: a file we do not know keeps the cover");
+    expect(lib_exists(&l, "archive/Artist/Album/rip.log"), "delete: a file we do not know is not removed");
+    lib_close(&l);
+}
+
+static void test_delete_keeps_cover_for_resident_siblings(void)
+{
+    /* Without transcoding, rotate MOVES promoted tracks to resident/, so an
+     * archive folder holding only a cover can still be a live album. */
+    struct del_lib l; lib_open(&l);
+    lib_touch(&l, "archive/Artist/Album/01 - A.flac");
+    lib_touch(&l, "archive/Artist/Album/cover.jpg");
+    lib_touch(&l, "resident/Artist/Album/02 - B.flac");
+    lib_delete(&l, SHA_A, "archive/Artist/Album/01 - A.flac");
+    expect(lib_exists(&l, "archive/Artist/Album/cover.jpg"), "delete: cover stays when siblings live in resident/");
+    lib_close(&l);
+}
+
+static void test_delete_never_removes_library_tier(void)
+{
+    struct del_lib l; lib_open(&l);
+    char keep[512]; lib_path(keep, sizeof(keep), &l, "archive/.keep");
+    unlink(keep);
+    lib_touch(&l, "archive/Artist/Album/01 - A.flac");
+    lib_touch(&l, "archive/Artist/Album/cover.jpg");
+    lib_delete(&l, SHA_A, "archive/Artist/Album/01 - A.flac");
+    expect(lib_exists(&l, "archive"), "delete: the library's last track never takes archive/ with it");
+    lib_close(&l);
+}
+
 int main(int argc, char **argv)
 {
     (void) argc; (void) argv;
@@ -770,6 +901,12 @@ int main(int argc, char **argv)
     test_v_not_one();
     test_track_not_hex();
     test_mid_stream_restart();
+    test_delete_last_track_clears_folder();
+    test_delete_keeps_artist_with_other_album();
+    test_delete_keeps_cover_while_album_has_audio();
+    test_delete_keeps_folder_with_unknown_file();
+    test_delete_keeps_cover_for_resident_siblings();
+    test_delete_never_removes_library_tier();
 
     return test_finish(__FILE__);
 }

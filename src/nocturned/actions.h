@@ -17,7 +17,9 @@ int unsync_track(struct nocturne_db *db, const char *sha,
                  struct action_stats *out);
 
 /* Delete-everywhere: rm archive + resident files, blacklist the sha,
- * cascade DELETE tracks row. Permanent. Caller holds the lock. */
+ * cascade DELETE tracks row. If that was the album's last audio, also removes
+ * its cover and the emptied album + artist folders. Permanent. Caller holds
+ * the lock. */
 int delete_track_everywhere(struct nocturne_db *db, const char *sha,
                             struct action_stats *out);
 

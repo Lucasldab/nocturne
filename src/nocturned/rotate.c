@@ -412,7 +412,7 @@ static char *path_with_ext(const char *path, const char *new_ext)
  * Phone-side AlbumArtRepository falls back to these when MMR returns no
  * embedded picture (opus drops it during transcode). Without the link,
  * Syncthing only ships the resident audio and the phone gets no art. */
-static const char *const COVER_SIDECAR_NAMES[] = {
+const char *const COVER_SIDECAR_NAMES[] = {
     "cover.jpg", "cover.png", "folder.jpg", "folder.png", NULL,
 };
 

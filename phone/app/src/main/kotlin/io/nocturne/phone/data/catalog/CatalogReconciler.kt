@@ -1,12 +1,12 @@
 package io.nocturne.phone.data.catalog
 
 import android.content.Context
-import androidx.core.net.toUri
-import androidx.documentfile.provider.DocumentFile
 import io.nocturne.phone.data.db.NocturneDatabase
 import io.nocturne.phone.data.prefs.SyncPrefs
 import io.nocturne.phone.player.QueueRepository
 import io.nocturne.phone.player.SavedQueue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.Instant
 
 /**
@@ -37,12 +37,22 @@ object CatalogReconciler {
         importer: CatalogImporter,
         syncPrefs: SyncPrefs,
         queueRepository: QueueRepository? = null,
+    ): Long? = withContext(Dispatchers.IO) {
+        reconcileBlocking(ctx, metaTreeUri, importer, syncPrefs, queueRepository)
+    }
+
+    // SAF reads plus a ~1 MB JSON parse: keep them off the main thread.
+    private suspend fun reconcileBlocking(
+        ctx: Context,
+        metaTreeUri: String,
+        importer: CatalogImporter,
+        syncPrefs: SyncPrefs,
+        queueRepository: QueueRepository?,
     ): Long? = runCatching {
-        val tree = DocumentFile.fromTreeUri(ctx, metaTreeUri.toUri())
+        val catalogFile = MetaFiles.find(ctx, metaTreeUri, "catalog.json")
             ?: return@runCatching null
-        val catalogFile = tree.findFile("catalog.json") ?: return@runCatching null
-        val manifestFile = tree.findFile("manifest.json")
-        val mtime = catalogFile.lastModified()
+        val manifestFile = MetaFiles.find(ctx, metaTreeUri, "manifest.json")
+        val mtime = catalogFile.lastModified
 
         val resolver = ctx.contentResolver
         val result = resolver.openInputStream(catalogFile.uri)?.use { catIn ->
@@ -80,9 +90,7 @@ object CatalogReconciler {
     }.getOrNull()
 
     /** Cheap mtime probe — used by the poll loop to skip work when unchanged. */
-    fun catalogMtime(ctx: Context, metaTreeUri: String): Long? = runCatching {
-        DocumentFile.fromTreeUri(ctx, metaTreeUri.toUri())
-            ?.findFile("catalog.json")
-            ?.lastModified()
-    }.getOrNull()
+    suspend fun catalogMtime(ctx: Context, metaTreeUri: String): Long? = withContext(Dispatchers.IO) {
+        runCatching { MetaFiles.find(ctx, metaTreeUri, "catalog.json")?.lastModified }.getOrNull()
+    }
 }

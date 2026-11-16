@@ -2,10 +2,11 @@ package io.nocturne.phone.data.catalog
 
 import android.content.Context
 import androidx.core.net.toUri
-import androidx.documentfile.provider.DocumentFile
 import io.nocturne.phone.data.db.NocturneDatabase
 import io.nocturne.phone.data.db.entity.TrackEntity
 import io.nocturne.phone.data.sync.MusicFileProbe
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 
 /**
@@ -21,8 +22,7 @@ import kotlinx.serialization.json.Json
  * Every declared id is therefore stat-ed before it is marked resident.
  *
  * Idempotent. Manifest parse is cheap (~25 KB, ~169 ids in steady state); the
- * verification pass is one SAF stat per declared id on the caller's
- * dispatcher.
+ * verification pass is one SAF stat per declared id, on Dispatchers.IO.
  *
  * Callers:
  *  - AppRoot launches it on first composition (cold-start)
@@ -67,11 +67,21 @@ object ManifestReconciler {
         metaTreeUri: String,
         db: NocturneDatabase,
         musicTreeUri: String? = null,
+    ): Long? = withContext(Dispatchers.IO) {
+        reconcileBlocking(ctx, metaTreeUri, db, musicTreeUri)
+    }
+
+    // SAF reads, the manifest parse and one SAF stat per declared track:
+    // keep them off the main thread.
+    private suspend fun reconcileBlocking(
+        ctx: Context,
+        metaTreeUri: String,
+        db: NocturneDatabase,
+        musicTreeUri: String?,
     ): Long? = runCatching {
-        val tree = DocumentFile.fromTreeUri(ctx, metaTreeUri.toUri())
+        val manifestFile = MetaFiles.find(ctx, metaTreeUri, "manifest.json")
             ?: return@runCatching null
-        val manifestFile = tree.findFile("manifest.json") ?: return@runCatching null
-        val mtime = manifestFile.lastModified()
+        val mtime = manifestFile.lastModified
         val text = ctx.contentResolver.openInputStream(manifestFile.uri)?.use {
             it.readBytes().toString(Charsets.UTF_8)
         } ?: return@runCatching null
@@ -104,6 +114,12 @@ object ManifestReconciler {
      * Returns the number of tracks now resident, or null if it did not run.
      */
     suspend fun reverify(
+        ctx: Context,
+        db: NocturneDatabase,
+        musicTreeUri: String?,
+    ): Int? = withContext(Dispatchers.IO) { reverifyBlocking(ctx, db, musicTreeUri) }
+
+    private suspend fun reverifyBlocking(
         ctx: Context,
         db: NocturneDatabase,
         musicTreeUri: String?,
@@ -174,11 +190,9 @@ object ManifestReconciler {
     }
 
     /** Cheap mtime probe — used by the poll loop to skip work when unchanged. */
-    fun manifestMtime(ctx: Context, metaTreeUri: String): Long? = runCatching {
-        DocumentFile.fromTreeUri(ctx, metaTreeUri.toUri())
-            ?.findFile("manifest.json")
-            ?.lastModified()
-    }.getOrNull()
+    suspend fun manifestMtime(ctx: Context, metaTreeUri: String): Long? = withContext(Dispatchers.IO) {
+        runCatching { MetaFiles.find(ctx, metaTreeUri, "manifest.json")?.lastModified }.getOrNull()
+    }
 
     private const val CHUNK = 500
 }

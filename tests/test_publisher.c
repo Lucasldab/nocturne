@@ -17,6 +17,8 @@
  *  11. publish_run with empty manifest_current returns the documented
  *      error path (rc != 0).
  *  12. publish_run leaves no .tmp leaks in out_dir.
+ *  13. re-publishing an unchanged DB leaves catalog.json untouched.
+ *  14. a DB change rewrites catalog.json with a fresh generated_at.
  */
 
 #define _GNU_SOURCE
@@ -263,6 +265,46 @@ int main(int argc, char **argv)
 
         expect(!has_tmp_artifact(outdir),
                "publish_run: no .tmp leaks in out_dir");
+
+        /* 13. Unchanged DB: a second publish leaves catalog.json alone
+         * (same bytes, same mtime). Backdate the file and plant an old
+         * generated_at so a rewrite would be visible either way. */
+        {
+            size_t len1 = 0;
+            char *b1 = read_file(catpath, &len1);
+            const char *key = "\"generated_at\": \"";
+            char *g = b1 ? strstr(b1, key) : NULL;
+            if (g) memcpy(g + strlen(key), "2000-01-01T00:00:00Z", 20);
+            if (b1) atomic_write_file(catpath, b1, len1);
+            struct timespec old_ts[2] = { { 1000000000, 0 }, { 1000000000, 0 } };
+            utimensat(AT_FDCWD, catpath, old_ts, 0);
+
+            int rc2 = publish_run(db, outdir);
+            expect(rc2 == 0, "second publish_run returns 0");
+            size_t len2 = 0;
+            char *b2 = read_file(catpath, &len2);
+            expect(b1 && b2 && len1 == len2 && memcmp(b1, b2, len1) == 0,
+                   "unchanged DB: catalog.json bytes identical after re-publish");
+            struct stat sb;
+            expect(stat(catpath, &sb) == 0 && sb.st_mtim.tv_sec == 1000000000,
+                   "unchanged DB: catalog.json mtime not bumped");
+
+            /* 14. A real change rewrites it with a fresh stamp. */
+            sqlite3_exec(db_handle(db),
+                "UPDATE tracks SET title='Title A2' WHERE path='/lib/a.mp3'",
+                NULL, NULL, NULL);
+            int rc3 = publish_run(db, outdir);
+            expect(rc3 == 0, "third publish_run returns 0");
+            size_t len3 = 0;
+            char *b3 = read_file(catpath, &len3);
+            expect(b3 && strstr(b3, "Title A2") != NULL,
+                   "changed DB: catalog.json rewritten with new content");
+            expect(b3 && strstr(b3, "2000-01-01T00:00:00Z") == NULL,
+                   "changed DB: generated_at refreshed");
+            expect(stat(catpath, &sb) == 0 && sb.st_mtim.tv_sec != 1000000000,
+                   "changed DB: catalog.json mtime moved");
+            free(b1); free(b2); free(b3);
+        }
 
         db_close(db);
         rm_rf(dir); free(dir);

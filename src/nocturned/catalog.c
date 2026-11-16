@@ -111,6 +111,11 @@ static char *iso_utc_now(void)
 
 int catalog_emit(struct nocturne_db *db, FILE *f)
 {
+    return catalog_emit_at(db, f, NULL);
+}
+
+int catalog_emit_at(struct nocturne_db *db, FILE *f, const char *generated_at)
+{
     if (!db || !f) return -1;
     struct sqlite3 *raw = db_handle(db);
     if (!raw) return -1;
@@ -120,8 +125,9 @@ int catalog_emit(struct nocturne_db *db, FILE *f)
 
     json_t *root = json_object();
     json_object_set_new(root, "v", json_integer(1));
-    char *now = iso_utc_now();
-    json_object_set_new(root, "generated_at", json_string(now ? now : ""));
+    char *now = generated_at ? NULL : iso_utc_now();
+    const char *stamp = generated_at ? generated_at : now;
+    json_object_set_new(root, "generated_at", json_string(stamp ? stamp : ""));
     free(now);
 
     json_t *tracks = json_array();

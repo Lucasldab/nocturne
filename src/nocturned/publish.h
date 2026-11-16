@@ -5,7 +5,8 @@ struct nocturne_db;
 
 /* Atomically write catalog.json + manifest.json into `out_dir`.
  *
- * catalog.json: built via catalog_emit (every track row).
+ * catalog.json: built via catalog_emit (every track row). Left untouched
+ * (same bytes, same mtime) when only generated_at would change.
  * manifest.json: built from manifest_current + manifest_meta (populated
  * by `nocturned resolve`). If manifest_current is empty, returns -1
  * with a stderr message — we don't publish a stale or empty manifest.

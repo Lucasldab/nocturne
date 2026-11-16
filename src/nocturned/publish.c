@@ -99,6 +99,79 @@ static json_t *load_manifest_tree(struct sqlite3 *raw)
     return root;
 }
 
+/* Read a whole file into a malloc'd buffer. Returns 0 on success. */
+static int slurp(const char *path, char **out, size_t *out_len)
+{
+    FILE *f = fopen(path, "rb");
+    if (!f) return -1;
+    char *buf = NULL;
+    size_t len = 0;
+    FILE *ms = open_memstream(&buf, &len);
+    if (!ms) { fclose(f); return -1; }
+    char chunk[65536];
+    size_t n;
+    int rc = 0;
+    while ((n = fread(chunk, 1, sizeof(chunk), f)) > 0) {
+        if (fwrite(chunk, 1, n, ms) != n) { rc = -1; break; }
+    }
+    if (ferror(f)) rc = -1;
+    fclose(f);
+    if (fclose(ms) != 0) rc = -1;
+    if (rc != 0) { free(buf); return -1; }
+    *out = buf;
+    *out_len = len;
+    return 0;
+}
+
+/* Returns 1 when the catalog already on disk at `path` is byte-identical
+ * to a fresh emit apart from its generated_at stamp, 0 otherwise.
+ *
+ * The phone reimports the whole catalog (and resets the play queue)
+ * whenever catalog.json's mtime moves, and Syncthing re-sends it, so an
+ * unchanged catalog must not be rewritten just to bump the timestamp.
+ * The check re-emits with the old file's stamp and compares bytes, which
+ * keeps generated_at in place for the phone's parser. */
+static int catalog_unchanged(struct nocturne_db *db, const char *path)
+{
+    char *old = NULL;
+    size_t old_len = 0;
+    if (slurp(path, &old, &old_len) != 0) return 0;
+
+    int same = 0;
+    json_error_t je;
+    json_t *prev = json_loadb(old, old_len, 0, &je);
+    const char *stamp = prev ? json_string_value(json_object_get(prev, "generated_at")) : NULL;
+    if (stamp) {
+        char *fresh = NULL;
+        size_t fresh_len = 0;
+        FILE *ms = open_memstream(&fresh, &fresh_len);
+        if (ms) {
+            int erc = catalog_emit_at(db, ms, stamp);
+            if (fclose(ms) == 0 && erc == 0 && fresh_len == old_len &&
+                memcmp(fresh, old, old_len) == 0) {
+                same = 1;
+            }
+            free(fresh);
+        }
+    }
+    json_decref(prev);
+    free(old);
+    return same;
+}
+
+static int publish_catalog(struct nocturne_db *db, const char *path)
+{
+    if (catalog_unchanged(db, path)) return 0;
+
+    struct atomic_writer *cw = atomic_writer_open(path);
+    if (!cw) return -1;
+    if (catalog_emit(db, atomic_writer_file(cw)) != 0) {
+        atomic_writer_abort(cw);
+        return -1;
+    }
+    return atomic_writer_commit(cw);
+}
+
 int publish_run(struct nocturne_db *db, const char *out_dir)
 {
     if (!db || !out_dir) { errno = EINVAL; return -1; }
@@ -118,14 +191,7 @@ int publish_run(struct nocturne_db *db, const char *out_dir)
     /* Catalog. */
     char cat_path[4096];
     snprintf(cat_path, sizeof(cat_path), "%s/catalog.json", out_dir);
-    struct atomic_writer *cw = atomic_writer_open(cat_path);
-    if (!cw) { json_decref(manifest); return -1; }
-    if (catalog_emit(db, atomic_writer_file(cw)) != 0) {
-        atomic_writer_abort(cw);
-        json_decref(manifest);
-        return -1;
-    }
-    if (atomic_writer_commit(cw) != 0) {
+    if (publish_catalog(db, cat_path) != 0) {
         json_decref(manifest);
         return -1;
     }

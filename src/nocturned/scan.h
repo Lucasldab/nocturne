@@ -13,6 +13,7 @@ struct scan_stats {
     size_t files_skipped_unchanged;
     size_t tag_parse_failed;
     size_t hash_failed;
+    size_t tags_read;          /* files opened with TagLib (unchanged ones are not) */
     size_t elapsed_ms;
 };
 

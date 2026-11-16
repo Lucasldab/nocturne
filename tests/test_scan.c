@@ -144,6 +144,7 @@ int main(int argc, char **argv)
         expect(rc == 0, "life: scan_run #1 returns 0");
         expect(s.files_seen == 1 && s.files_added == 1 && s.files_skipped_unchanged == 0,
                "life: first scan adds 1 row");
+        expect(s.tags_read == 1, "life: first scan reads tags of the new file");
 
         char *sha = select_text(db, dst, "sha256");
         expect(sha != NULL && strlen(sha) == 64, "life: sha256 column is 64 hex chars");
@@ -157,6 +158,8 @@ int main(int argc, char **argv)
         expect(rc == 0, "life: scan_run #2 returns 0");
         expect(s.files_skipped_unchanged == 1 && s.files_added == 0 && s.files_updated == 0,
                "life: second scan is no-op (DAEMON-02)");
+        expect(s.files_seen == 1 && s.tags_read == 0,
+               "life: unchanged file is skipped before tag extraction");
 
         /* 4. Touch — bump mtime, expect files_updated. */
         {
@@ -171,6 +174,7 @@ int main(int argc, char **argv)
         expect(rc == 0, "life: scan_run #3 (post-touch) returns 0");
         expect(s.files_updated == 1 && s.files_added == 0,
                "life: touch triggers files_updated=1 (re-hash same content)");
+        expect(s.tags_read == 1, "life: touched file has its tags re-read");
 
         /* 5. Replace content (different bytes). All fixture MP3s encode the
          *    same 1s silence source through libmp3lame so they share audio

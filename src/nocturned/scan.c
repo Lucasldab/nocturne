@@ -1,12 +1,16 @@
 /*
  * scan.c — DAEMON-01 + DAEMON-02 orchestration.
  *
- * Walks the library via Phase 1's walker_walk, callback per file:
+ * Walks the library via Phase 1's walker_walk_filtered. Per file, in the
+ * prefilter (before TagLib opens it):
  *
  *   1. lookup_by_path → existing row?
  *   2. stat to capture (mtime_ns, size_bytes).
- *   3. If row exists AND (mtime,size) match → mark_seen, skip hashing.
- *      (DAEMON-02: incremental no-op.)
+ *   3. If row exists AND (mtime,size) match → mark_seen, skip tag
+ *      extraction and hashing. (DAEMON-02: incremental no-op.)
+ *
+ * Then, only for new or changed files, in the on_file callback:
+ *
  *   4. Otherwise: hash audio payload, run check_canonical, build a
  *      track_row, upsert (insert OR update by sha256). If a different
  *      sha256 row already had this path, we end up with two paths
@@ -203,12 +207,56 @@ static int is_transcode_artifact(const char *path)
            !strcasecmp(dot, ".aac");
 }
 
+/* Runs before the walker opens the file with TagLib. Transcode artifacts
+ * are dropped first; then a file whose (mtime, size) still match its DB
+ * row is marked seen and skipped, so an incremental scan never pays for
+ * tag extraction on unchanged files. Everything else goes on to on_file. */
+static enum walk_prefilter pre_file(const char *path, void *ud)
+{
+    struct scan_ctx *ctx = (struct scan_ctx *) ud;
+    if (!path) return WALK_PRE_SKIP;
+    if (is_transcode_artifact(path)) return WALK_PRE_SKIP;
+    ctx->stats->files_seen++;
+
+    struct stat st;
+    if (lstat(path, &st) != 0) {
+        /* Vanished since enumeration; the unseen-sweep reconciles it. */
+        ctx->stats->hash_failed++;
+        return WALK_PRE_SKIP;
+    }
+    long long mtime_ns = (long long) st.st_mtim.tv_sec * 1000000000LL + st.st_mtim.tv_nsec;
+    long long size_bytes = (long long) st.st_size;
+
+    char *existing_sha = NULL;
+    long long existing_mtime = 0, existing_size = 0;
+    int hit = track_repo_lookup_by_path(ctx->db, path,
+                                        &existing_sha, &existing_mtime, &existing_size);
+    if (hit < 0) {
+        ctx->hard_error = 1;
+        free(existing_sha);
+        return WALK_PRE_STOP;
+    }
+    if (hit == 1 && existing_mtime == mtime_ns && existing_size == size_bytes) {
+        /* Incremental skip — DAEMON-02. */
+        if (track_repo_mark_seen(ctx->db, existing_sha, ctx->iso_now) != 0) {
+            ctx->hard_error = 1;
+            free(existing_sha);
+            return WALK_PRE_STOP;
+        }
+        ctx->stats->files_skipped_unchanged++;
+        free(existing_sha);
+        return WALK_PRE_SKIP;
+    }
+    free(existing_sha);
+    return WALK_PRE_EXTRACT;
+}
+
 static enum walk_result on_file(const struct tag_record *rec, void *ud)
 {
     struct scan_ctx *ctx = (struct scan_ctx *) ud;
     if (!rec || !rec->path) return WALK_CONTINUE;
-    if (is_transcode_artifact(rec->path)) return WALK_CONTINUE;
-    ctx->stats->files_seen++;
+    /* pre_file already filtered transcode artifacts and counted the file. */
+    ctx->stats->tags_read++;
 
     /* stat for (mtime, size). */
     struct stat st;
@@ -393,7 +441,7 @@ static int scan_run_internal(struct nocturne_db *db,
     if (db_begin(db) != 0) return -1;
 
     struct walk_stats ws = {0};
-    int wrc = walker_walk(walk_root, on_file, &ctx, &ws);
+    int wrc = walker_walk_filtered(walk_root, pre_file, on_file, &ctx, &ws);
     if (wrc != 0 || ctx.hard_error) {
         db_rollback(db);
         struct timespec t1; clock_gettime(CLOCK_MONOTONIC, &t1);

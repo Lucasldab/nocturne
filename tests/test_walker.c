@@ -59,6 +59,15 @@ struct cb_state {
     size_t calls;
 };
 
+/* Prefilter: skip anything named track.mp3, extract the rest. */
+static enum walk_prefilter skip_track_pre(const char *path, void *userdata)
+{
+    (void)userdata;
+    const char *slash = strrchr(path, '/');
+    const char *base = slash ? slash + 1 : path;
+    return strcmp(base, "track.mp3") == 0 ? WALK_PRE_SKIP : WALK_PRE_EXTRACT;
+}
+
 static enum walk_result counting_cb(const struct tag_record *rec, void *userdata)
 {
     (void)rec;
@@ -147,6 +156,17 @@ static void test_full_walk(const char *fixdir)
     /* escape_link.mp3 skipped via symlink-outside-root */
     expect(stats.skipped_symlinks_outside_root >= 1,
            "walker counted at least one skipped_symlinks_outside_root");
+
+    /* Prefilter: a skipped file never reaches tag extraction / on_file.
+     * inside_link.mp3 resolves to .../track.mp3, so both entries skip. */
+    struct cb_state st2 = {0};
+    struct walk_stats stats2;
+    rc = walker_walk_filtered(root, skip_track_pre, counting_cb, &st2, &stats2);
+    expect(rc == 0, "walker_walk_filtered returns 0");
+    expect(stats2.audio_files_seen == stats.audio_files_seen,
+           "prefilter: audio_files_seen unchanged");
+    expect(stats2.skipped_by_prefilter == stats2.audio_files_seen && st2.calls == 0,
+           "prefilter: skipped files never reach on_file");
 
     rm_rf(root);
     rm_rf(outside_root);

@@ -9,7 +9,8 @@
  *     FTS_NOCHDIR keeps the process cwd stable.
  *   - Per file:
  *       FTS_D    → dotfile dirs are FTS_SKIP'd; otherwise counted.
- *       FTS_F    → run extension filter; on match, tags_extract → on_file().
+ *       FTS_F    → run extension filter; on match, optional prefilter →
+ *                  tags_extract → on_file().
  *       FTS_SL   → realpath() the link target; if it doesn't begin with the
  *                  resolved root prefix → skip; otherwise treat like FTS_F
  *                  (extension filter → tags_extract → on_file).
@@ -89,11 +90,20 @@ static void warn_if_network_fs(const char *root)
 /* Process a single audio-file path: extract tags, dispatch callback, free.
  * Returns the callback's walk_result (default WALK_CONTINUE on no callback). */
 static enum walk_result process_audio_file(const char *path,
+                                           walker_prefilter_fn prefilter,
                                            walker_on_file_fn on_file,
                                            void *userdata,
                                            struct walk_stats *stats)
 {
     if (stats) stats->audio_files_seen++;
+    if (prefilter) {
+        enum walk_prefilter pre = prefilter(path, userdata);
+        if (pre == WALK_PRE_STOP) return WALK_STOP;
+        if (pre == WALK_PRE_SKIP) {
+            if (stats) stats->skipped_by_prefilter++;
+            return WALK_CONTINUE;
+        }
+    }
     struct tag_record *rec = tags_extract(path);
     if (!rec) {
         /* OOM — skip. */
@@ -113,6 +123,15 @@ int walker_walk(const char *root,
                 walker_on_file_fn on_file,
                 void *userdata,
                 struct walk_stats *stats)
+{
+    return walker_walk_filtered(root, NULL, on_file, userdata, stats);
+}
+
+int walker_walk_filtered(const char *root,
+                         walker_prefilter_fn prefilter,
+                         walker_on_file_fn on_file,
+                         void *userdata,
+                         struct walk_stats *stats)
 {
     if (stats) memset(stats, 0, sizeof(*stats));
 
@@ -181,7 +200,7 @@ int walker_walk(const char *root,
                 if (stats) stats->skipped_non_audio++;
                 break;
             }
-            wr = process_audio_file(ent->fts_path, on_file, userdata, stats);
+            wr = process_audio_file(ent->fts_path, prefilter, on_file, userdata, stats);
             break;
         }
         case FTS_SL:
@@ -210,7 +229,7 @@ int walker_walk(const char *root,
                 free(target);
                 break;
             }
-            wr = process_audio_file(target, on_file, userdata, stats);
+            wr = process_audio_file(target, prefilter, on_file, userdata, stats);
             free(target);
             break;
         }

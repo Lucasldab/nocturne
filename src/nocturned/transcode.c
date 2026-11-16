@@ -142,8 +142,9 @@ int transcode_audio(const char *src, const char *dst,
     if (pid == 0) {
         /* child */
         execvp("ffmpeg", argv);
-        /* exec only returns on error */
-        fprintf(stderr, "transcode: execvp(ffmpeg) failed: %s\n", strerror(errno));
+        /* exec only returns on error. No stdio here: rotate forks from
+         * several threads, and a stdio lock held by another thread at fork
+         * time would deadlock the child. The parent reports exit 127. */
         _exit(127);
     }
 

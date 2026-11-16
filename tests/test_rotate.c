@@ -918,6 +918,109 @@ int main(int argc, char **argv)
         rm_rf(tmp); free(tmp);
     }
 
+    /* --- Test 18: transcodes run concurrently (capped), DB stays right --- */
+    {
+        char *tmp = make_tmpdir("parallel");
+        char lib[512]; snprintf(lib, sizeof(lib), "%s/lib", tmp);
+        char dbp[512]; snprintf(dbp, sizeof(dbp), "%s/db", tmp);
+        char bin[512]; snprintf(bin, sizeof(bin), "%s/bin", tmp);
+        char logd[512]; snprintf(logd, sizeof(logd), "%s/log", tmp);
+        mkdir_p(lib); mkdir_p(bin); mkdir_p(logd);
+
+        /* Fake ffmpeg: records how many copies are running at once, fails
+         * for any source named *fail*, otherwise writes the output. */
+        char fake[600]; snprintf(fake, sizeof(fake), "%s/ffmpeg", bin);
+        FILE *ff = fopen(fake, "w");
+        if (ff) {
+            fprintf(ff,
+                "#!/bin/sh\n"
+                "log='%s'\n"
+                "src=; prev=; dst=\n"
+                "for a; do [ \"$prev\" = -i ] && src=$a; prev=$a; dst=$a; done\n"
+                "echo \"$src\" >> \"$log/calls\"\n"
+                ": > \"$log/run.$$\"\n"
+                "sleep 0.4\n"
+                "ls \"$log\" | grep -c '^run\\.' >> \"$log/peaks\"\n"
+                "rm -f \"$log/run.$$\"\n"
+                "case \"$src\" in *fail*) : > \"$dst\"; exit 1;; esac\n"
+                "printf opus > \"$dst\"\n", logd);
+            fclose(ff);
+        }
+        chmod(fake, 0755);
+        const char *old_path = getenv("PATH");
+        char *saved_path = old_path ? strdup(old_path) : NULL;
+        char newpath[4096];
+        snprintf(newpath, sizeof(newpath), "%s:%s", bin, old_path ? old_path : "");
+        setenv("PATH", newpath, 1);
+
+        struct nocturne_db *db = db_open(dbp, NULL, NULL);
+        char ad[1024]; snprintf(ad, sizeof(ad), "%s/archive/Art/Alb", lib);
+        mkdir_p(ad);
+        /* 6 ordinary tracks, one that fails to encode, and two sources that
+         * share a transcode path (d.flac / d.mp3 -> d.opus). */
+        const char *names[] = { "t1.flac", "t2.flac", "t3.flac", "t4.flac",
+                                "t5.flac", "t6.flac", "fail.flac",
+                                "d.flac", "d.mp3" };
+        const size_t nn = sizeof(names) / sizeof(names[0]);
+        char shas[9][65];
+        for (size_t i = 0; i < nn; i++) {
+            char ap[1200]; snprintf(ap, sizeof(ap), "%s/%s", ad, names[i]);
+            write_dummy(ap, "flac");
+            snprintf(shas[i], sizeof(shas[i]), "%064zx", i + 0xe0);
+            seed_track(db, shas[i], ap);
+            seed_residency(db, shas[i], "archive");
+            seed_manifest(db, shas[i], 1024);
+        }
+
+        struct transcode_cfg tc = { .enabled = true, .format = "opus",
+                                    .bitrate_kbps = 128 };
+        struct rotate_stats s = {0};
+        int rc = rotate_run_ex(db, lib, &tc, &s);
+        expect(rc == 0, "test18: rc=0");
+        expect(s.to_add == 9, "test18: to_add=9");
+        expect(s.added == 7, "test18: 6 tracks + first of the shared path added");
+        expect(s.already_applied == 1,
+               "test18: second source of a shared path adopts the first's output");
+        expect(s.errors == 1, "test18: the failing encode is the only error");
+
+        int resident_ok = 1;
+        for (size_t i = 0; i < 6; i++) {
+            char *loc = get_residency_loc(db, shas[i]);
+            char *xp = get_transcode_path(db, shas[i]);
+            char want[1300]; snprintf(want, sizeof(want),
+                     "%s/resident/Art/Alb/t%zu.opus", lib, i + 1);
+            if (!loc || strcmp(loc, "resident") || !xp || strcmp(xp, want) ||
+                !file_has(want, "opus")) resident_ok = 0;
+            free(loc); free(xp);
+        }
+        expect(resident_ok, "test18: every encoded track is resident at its path");
+        char *floc = get_residency_loc(db, shas[6]);
+        char fp[1200]; snprintf(fp, sizeof(fp), "%s/resident/Art/Alb/fail.opus", lib);
+        expect(floc && !strcmp(floc, "archive") && !file_exists(fp),
+               "test18: failed encode stays archive, partial output removed");
+        free(floc);
+
+        /* ffmpeg ran once per distinct output: 6 + fail + d.opus. */
+        char calls[600]; snprintf(calls, sizeof(calls), "%s/calls", logd);
+        int ncalls = 0;
+        FILE *cf = fopen(calls, "r");
+        if (cf) { char line[2048]; while (fgets(line, sizeof(line), cf)) ncalls++; fclose(cf); }
+        expect(ncalls == 8, "test18: one ffmpeg run per distinct output path");
+
+        int peak = 0;
+        char peaks[600]; snprintf(peaks, sizeof(peaks), "%s/peaks", logd);
+        FILE *pf = fopen(peaks, "r");
+        if (pf) { int v; while (fscanf(pf, "%d", &v) == 1) if (v > peak) peak = v; fclose(pf); }
+        long ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+        expect(peak <= 4, "test18: never more than 4 ffmpeg at once");
+        if (ncpu >= 2)
+            expect(peak >= 2, "test18: encodes overlap");
+
+        if (saved_path) { setenv("PATH", saved_path, 1); free(saved_path); }
+        db_close(db);
+        rm_rf(tmp); free(tmp);
+    }
+
     /* --- Test 17: levelled promote records the gain; skip keeps it --- */
     if (system("ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libopus") != 0) {
         printf("[SKIP] tests/test_rotate.c: test17 needs ffmpeg with libopus\n");

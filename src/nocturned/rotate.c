@@ -43,6 +43,7 @@
 #include <errno.h>
 #include <math.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -493,11 +494,38 @@ static void link_album_covers(const char *archive_audio_path,
  *
  * Returns 0 on success, -1 on error (counter bumped). 1 means already
  * resident with a transcode file present (idempotent re-run). */
-static int promote_transcode(struct nocturne_db *db, const char *library_root,
-                             const char *sha,
-                             const struct transcode_cfg *tc,
-                             const char *iso, struct rotate_stats *out)
+/* One transcode-mode promote, split so the ffmpeg run can happen off the
+ * main thread: promote_prepare (DB reads, path derivation, mkdir) and
+ * promote_finish (DB writes, covers) stay serial; only transcode_audio,
+ * which touches nothing but its own src/dst files, runs in parallel. */
+struct promote_job {
+    const char *sha;            /* borrowed from the manifest set */
+    char *archive_path;
+    char *transcode_path;
+    int already;                /* transcode already on disk: no encode */
+    int deferred;               /* shares transcode_path with an earlier job */
+    int trc;                    /* transcode_audio rc */
+    struct transcode_result lvl;
+};
+
+static void promote_job_free(struct promote_job *j)
 {
+    free(j->archive_path);
+    free(j->transcode_path);
+    j->archive_path = NULL;
+    j->transcode_path = NULL;
+}
+
+/* Returns 0 with `j` filled, or -1 (out->errors bumped, `j` empty). */
+static int promote_prepare(struct nocturne_db *db, const char *library_root,
+                           const char *sha, const struct transcode_cfg *tc,
+                           struct rotate_stats *out, struct promote_job *j)
+{
+    memset(j, 0, sizeof(*j));
+    j->sha = sha;
+    j->lvl.gain_db = NAN;
+    j->lvl.source_lufs = NAN;
+
     struct sqlite3 *raw = db_handle(db);
     char *archive_path = lookup_track_path(raw, sha);
     if (!archive_path) {
@@ -544,44 +572,62 @@ static int promote_transcode(struct nocturne_db *db, const char *library_root,
     /* Idempotence: existing transcode at the same path → skip the ffmpeg
      * run, just refresh the residency row. */
     struct stat st;
-    int already = (stat(transcode_path, &st) == 0 && S_ISREG(st.st_mode));
-    struct transcode_result lvl = { NAN, NAN };
+    j->already = (stat(transcode_path, &st) == 0 && S_ISREG(st.st_mode));
 
-    if (!already) {
-        if (mkparents(transcode_path) != 0) {
-            fprintf(stderr, "rotate: mkdir -p for %.*s failed: %s\n",
-                    (int) strlen(transcode_path), transcode_path,
-                    strerror(errno));
-            out->errors++;
-            free(archive_path); free(transcode_path);
-            return -1;
-        }
-        int trc = transcode_audio(archive_path, transcode_path, tc, &lvl);
-        if (trc != 0) {
+    if (!j->already && mkparents(transcode_path) != 0) {
+        fprintf(stderr, "rotate: mkdir -p for %.*s failed: %s\n",
+                (int) strlen(transcode_path), transcode_path,
+                strerror(errno));
+        out->errors++;
+        free(archive_path); free(transcode_path);
+        return -1;
+    }
+    j->archive_path = archive_path;
+    j->transcode_path = transcode_path;
+    return 0;
+}
+
+static void promote_encode(struct promote_job *j, const struct transcode_cfg *tc)
+{
+    if (j->already) return;
+    j->trc = transcode_audio(j->archive_path, j->transcode_path, tc, &j->lvl);
+}
+
+/* Consumes `j`. Returns 0 (promoted), 1 (already applied) or -1. */
+static int promote_finish(struct nocturne_db *db, struct promote_job *j,
+                          const struct transcode_cfg *tc,
+                          const char *iso, struct rotate_stats *out)
+{
+    struct sqlite3 *raw = db_handle(db);
+    const char *sha = j->sha;
+    struct stat st;
+
+    if (!j->already) {
+        if (j->trc != 0) {
             fprintf(stderr, "rotate: transcode failed for %.*s (rc=%d)\n",
-                    (int) strlen(sha), sha, trc);
+                    (int) strlen(sha), sha, j->trc);
             out->errors++;
             /* Best-effort cleanup of partial output. */
-            unlink(transcode_path);
-            free(archive_path); free(transcode_path);
-            return -1;
-        }
-        if (stat(transcode_path, &st) != 0) {
-            fprintf(stderr, "rotate: stat(%s) post-transcode failed: %s\n",
-                    transcode_path, strerror(errno));
-            out->errors++;
-            free(archive_path); free(transcode_path);
+            unlink(j->transcode_path);
+            promote_job_free(j);
             return -1;
         }
     }
+    if (stat(j->transcode_path, &st) != 0) {
+        fprintf(stderr, "rotate: stat(%s) post-transcode failed: %s\n",
+                j->transcode_path, strerror(errno));
+        out->errors++;
+        promote_job_free(j);
+        return -1;
+    }
 
-    if (upsert_residency_transcode(raw, sha, iso, transcode_path,
+    if (upsert_residency_transcode(raw, sha, iso, j->transcode_path,
                                    (long long) st.st_size, tc->format,
-                                   already ? NULL : &lvl) != 0) {
+                                   j->already ? NULL : &j->lvl) != 0) {
         fprintf(stderr, "rotate: residency_state upsert for %.*s failed\n",
                 (int) strlen(sha), sha);
         out->errors++;
-        free(archive_path); free(transcode_path);
+        promote_job_free(j);
         return -1;
     }
 
@@ -589,12 +635,151 @@ static int promote_transcode(struct nocturne_db *db, const char *library_root,
      * phone alongside the transcode for AlbumArtRepository to render art for
      * opus tracks (which lose embedded picture during the encode). Idempotent
      * + best-effort — failures don't fail the promote. */
-    link_album_covers(archive_path, transcode_path);
+    link_album_covers(j->archive_path, j->transcode_path);
 
-    free(archive_path);
-    free(transcode_path);
+    int already = j->already;
+    promote_job_free(j);
     if (already) out->already_applied++;
     return already ? 1 : 0;
+}
+
+static int promote_transcode(struct nocturne_db *db, const char *library_root,
+                             const char *sha,
+                             const struct transcode_cfg *tc,
+                             const char *iso, struct rotate_stats *out)
+{
+    struct promote_job j;
+    if (promote_prepare(db, library_root, sha, tc, out, &j) != 0) return -1;
+    promote_encode(&j, tc);
+    return promote_finish(db, &j, tc, iso, out);
+}
+
+/* Upper bound on concurrent ffmpeg encodes. hearth also keeps a large
+ * LLM resident in RAM, so this stays small regardless of core count. */
+#define ROTATE_MAX_TRANSCODE_JOBS 4
+
+static int transcode_parallelism(void)
+{
+    long n = sysconf(_SC_NPROCESSORS_ONLN);
+    if (n < 1) n = 1;
+    if (n > ROTATE_MAX_TRANSCODE_JOBS) n = ROTATE_MAX_TRANSCODE_JOBS;
+    return (int) n;
+}
+
+struct encode_pool {
+    struct promote_job *jobs;
+    size_t n;
+    size_t next;
+    pthread_mutex_t mu;
+    const struct transcode_cfg *tc;
+};
+
+static void *encode_worker(void *arg)
+{
+    struct encode_pool *p = arg;
+    for (;;) {
+        pthread_mutex_lock(&p->mu);
+        size_t i = p->next++;
+        pthread_mutex_unlock(&p->mu);
+        if (i >= p->n) break;
+        struct promote_job *j = &p->jobs[i];
+        if (j->archive_path && !j->deferred) promote_encode(j, p->tc);
+    }
+    return NULL;
+}
+
+/* Run the pending encodes in `jobs` on up to transcode_parallelism()
+ * threads. Falls back to running them inline if threads can't start. */
+static void run_encodes(struct promote_job *jobs, size_t n,
+                        const struct transcode_cfg *tc)
+{
+    size_t pending = 0;
+    for (size_t i = 0; i < n; i++)
+        if (jobs[i].archive_path && !jobs[i].deferred && !jobs[i].already) pending++;
+    if (pending == 0) return;
+
+    struct encode_pool pool = { .jobs = jobs, .n = n, .next = 0, .tc = tc };
+    pthread_mutex_init(&pool.mu, NULL);
+
+    size_t want = (size_t) transcode_parallelism();
+    if (want > pending) want = pending;
+    pthread_t th[ROTATE_MAX_TRANSCODE_JOBS];
+    size_t started = 0;
+    for (size_t t = 1; t < want; t++) {
+        if (pthread_create(&th[started], NULL, encode_worker, &pool) != 0) break;
+        started++;
+    }
+    encode_worker(&pool);   /* the calling thread is one of the workers */
+    for (size_t t = 0; t < started; t++) pthread_join(th[t], NULL);
+    pthread_mutex_destroy(&pool.mu);
+}
+
+/* All ADDs in transcode mode. Same per-track outcome and counters as
+ * calling promote_transcode for each sha in manifest order; only the
+ * ffmpeg runs overlap. A job whose transcode_path collides with an earlier
+ * job's is deferred and run whole, serially, at its turn — exactly what the
+ * sequential loop did (it then adopts the earlier job's output). */
+static void promote_all_transcode(struct nocturne_db *db, const char *library_root,
+                                  const struct sha_set *manifest,
+                                  const struct sha_set *resident,
+                                  const struct transcode_cfg *tc,
+                                  const char *iso, struct rotate_stats *out)
+{
+    size_t n = 0;
+    for (size_t i = 0; i < manifest->n; i++)
+        if (!set_contains(resident, manifest->items[i])) n++;
+    if (n == 0) return;
+
+    struct promote_job *jobs = calloc(n, sizeof(*jobs));
+    if (!jobs) {
+        for (size_t i = 0; i < manifest->n; i++) {
+            const char *sha = manifest->items[i];
+            if (set_contains(resident, sha)) continue;
+            long long before = out->errors;
+            int rc = promote_transcode(db, library_root, sha, tc, iso, out);
+            if (rc == 0 && out->errors == before) out->added++;
+        }
+        return;
+    }
+
+    size_t k = 0;
+    for (size_t i = 0; i < manifest->n; i++) {
+        const char *sha = manifest->items[i];
+        if (set_contains(resident, sha)) continue;
+        struct promote_job *j = &jobs[k++];
+        if (promote_prepare(db, library_root, sha, tc, out, j) != 0) {
+            j->sha = sha;   /* archive_path NULL marks a failed prepare */
+            continue;
+        }
+        for (size_t e = 0; e + 1 < k; e++) {
+            if (jobs[e].transcode_path &&
+                strcmp(jobs[e].transcode_path, j->transcode_path) == 0) {
+                j->deferred = 1;
+                break;
+            }
+        }
+    }
+
+    run_encodes(jobs, n, tc);
+
+    for (size_t i = 0; i < n; i++) {
+        struct promote_job *j = &jobs[i];
+        if (!j->archive_path) continue;   /* prepare failed, already counted */
+        long long before = out->errors;
+        int rc;
+        if (j->deferred) {
+            const char *sha = j->sha;
+            promote_job_free(j);
+            rc = promote_transcode(db, library_root, sha, tc, iso, out);
+        } else {
+            rc = promote_finish(db, j, tc, iso, out);
+        }
+        if (rc == 0 && out->errors == before) out->added++;
+        /* rc == 1 means already_applied (counter was incremented inside
+         * promote_finish); do NOT also count as added. */
+    }
+
+    free(jobs);
 }
 
 /* Transcode-mode demote (resident → archive). Unlink the resident
@@ -1168,21 +1353,19 @@ int rotate_run_ex(struct nocturne_db *db, const char *library_root,
     }
 
     /* ADDS first (Pitfall 1: never go below cap during rotation). */
-    for (size_t i = 0; i < manifest.n; i++) {
-        const char *sha = manifest.items[i];
-        if (set_contains(&resident, sha)) continue;
-        long long before = out->errors;
-        int rc;
-        if (transcode_on) {
-            rc = promote_transcode(db, library_root, sha, tc, iso_now, out);
-        } else {
-            rc = move_one(db, library_root, sha,
-                          "archive", "resident", "resident",
-                          iso_now, out);
+    if (transcode_on) {
+        promote_all_transcode(db, library_root, &manifest, &resident,
+                              tc, iso_now, out);
+    } else {
+        for (size_t i = 0; i < manifest.n; i++) {
+            const char *sha = manifest.items[i];
+            if (set_contains(&resident, sha)) continue;
+            long long before = out->errors;
+            int rc = move_one(db, library_root, sha,
+                              "archive", "resident", "resident",
+                              iso_now, out);
+            if (rc == 0 && out->errors == before) out->added++;
         }
-        if (rc == 0 && out->errors == before) out->added++;
-        /* rc == 1 means already_applied (counter was incremented inside the
-         * promote helper); do NOT also count as added. */
     }
 
     /* REMOVES second. */

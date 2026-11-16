@@ -14,6 +14,9 @@
 CC      ?= cc
 CFLAGS  ?= -std=c11 -Wall -Wextra -Wpedantic -Wshadow -Wno-unused-parameter -O2 -g
 LDFLAGS ?=
+# rotate runs transcodes on a small thread pool.
+CFLAGS  += -pthread
+LDFLAGS += -pthread
 
 BUILDDIR := build
 BIN      := $(BUILDDIR)/nocturne-tagcheck

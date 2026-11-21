@@ -40,14 +40,17 @@ static int write_manifest_to_db(struct nocturne_db *db, const struct manifest *m
     sqlite3_exec(raw, "DELETE FROM manifest_current", NULL, NULL, NULL);
 
     /* Filter: tracks the user has unsync'd or blacklisted ("didn't like")
-     * never reach the manifest. The candidate set still picked them via
+     * never reach the manifest; an unsync with an `until` stops applying once
+     * that time passes (a timed rest). The candidate set still picked them via
      * pin/recent_adds/etc. — we drop them here at the last step before
      * disk so resolver code stays simple. */
     sqlite3_stmt *ins = NULL;
     sqlite3_prepare_v2(raw,
         "INSERT INTO manifest_current (sha256, buckets_csv, size_bytes) "
         "SELECT ?, ?, ? "
-        "WHERE NOT EXISTS (SELECT 1 FROM unsync_overrides WHERE sha256=?) "
+        "WHERE NOT EXISTS (SELECT 1 FROM unsync_overrides WHERE sha256=? "
+        "                  AND (until IS NULL "
+        "                       OR until > strftime('%Y-%m-%dT%H:%M:%SZ','now'))) "
         "AND NOT EXISTS (SELECT 1 FROM track_blacklist WHERE sha256=?)",
         -1, &ins, NULL);
     for (size_t i = 0; i < m->resident_n; i++) {
